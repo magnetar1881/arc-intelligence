@@ -147,8 +147,8 @@ TOKEN_WHITELIST=
 
 ## Notes
 
-- Whale detection uses a **size-based heuristic** (transfer amount vs. configurable threshold). This is not a liquidity-aware system — it does not read DEX pool reserves, TVL, or slippage. True liquidity-aware filtering is planned for a later phase.
-- Ecosystem resource recommendations (DEXs, bridges) will be sourced exclusively from Arc official channels (X, Discord). All recommendations will carry a disclaimer: *this information is for reference only — always verify before transacting.*
+- Whale detection uses a **size-based heuristic** (transfer amount vs. configurable threshold). This is not a liquidity-aware system it does not read DEX pool reserves, TVL, or slippage. True liquidity-aware filtering is planned for a later phase.
+- Ecosystem resource recommendations (DEXs, bridges) will be sourced exclusively from Arc official channels (X, Discord). All recommendations will carry a disclaimer: *this information is for reference only always verify before transacting.*
 
 ---
 
