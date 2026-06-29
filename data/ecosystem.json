@@ -1,0 +1,267 @@
+{
+  "last_updated": "2026-06-29",
+  "source": "https://www.arc.io/ecosystem",
+  "note": "All entries are sourced from the official Arc ecosystem page. This information is for reference only — always verify before transacting.",
+
+  "dex": [
+    {
+      "name": "Curve Finance",
+      "description": "Decentralized exchange optimized for swapping assets with similar values.",
+      "url": "https://curve.finance",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Fluid",
+      "description": "Makes lending and borrowing on DeFi easier, safer, and more efficient.",
+      "url": "https://fluid.io",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "bridges": [
+    {
+      "name": "LayerZero",
+      "description": "Decentralized interoperability protocol connecting blockchains.",
+      "url": "https://layerzero.network",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Axelar",
+      "description": "Decentralized network securely connecting the world's blockchains.",
+      "url": "https://axelar.network",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Across",
+      "description": "Intent-based bridge delivering near-instant cross-chain transfers.",
+      "url": "https://across.to",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "borrow_lend": [
+    {
+      "name": "Aave",
+      "description": "Open source protocol for non-custodial liquidity markets.",
+      "url": "https://aave.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Morpho",
+      "description": "Open credit network connecting lenders and borrowers.",
+      "url": "https://morpho.org",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Maple",
+      "description": "Onchain asset manager for institutional lending.",
+      "url": "https://maple.finance",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "wallets": [
+    {
+      "name": "MetaMask",
+      "description": "Secure crypto wallet trusted by millions for buying, selling, and swapping.",
+      "url": "https://metamask.io",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Ledger",
+      "description": "Hardware wallet for secure crypto storage and management.",
+      "url": "https://ledger.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Rainbow",
+      "description": "Explore NFTs and DeFi across multiple networks.",
+      "url": "https://rainbow.me",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Exodus",
+      "description": "Multi-asset crypto wallet with built-in exchange.",
+      "url": "https://exodus.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Bron",
+      "description": "Non-custodial wallet — no seed phrase required.",
+      "url": "https://bron.org",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "rpc_providers": [
+    {
+      "name": "QuickNode",
+      "description": "Global RPC network with real-time blockchain data.",
+      "url": "https://quicknode.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Alchemy",
+      "description": "RPC APIs and developer tools across 100+ blockchains.",
+      "url": "https://alchemy.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "dRPC",
+      "description": "Modular RPC solutions for blockchain data infrastructure.",
+      "url": "https://drpc.org",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "explorers": [
+    {
+      "name": "ArcScan",
+      "description": "Official Arc testnet block explorer.",
+      "url": "https://testnet.arcscan.app",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Blockscout",
+      "description": "Open-source block explorer for EVM-based chains.",
+      "url": "https://blockscout.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "faucets": [
+    {
+      "name": "Circle Faucet",
+      "description": "Official faucet for Arc testnet USDC and EURC.",
+      "url": "https://faucet.circle.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "analytics": [
+    {
+      "name": "Chainalysis",
+      "description": "Blockchain data and AI for compliance and investigation.",
+      "url": "https://chainalysis.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Elliptic",
+      "description": "Blockchain analytics for financial crime risk management.",
+      "url": "https://elliptic.co",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Blockdaemon",
+      "description": "Institutional digital asset infrastructure for custody and tokenization.",
+      "url": "https://blockdaemon.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "oracles": [
+    {
+      "name": "Chainlink",
+      "description": "Leading decentralized oracle network for blockchain infrastructure.",
+      "url": "https://chain.link",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "RedStone",
+      "description": "Onchain data for DeFi protocols, RWA platforms, and asset managers.",
+      "url": "https://redstone.finance",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Chronicle Labs",
+      "description": "Cost-efficient, decentralized, and verifiable blockchain oracles.",
+      "url": "https://chroniclelabs.org",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ],
+
+  "stablecoin_issuers": [
+    {
+      "name": "AllUnity",
+      "description": "Regulated e-money institute for digital payments infrastructure.",
+      "url": "https://allunity.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Stablecorp",
+      "description": "Canadian fintech building digital money infrastructure for global payments.",
+      "url": "https://stablecorp.ca",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "Forte AUD",
+      "description": "Digital asset pegged to the Australian dollar.",
+      "url": "https://forteaud.com",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    },
+    {
+      "name": "JPYC",
+      "description": "Stablecoin linked to the Japanese yen.",
+      "url": "https://corporate.jpyc.co.jp/en",
+      "status": "active",
+      "source": "arc.io/ecosystem",
+      "added": "2026-06-29"
+    }
+  ]
+}
