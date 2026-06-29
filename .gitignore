@@ -1,4 +1,6 @@
 node_modules
 .env
 data/whale.db
+data/whale.db-shm
+data/whale.db-wal
 *.log
