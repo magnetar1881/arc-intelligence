@@ -5,20 +5,13 @@ const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
 
 if (missing.length) {
   console.error(`❌ Eksik environment değişkenleri: ${missing.join(", ")}`);
-  console.error("Başlatmadan önce bir .env dosyası oluştur.");
   process.exit(1);
 }
 
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception:", err);
-});
+process.on("uncaughtException", (err) => console.error("Uncaught:", err));
+process.on("unhandledRejection", (err) => console.error("Rejection:", err));
 
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled rejection:", err);
-});
+require("./scanner/blockScanner").startScanner();
+require("./dashboard/server");
 
-const { startScanner } = require("./scanner/blockScanner");
-
-startScanner();
-
-console.log("✅ Arc Whale Alert Bot çalışıyor.");
+console.log("✅ Arc Intelligence çalışıyor.");
