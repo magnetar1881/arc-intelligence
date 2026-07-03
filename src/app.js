@@ -11,7 +11,13 @@ if (missing.length) {
 process.on("uncaughtException", (err) => console.error("Uncaught:", err));
 process.on("unhandledRejection", (err) => console.error("Rejection:", err));
 
-require("./scanner/blockScanner").startScanner();
-require("./dashboard/server");
+if (process.env.SCANNER_ENABLED === "true") {
+  require("./scanner/blockScanner").startScanner();
+  require("./telegram/bot");
+  console.log("✅ Scanner ve Telegram bot aktif.");
+} else {
+  console.log("⏸️  Scanner devre dışı — sadece dashboard çalışıyor.");
+}
 
-console.log("✅ Arc Intelligence çalışıyor.");
+require("./dashboard/server");
+console.log("✅ Arc Intelligence dashboard çalışıyor.");

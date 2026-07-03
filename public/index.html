@@ -1,425 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Arc Intelligence</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Arc Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07111f;--bg2:#0b1828;--bg3:#0d1f33;--bg4:#0f2035;
+  --border:#112236;--border2:#1a3050;--border3:#1d3f6e;
+  --blue:#3b82f6;--blue2:#2563eb;--blue3:#60a5fa;--blue4:#93c5fd;
+  --green:#22c55e;--amber:#f59e0b;--red:#ef4444;
+  --text:#e2e8f0;--text2:#cbd5e1;--text3:#94a3b8;
+  --muted:#475569;--dim:#334d70;
+  --mono:'JetBrains Mono',monospace;
+  --sans:'Inter',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
 
-    :root {
-      --bg:       #060d1a;
-      --bg2:      #0b1628;
-      --bg3:      #111f35;
-      --border:   #1a2e4a;
-      --blue:     #3b82f6;
-      --blue-dim: #1d3f6e;
-      --green:    #22c55e;
-      --amber:    #f59e0b;
-      --red:      #ef4444;
-      --text:     #e2e8f0;
-      --muted:    #64748b;
-      --mono:     'JetBrains Mono', monospace;
-      --sans:     'Inter', sans-serif;
-    }
+/* HEADER */
+header{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:var(--bg);position:sticky;top:0;z-index:100}
+.logo{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;letter-spacing:-.3px;color:var(--text)}
+.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--blue);box-shadow:0 0 6px var(--blue);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.h-right{display:flex;align-items:center;gap:8px}
+.badge-live{font-size:10px;font-family:var(--mono);color:#22c55e;border:1px solid #166534;padding:2px 7px;border-radius:3px;letter-spacing:.5px}
+.btn-ask{font-size:12px;border:1px solid var(--blue2);color:var(--blue3);background:transparent;padding:4px 14px;border-radius:4px;cursor:pointer;font-family:var(--sans);font-weight:500;transition:background .15s}
+.btn-ask:hover{background:var(--border3)}
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+/* SEARCH BAR */
+.search-bar{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 28px;display:flex;align-items:center;gap:10px}
+.search-bar input{flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:8px 14px;color:var(--text3);font-size:13px;font-family:var(--sans);outline:none;cursor:not-allowed}
+.search-bar button{background:var(--border3);border:1px solid var(--blue2);color:var(--blue4);padding:8px 18px;border-radius:6px;font-size:12px;cursor:not-allowed;font-family:var(--sans);white-space:nowrap}
+.search-coming{font-size:11px;color:var(--dim);white-space:nowrap}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--sans);
-      font-size: 14px;
-      min-height: 100vh;
-    }
+/* LAYOUT */
+.page{max-width:1240px;margin:0 auto;padding:20px 28px}
 
-    /* ── HEADER ── */
-    header {
-      border-bottom: 1px solid var(--border);
-      padding: 0 32px;
-      height: 56px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      background: var(--bg);
-      z-index: 100;
-    }
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px 18px}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+.stat-value{font-family:var(--mono);font-size:20px;font-weight:500;color:var(--blue)}
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 600;
-      font-size: 15px;
-      letter-spacing: -.2px;
-    }
+/* MAIN GRID */
+.main-grid{display:grid;grid-template-columns:1fr 320px;gap:14px;margin-bottom:14px}
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
-    .logo-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--blue);
-      box-shadow: 0 0 8px var(--blue);
-      animation: pulse 2s infinite;
-    }
+/* CARD */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.card-head{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+.card-sub{font-size:10px;color:var(--dim)}
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: .4; }
-    }
+/* WHALE FEED */
+.w-item{padding:10px 18px;border-bottom:1px solid var(--bg3);display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;transition:background .12s}
+.w-item:hover{background:var(--bg3)}
+.w-item:last-child{border-bottom:none}
+.w-token{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--blue3);margin-bottom:2px}
+.w-addr{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.w-amt{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--green);text-align:right}
+.w-time{font-size:10px;color:var(--dim);text-align:right;margin-top:1px}
+.tier{font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:2px;margin-left:5px;vertical-align:middle}
+.tier-L{background:#1c2f18;color:#4ade80;border:1px solid #166534}
+.tier-S{background:var(--bg4);color:var(--blue3);border:1px solid var(--border3)}
 
-    .live-badge {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--green);
-      border: 1px solid var(--green);
-      padding: 2px 8px;
-      border-radius: 4px;
-      letter-spacing: .5px;
-    }
+/* TOP WALLETS */
+.wallet-row{padding:9px 18px;border-bottom:1px solid var(--bg3);display:flex;align-items:center;gap:10px}
+.wallet-row:last-child{border-bottom:none}
+.w-rank{font-family:var(--mono);font-size:10px;color:var(--dim);width:16px;flex-shrink:0}
+.w-info{flex:1;min-width:0}
+.w-addr2{font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-meta{font-size:10px;color:var(--dim);margin-top:1px}
+.score-bar{width:36px;height:2px;background:var(--bg3);border-radius:1px;overflow:hidden;flex-shrink:0}
+.score-fill{height:100%;background:var(--blue2);border-radius:1px}
+.w-vol{font-family:var(--mono);font-size:11px;color:var(--green);flex-shrink:0;min-width:52px;text-align:right}
 
-    /* ── LAYOUT ── */
-    .container {
-      max-width: 1280px;
-      margin: 0 auto;
-      padding: 24px 32px;
-    }
+/* TOKEN ACTIVITY */
+.t-header{padding:8px 18px 5px;display:grid;grid-template-columns:70px 1fr 56px 56px;gap:10px}
+.t-hl{font-size:10px;color:var(--dim)}
+.t-row{padding:8px 18px;border-bottom:1px solid var(--bg3);display:grid;grid-template-columns:70px 1fr 56px 56px;gap:10px;align-items:center}
+.t-row:last-child{border-bottom:none}
+.t-sym{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--blue3)}
+.t-bar-wrap{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.t-bar-fill{height:100%;background:linear-gradient(90deg,var(--border3),var(--blue2));border-radius:2px}
+.t-num{font-family:var(--mono);font-size:10px;color:var(--muted);text-align:right}
 
-    /* ── STATS ROW ── */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 12px;
-      margin-bottom: 24px;
-    }
+/* ECOSYSTEM */
+.eco-tabs{display:flex;overflow-x:auto;padding:0 18px;border-bottom:1px solid var(--border);scrollbar-width:thin;scrollbar-color:var(--border3) var(--bg2)}
+.eco-tabs::-webkit-scrollbar{height:4px}
+.eco-tabs::-webkit-scrollbar-track{background:var(--bg2)}
+.eco-tabs::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
+.eco-tab{padding:9px 12px;font-size:10px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;flex-shrink:0;transition:color .12s}
+.eco-tab.active{color:var(--blue);border-bottom-color:var(--blue2)}
+.eco-scroll{overflow-x:auto;overflow-y:auto;max-height:200px;scrollbar-width:thin;scrollbar-color:var(--border3) var(--bg2)}
+.eco-scroll::-webkit-scrollbar{width:4px;height:4px}
+.eco-scroll::-webkit-scrollbar-track{background:var(--bg2)}
+.eco-scroll::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
+.eco-scroll::-webkit-scrollbar-corner{background:var(--bg2)}
+.eco-grid{display:grid;grid-template-columns:repeat(3,155px);gap:8px;padding:14px 18px;width:max-content;min-width:100%}
+.eco-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px 12px;text-decoration:none;display:block;width:155px;transition:border-color .12s}
+.eco-card:hover{border-color:var(--border3)}
+.eco-name{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:3px}
+.eco-desc{font-size:10px;color:var(--muted);line-height:1.5}
+.eco-empty{padding:24px 18px;text-align:center;font-size:12px;color:var(--dim)}
 
-    .stat-card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 16px 20px;
-    }
+/* FOOTER */
+footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.footer-disc{font-size:10px;color:var(--muted);max-width:580px;line-height:1.6}
 
-    .stat-label {
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      margin-bottom: 8px;
-    }
+/* EMPTY / LOADING */
+.empty{padding:28px 18px;text-align:center;font-size:12px;color:var(--dim)}
 
-    .stat-value {
-      font-family: var(--mono);
-      font-size: 22px;
-      font-weight: 500;
-      color: var(--blue);
-    }
+@media(max-width:900px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .main-grid{grid-template-columns:1fr}
+  .bottom-grid{grid-template-columns:1fr}
+  .page{padding:16px}
+  header,footer,.search-bar{padding-left:16px;padding-right:16px}
+}
 
-    /* ── GRID ── */
-    .main-grid {
-      display: grid;
-      grid-template-columns: 1fr 340px;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
+/* SKELETON */
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.sk-line{height:11px;margin-bottom:6px}
+.sk-line:last-child{margin-bottom:0;width:60%}
+.sk-value{height:20px;width:60px;margin-top:6px}
+.sk-item{padding:10px 18px;border-bottom:1px solid var(--bg3)}
+.sk-item:last-child{border-bottom:none}
 
-    .bottom-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-
-    .card {
-      background: var(--bg2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    .card-header {
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .card-title {
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .8px;
-      color: var(--muted);
-    }
-
-    .card-body { padding: 0; }
-
-    /* ── WHALE FEED ── */
-    .whale-item {
-      padding: 12px 20px;
-      border-bottom: 1px solid var(--border);
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      align-items: start;
-      transition: background .15s;
-    }
-
-    .whale-item:hover { background: var(--bg3); }
-    .whale-item:last-child { border-bottom: none; }
-
-    .whale-token {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--blue);
-      margin-bottom: 3px;
-    }
-
-    .whale-addr {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--muted);
-    }
-
-    .whale-amount {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--green);
-      text-align: right;
-    }
-
-    .whale-time {
-      font-size: 10px;
-      color: var(--muted);
-      text-align: right;
-      margin-top: 3px;
-    }
-
-    .tier-badge {
-      font-size: 10px;
-      font-family: var(--mono);
-      padding: 1px 6px;
-      border-radius: 3px;
-      margin-left: 6px;
-    }
-
-    .tier-LARGE {
-      background: rgba(245,158,11,.15);
-      color: var(--amber);
-      border: 1px solid rgba(245,158,11,.3);
-    }
-
-    .tier-STANDARD {
-      background: rgba(59,130,246,.1);
-      color: var(--blue);
-      border: 1px solid var(--blue-dim);
-    }
-
-    /* ── TOP WALLETS ── */
-    .wallet-item {
-      padding: 10px 20px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .wallet-item:last-child { border-bottom: none; }
-
-    .wallet-rank {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--muted);
-      width: 20px;
-      flex-shrink: 0;
-    }
-
-    .wallet-info { flex: 1; min-width: 0; }
-
-    .wallet-addr {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .wallet-meta {
-      font-size: 10px;
-      color: var(--muted);
-      margin-top: 2px;
-    }
-
-    .wallet-vol {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--green);
-      flex-shrink: 0;
-    }
-
-    .score-bar {
-      width: 40px;
-      height: 3px;
-      background: var(--bg3);
-      border-radius: 2px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-
-    .score-fill {
-      height: 100%;
-      background: var(--blue);
-      border-radius: 2px;
-    }
-
-    /* ── TOKEN TABLE ── */
-    .token-item {
-      padding: 10px 20px;
-      border-bottom: 1px solid var(--border);
-      display: grid;
-      grid-template-columns: auto 1fr auto auto;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .token-item:last-child { border-bottom: none; }
-
-    .token-symbol {
-      font-family: var(--mono);
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--blue);
-      width: 80px;
-    }
-
-    .token-bar-wrap {
-      height: 4px;
-      background: var(--bg3);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .token-bar-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--blue-dim), var(--blue));
-      border-radius: 2px;
-    }
-
-    .token-count {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--muted);
-      text-align: right;
-      width: 60px;
-    }
-
-    .token-wallets {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--muted);
-      text-align: right;
-      width: 50px;
-    }
-
-    /* ── ECOSYSTEM ── */
-    .eco-tabs {
-      display: flex;
-      gap: 0;
-      padding: 0 20px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .eco-tab {
-      padding: 10px 14px;
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--muted);
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      transition: color .15s;
-    }
-
-    .eco-tab.active {
-      color: var(--blue);
-      border-bottom-color: var(--blue);
-    }
-
-    .eco-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 10px;
-      padding: 16px 20px;
-    }
-
-    .eco-card {
-      background: var(--bg3);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 12px 14px;
-      text-decoration: none;
-      display: block;
-      transition: border-color .15s, background .15s;
-    }
-
-    .eco-card:hover {
-      border-color: var(--blue-dim);
-      background: #0f1e33;
-    }
-
-    .eco-name {
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text);
-      margin-bottom: 4px;
-    }
-
-    .eco-desc {
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    /* ── FOOTER ── */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 16px 32px;
-      color: var(--muted);
-      font-size: 11px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .disclaimer {
-      font-size: 10px;
-      color: var(--muted);
-      max-width: 600px;
-      line-height: 1.6;
-    }
-
-    /* ── EMPTY / LOADING ── */
-    .empty {
-      padding: 32px 20px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    @media (max-width: 900px) {
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-      .main-grid { grid-template-columns: 1fr; }
-      .bottom-grid { grid-template-columns: 1fr; }
-      .container { padding: 16px; }
-    }
-  </style>
+</style>
 </head>
 <body>
 
@@ -428,61 +140,36 @@
     <div class="logo-dot"></div>
     Arc Intelligence
   </div>
-  <div style="display:flex;align-items:center;gap:12px;">
-    <div class="live-badge">LIVE</div>
-    <button onclick="document.getElementById('ask-arc').scrollIntoView({behavior:'smooth'})"
-      style="background:transparent;border:1px solid var(--blue);color:var(--blue);
-             padding:4px 14px;border-radius:4px;cursor:pointer;font-size:12px;
-             font-family:var(--sans);font-weight:500;letter-spacing:.3px;
-             transition:background .15s;"
-      onmouseover="this.style.background='var(--blue-dim)'"
-      onmouseout="this.style.background='transparent'">
-      Ask Arc
-    </button>
+  <div class="h-right">
+    <div class="badge-live">LIVE</div>
+    <button class="btn-ask" onclick="document.getElementById('search-section').scrollIntoView({behavior:'smooth'})">Ask Arc</button>
   </div>
 </header>
 
-<div class="container">
+<div class="page">
 
 <!-- ASK ARC -->
-  <div class="card" id="ask-arc" style="margin-bottom:24px;">
-    <div class="card-header">
-      <span class="card-title">Ask Arc</span>
-      <span style="font-size:11px;color:var(--muted)">Coming soon</span>
+  <div class="card" id="search-section" style="margin-bottom:14px;padding:20px 24px;display:flex;flex-direction:column;align-items:center;gap:10px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+      <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Ask Arc</span>
+      <span style="font-size:10px;color:var(--dim);border:1px solid var(--border2);padding:1px 7px;border-radius:3px">Coming soon</span>
     </div>
-    <div style="padding:32px 20px;text-align:center;">
-      <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7;">
-        Ask anything about Arc network activity, ecosystem resources, or on-chain data.<br>
-        Natural language queries powered by live on-chain intelligence.
-      </div>
-      <div style="display:flex;gap:10px;max-width:560px;margin:0 auto;">
-        <input
-          disabled
-          placeholder="e.g. Which wallets moved the most today?"
-          style="flex:1;background:var(--bg3);border:1px solid var(--border);
-                 border-radius:6px;padding:10px 14px;color:var(--muted);
-                 font-family:var(--sans);font-size:13px;outline:none;cursor:not-allowed;"
-        />
-        <button disabled
-          style="background:var(--blue-dim);border:1px solid var(--blue-dim);
-                 color:var(--muted);padding:10px 20px;border-radius:6px;
-                 font-size:13px;cursor:not-allowed;font-family:var(--sans);">
-          Ask
-        </button>
-      </div>
-      <div style="margin-top:12px;font-size:11px;color:var(--muted);">
-        🔜 AI-powered answers coming in the next update
-      </div>
+    <div style="width:100%;max-width:560px;display:flex;gap:8px">
+      <input disabled placeholder="e.g. Which wallets moved the most today?"
+        style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;padding:8px 14px;color:var(--text3);font-size:13px;font-family:var(--sans);outline:none;cursor:not-allowed"/>
+      <button disabled
+        style="background:var(--border3);border:1px solid var(--blue2);color:var(--blue4);padding:8px 18px;border-radius:6px;font-size:12px;cursor:not-allowed;font-family:var(--sans)">Ask</button>
     </div>
+    <div style="font-size:11px;color:var(--dim)">🔜 AI-powered answers coming in the next update</div>
   </div>
 
   <!-- STATS -->
-  <div class="stats-grid" id="stats-grid">
-    <div class="stat-card"><div class="stat-label">Total Whale Txs</div><div class="stat-value" id="s-total">—</div></div>
-    <div class="stat-card"><div class="stat-label">Whales (24h)</div><div class="stat-value" id="s-24h">—</div></div>
-    <div class="stat-card"><div class="stat-label">Volume (24h)</div><div class="stat-value" id="s-vol">—</div></div>
-    <div class="stat-card"><div class="stat-label">Tracked Wallets</div><div class="stat-value" id="s-wallets">—</div></div>
-    <div class="stat-card"><div class="stat-label">Tokens Seen</div><div class="stat-value" id="s-tokens">—</div></div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Total Whale Txs</div><div class="stat-value" id="s-total">0</div></div>
+    <div class="stat"><div class="stat-label">Whales (24h)</div><div class="stat-value" id="s-24h">0</div></div>
+    <div class="stat"><div class="stat-label">Volume (24h)</div><div class="stat-value" id="s-vol">0</div></div>
+    <div class="stat"><div class="stat-label">Tracked Wallets</div><div class="stat-value" id="s-wallets">0</div></div>
+    <div class="stat"><div class="stat-label">Tokens Seen</div><div class="stat-value" id="s-tokens">0</div></div>
   </div>
 
   <!-- MAIN GRID -->
@@ -490,22 +177,30 @@
 
     <!-- WHALE FEED -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-head">
         <span class="card-title">Whale Feed</span>
-        <span style="font-size:11px;color:var(--muted)" id="feed-updated"></span>
+        <span class="card-sub" id="feed-time"></span>
       </div>
-      <div class="card-body" id="whale-feed">
-        <div class="empty">Loading...</div>
+      <div id="whale-feed">
+        <div class="sk-item"><div class="skeleton sk-line" style="width:40%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:35%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:45%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:38%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:42%"></div><div class="skeleton sk-line"></div></div>
       </div>
     </div>
 
     <!-- TOP WALLETS -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-head">
         <span class="card-title">Top Wallets</span>
       </div>
-      <div class="card-body" id="top-wallets">
-        <div class="empty">Loading...</div>
+      <div id="top-wallets">
+        <div class="sk-item"><div class="skeleton sk-line" style="width:70%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:65%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:72%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:68%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:60%"></div><div class="skeleton sk-line"></div></div>
       </div>
     </div>
 
@@ -516,22 +211,28 @@
 
     <!-- TOKEN ACTIVITY -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-head">
         <span class="card-title">Token Activity</span>
       </div>
-      <div class="card-body" id="token-activity">
-        <div class="empty">Loading...</div>
+      <div id="token-activity">
+        <div class="sk-item"><div class="skeleton sk-line" style="width:30%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:50%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:40%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:45%"></div><div class="skeleton sk-line"></div></div>
+        <div class="sk-item"><div class="skeleton sk-line" style="width:35%"></div><div class="skeleton sk-line"></div></div>
       </div>
     </div>
 
-    <!-- ECOSYSTEM -->
+    <!-- ARC ECOSYSTEM -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-head">
         <span class="card-title">Arc Ecosystem</span>
       </div>
       <div class="eco-tabs" id="eco-tabs"></div>
-      <div class="card-body" id="eco-content">
-        <div class="empty">Loading...</div>
+      <div class="eco-scroll">
+        <div class="eco-grid" id="eco-grid">
+          <div class="eco-empty">Loading...</div>
+        </div>
       </div>
     </div>
 
@@ -541,199 +242,157 @@
 
 <footer>
   <span>Arc Intelligence — Arc Testnet Monitor</span>
-  <span class="disclaimer">
-    Ecosystem data sourced from arc.io/ecosystem. This information is for reference only — always verify before transacting.
-  </span>
+  <span class="footer-disc">Ecosystem data sourced from arc.io/ecosystem. This information is for reference only — always verify before transacting.</span>
 </footer>
 
 <script>
-  // ── UTILS ──
-  function fmt(n) {
-    const num = Number(n);
-    if (num >= 1e9) return (num/1e9).toFixed(2) + 'B';
-    if (num >= 1e6) return (num/1e6).toFixed(2) + 'M';
-    if (num >= 1e3) return (num/1e3).toFixed(1) + 'K';
-    return num.toFixed(2);
-  }
+// ── UTILS ──
+function fmt(n) {
+  const v = Number(n);
+  if (!isFinite(v)) return '—';
+  if (v >= 1e12) return (v/1e12).toFixed(2) + 'T';
+  if (v >= 1e9)  return (v/1e9).toFixed(2)  + 'B';
+  if (v >= 1e6)  return (v/1e6).toFixed(2)  + 'M';
+  if (v >= 1e3)  return (v/1e3).toFixed(1)  + 'K';
+  return v.toFixed(2);
+}
 
-  function shortAddr(addr) {
-    if (!addr) return '—';
-    return addr.slice(0,6) + '...' + addr.slice(-4);
-  }
+function shortAddr(a) {
+  if (!a) return '—';
+  return a.slice(0,6) + '...' + a.slice(-4);
+}
 
-  function timeAgo(ts) {
-    const diff = Math.floor((Date.now() - new Date(ts + 'Z')) / 1000);
-    if (diff < 60) return diff + 's ago';
-    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
-    return Math.floor(diff/86400) + 'd ago';
-  }
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - new Date(ts + 'Z')) / 1000);
+  if (diff < 60)    return diff + 's ago';
+  if (diff < 3600)  return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
 
-  // ── STATS ──
-  async function loadStats() {
-    const r = await fetch('/api/stats');
-    const d = await r.json();
-    document.getElementById('s-total').textContent = d.total_whales?.toLocaleString() || '0';
-    document.getElementById('s-24h').textContent = d.whales_24h?.toLocaleString() || '0';
-    document.getElementById('s-vol').textContent = fmt(d.volume_24h || 0);
-    document.getElementById('s-wallets').textContent = d.total_wallets?.toLocaleString() || '0';
-    document.getElementById('s-tokens').textContent = d.total_tokens?.toLocaleString() || '0';
-  }
+// ── STATS ──
+async function loadStats() {
+  try {
+    const d = await fetch('/api/stats').then(r => r.json());
+    document.getElementById('s-total').textContent   = (d.total_whales || 0).toLocaleString();
+    document.getElementById('s-24h').textContent     = (d.whales_24h   || 0).toLocaleString();
+    document.getElementById('s-vol').textContent     = fmt(d.volume_24h || 0);
+    document.getElementById('s-wallets').textContent = (d.total_wallets || 0).toLocaleString();
+    document.getElementById('s-tokens').textContent  = (d.total_tokens  || 0).toLocaleString();
+  } catch(e) { console.log('stats error', e); }
+}
 
-  // ── WHALE FEED ──
-  async function loadFeed() {
-    const r = await fetch('/api/whales?limit=15');
-    const rows = await r.json();
+// ── WHALE FEED ──
+async function loadFeed() {
+  try {
+    const rows = await fetch('/api/whales?limit=15').then(r => r.json());
     const el = document.getElementById('whale-feed');
-
-    if (!rows.length) {
-      el.innerHTML = '<div class="empty">No whale transactions yet.</div>';
-      return;
-    }
-
-    el.innerHTML = rows.map(w => `
-      <div class="whale-item">
+    if (!rows.length) { el.innerHTML = '<div class="empty">No whale transactions yet.</div>'; return; }
+    el.innerHTML = rows.map(w => {
+      const large = Number(w.amount) >= 250000;
+      return `<div class="w-item">
         <div>
-          <div class="whale-token">
-            ${w.token}
-            <span class="tier-badge tier-${w.amount > 250000 ? 'LARGE' : 'STANDARD'}">
-              ${w.amount > 250000 ? 'LARGE' : 'STD'}
-            </span>
-          </div>
-          <div class="whale-addr">${shortAddr(w.wallet)}</div>
+          <div class="w-token">${w.token}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
+          <div class="w-addr">${shortAddr(w.wallet)}</div>
         </div>
         <div>
-          <div class="whale-amount">${fmt(w.amount)}</div>
-          <div class="whale-time">${timeAgo(w.timestamp)}</div>
+          <div class="w-amt">${fmt(w.amount)}</div>
+          <div class="w-time">${timeAgo(w.timestamp)}</div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
+    document.getElementById('feed-time').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch(e) { console.log('feed error', e); }
+}
 
-    document.getElementById('feed-updated').textContent =
-      'Updated ' + new Date().toLocaleTimeString();
-  }
-
-  // ── TOP WALLETS ──
-  async function loadTopWallets() {
-    const r = await fetch('/api/top?limit=10');
-    const rows = await r.json();
+// ── TOP WALLETS ──
+async function loadWallets() {
+  try {
+    const rows = await fetch('/api/top?limit=10').then(r => r.json());
     const el = document.getElementById('top-wallets');
-
-    if (!rows.length) {
-      el.innerHTML = '<div class="empty">No wallet data yet.</div>';
-      return;
-    }
-
-    const maxVol = rows[0]?.total_volume || 1;
-
-    el.innerHTML = rows.map((w, i) => `
-      <div class="wallet-item">
-        <div class="wallet-rank">${i+1}</div>
-        <div class="wallet-info">
-          <div class="wallet-addr">${shortAddr(w.wallet)}</div>
-          <div class="wallet-meta">${w.transfer_count} txs · last ${timeAgo(w.last_seen)}</div>
+    if (!rows.length) { el.innerHTML = '<div class="empty">No wallet data yet.</div>'; return; }
+    const maxVol = Number(rows[0]?.total_volume) || 1;
+    el.innerHTML = rows.map((w, i) => {
+      const pct = Math.min(100, (Number(w.total_volume) / maxVol) * 100);
+      return `<div class="wallet-row">
+        <div class="w-rank">${i+1}</div>
+        <div class="w-info">
+          <div class="w-addr2">${shortAddr(w.wallet)}</div>
+          <div class="w-meta">${w.transfer_count} txs · last ${timeAgo(w.last_seen)}</div>
         </div>
-        <div class="score-bar">
-          <div class="score-fill" style="width:${(w.whale_score||0)*100}%"></div>
-        </div>
-        <div class="wallet-vol">${fmt(w.total_volume)}</div>
-      </div>
-    `).join('');
-  }
+        <div class="score-bar"><div class="score-fill" style="width:${(w.whale_score||0)*100}%"></div></div>
+        <div class="w-vol">${fmt(w.total_volume)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.log('wallets error', e); }
+}
 
-  // ── TOKEN ACTIVITY ──
-  async function loadTokens() {
-    const r = await fetch('/api/tokens?limit=10');
-    const rows = await r.json();
+// ── TOKEN ACTIVITY ──
+async function loadTokens() {
+  try {
+    const rows = await fetch('/api/tokens?limit=10').then(r => r.json());
     const el = document.getElementById('token-activity');
-
-    if (!rows.length) {
-      el.innerHTML = '<div class="empty">No token data yet.</div>';
-      return;
-    }
-
-    const maxCount = rows[0]?.transfer_count || 1;
-
+    if (!rows.length) { el.innerHTML = '<div class="empty">No token data yet.</div>'; return; }
+    const maxC = rows[0]?.transfer_count || 1;
     el.innerHTML = `
-      <div style="padding:10px 20px 6px;display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;">
-        <span style="font-size:10px;color:var(--muted);width:80px">TOKEN</span>
-        <span style="font-size:10px;color:var(--muted)">ACTIVITY</span>
-        <span style="font-size:10px;color:var(--muted);width:60px;text-align:right">TXS</span>
-        <span style="font-size:10px;color:var(--muted);width:50px;text-align:right">WALLETS</span>
-      </div>
-      ${rows.map(t => `
-      <div class="token-item">
-        <div class="token-symbol">${t.symbol || t.token?.slice(0,8)}</div>
-        <div class="token-bar-wrap">
-          <div class="token-bar-fill" style="width:${(t.transfer_count/maxCount)*100}%"></div>
-        </div>
-        <div class="token-count">${t.transfer_count}</div>
-        <div class="token-wallets">${t.unique_wallets}</div>
-      </div>
-    `).join('')}`;
-  }
+      <div class="t-header">
+        <span class="t-hl">TOKEN</span>
+        <span class="t-hl">ACTIVITY</span>
+        <span class="t-hl" style="text-align:right">TXS</span>
+        <span class="t-hl" style="text-align:right">WALLETS</span>
+      </div>` +
+      rows.map(t => `<div class="t-row">
+        <div class="t-sym">${t.symbol || shortAddr(t.token)}</div>
+        <div class="t-bar-wrap"><div class="t-bar-fill" style="width:${(t.transfer_count/maxC)*100}%"></div></div>
+        <div class="t-num">${(t.transfer_count||0).toLocaleString()}</div>
+        <div class="t-num">${(t.unique_wallets||0).toLocaleString()}</div>
+      </div>`).join('');
+  } catch(e) { console.log('tokens error', e); }
+}
 
-  // ── ECOSYSTEM ──
-  let ecoData = null;
-  const ecoCategories = {
-    dex: 'DEX',
-    bridges: 'Bridges',
-    borrow_lend: 'Borrow / Lend',
-    wallets: 'Wallets',
-    rpc_providers: 'RPC',
-    explorers: 'Explorers',
-    faucets: 'Faucets',
-    analytics: 'Analytics',
-    oracles: 'Oracles',
-    stablecoin_issuers: 'Stablecoins'
-  };
+// ── ECOSYSTEM ──
+const ECO_LABELS = {
+  dex:'DEX', bridges:'Bridges', borrow_lend:'Borrow / Lend',
+  wallets:'Wallets', rpc_providers:'RPC', explorers:'Explorers',
+  faucets:'Faucets', analytics:'Analytics', oracles:'Oracles',
+  stablecoin_issuers:'Stablecoins'
+};
+let ecoData = null;
 
-  function renderEcoTab(key) {
-    document.querySelectorAll('.eco-tab').forEach(t => t.classList.remove('active'));
-    document.querySelector(`.eco-tab[data-key="${key}"]`)?.classList.add('active');
+function renderEcoTab(key) {
+  document.querySelectorAll('.eco-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.eco-tab[data-key="${key}"]`)?.classList.add('active');
+  const items = (ecoData[key] || []).filter(i => i.status === 'active');
+  const grid = document.getElementById('eco-grid');
+  if (!items.length) { grid.innerHTML = '<div class="eco-empty">No entries.</div>'; return; }
+  grid.innerHTML = items.map(i =>
+    `<a class="eco-card" href="${i.url}" target="_blank" rel="noopener">
+      <div class="eco-name">${i.name}</div>
+      <div class="eco-desc">${i.description}</div>
+    </a>`
+  ).join('');
+}
 
-    const items = (ecoData[key] || []).filter(i => i.status === 'active');
-    const el = document.getElementById('eco-content');
-
-    if (!items.length) {
-      el.innerHTML = '<div class="empty">No entries.</div>';
-      return;
-    }
-
-    el.innerHTML = `<div class="eco-grid">${
-      items.map(i => `
-        <a class="eco-card" href="${i.url}" target="_blank" rel="noopener">
-          <div class="eco-name">${i.name}</div>
-          <div class="eco-desc">${i.description}</div>
-        </a>
-      `).join('')
-    }</div>`;
-  }
-
-  async function loadEcosystem() {
-    const r = await fetch('/api/ecosystem');
-    ecoData = await r.json();
-
+async function loadEcosystem() {
+  try {
+    ecoData = await fetch('/api/ecosystem').then(r => r.json());
+    const keys = Object.keys(ECO_LABELS).filter(k => ecoData[k]?.length);
     const tabsEl = document.getElementById('eco-tabs');
-    const keys = Object.keys(ecoCategories).filter(k => ecoData[k]?.length);
-
-    tabsEl.innerHTML = keys.map(k => `
-      <div class="eco-tab" data-key="${k}" onclick="renderEcoTab('${k}')">
-        ${ecoCategories[k]}
-      </div>
-    `).join('');
-
+    tabsEl.innerHTML = keys.map(k =>
+      `<div class="eco-tab" data-key="${k}" onclick="renderEcoTab('${k}')">${ECO_LABELS[k]}</div>`
+    ).join('');
     if (keys.length) renderEcoTab(keys[0]);
-  }
+  } catch(e) { console.log('ecosystem error', e); }
+}
 
-  // ── INIT + AUTO REFRESH ──
-  async function init() {
-    await Promise.all([loadStats(), loadFeed(), loadTopWallets(), loadTokens(), loadEcosystem()]);
-  }
+// ── INIT ──
+async function init() {
+  await Promise.all([loadStats(), loadFeed(), loadWallets(), loadTokens(), loadEcosystem()]);
+}
 
-  init();
-  setInterval(() => { loadStats(); loadFeed(); }, 30000); // 30 sn
-  setInterval(() => { loadTopWallets(); loadTokens(); }, 60000); // 60 sn
+init();
+setInterval(() => { loadStats(); loadFeed(); }, 30000);
+setInterval(() => { loadWallets(); loadTokens(); }, 60000);
 </script>
 </body>
 </html>

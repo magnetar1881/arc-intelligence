@@ -93,101 +93,100 @@ async function getTokenInfo(tokenAddress) {
 async function startScanner() {
   console.log("🚀 Whale Engine V6 (size-based heuristic filter) started");
 
-  provider.on("block", async (blockNumber) => {
-    try {
-      const logs = await provider.getLogs({
-        fromBlock: blockNumber,
-        toBlock: blockNumber,
-        topics: [TRANSFER_TOPIC]
-      });
+  let lastBlockTime = Date.now();
+  let currentProvider = provider;
 
-      for (const log of logs) {
-        try {
-          if (!log?.data || log.data === "0x") continue;
+  // ========================
+  // HEARTBEAT — sessiz donmayı önler
+  // Her 30 saniyede son blok zamanını kontrol eder.
+  // 2 dakikadır yeni blok gelmediyse provider'ı yeniden başlatır.
+  // ========================
+  setInterval(async () => {
+    const elapsed = Date.now() - lastBlockTime;
+    if (elapsed > 2 * 60 * 1000) {
+      console.log("⚠️ 2 dakikadır blok gelmedi — provider yeniden başlatılıyor...");
+      try {
+        currentProvider.removeAllListeners();
+        currentProvider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+        attachBlockListener(currentProvider);
+        lastBlockTime = Date.now();
+        console.log("✅ Provider yeniden bağlandı.");
+      } catch (e) {
+        console.log("❌ Reconnect hatası:", e.message);
+      }
+    }
+  }, 30 * 1000);
 
-          // Whitelist varsa istenmeyen tokenları daha işin başında ele
-          if (
-            TOKEN_WHITELIST.length &&
-            !TOKEN_WHITELIST.includes(log.address.toLowerCase())
-          ) {
-            continue;
-          }
+  attachBlockListener(currentProvider);
 
-          const txHash = log.transactionHash;
+  function attachBlockListener(p) {
+    p.on("block", async (blockNumber) => {
+      lastBlockTime = Date.now();
 
-          // ========================
-          // DUPLICATE PROTECTION
-          // ========================
-          if (seenTx.has(txHash)) continue;
-          seenTx.set(txHash, Date.now());
+      try {
+        const logs = await p.getLogs({
+          fromBlock: blockNumber,
+          toBlock: blockNumber,
+          topics: [TRANSFER_TOPIC]
+        });
 
-          // ========================
-          // DECODE ADDRESSES
-          // ========================
-          const from = "0x" + log.topics[1].slice(26);
-          const to   = "0x" + log.topics[2].slice(26);
+        for (const log of logs) {
+          try {
+            if (!log?.data || log.data === "0x") continue;
 
-          // ========================
-          // COOLDOWN
-          // ========================
-          const lastSeen = walletCooldown.get(from);
-          const now = Date.now();
-          if (lastSeen && now - lastSeen < COOLDOWN_MS) continue;
-          walletCooldown.set(from, now);
+            if (
+              TOKEN_WHITELIST.length &&
+              !TOKEN_WHITELIST.includes(log.address.toLowerCase())
+            ) continue;
 
-          // ========================
-          // VALUE DECODE (ham, atomic birim — sadece formatUnits için kullanılır)
-          // ========================
-          const value = ethers.AbiCoder.defaultAbiCoder().decode(
-            ["uint256"],
-            log.data
-          )[0];
+            const txHash = log.transactionHash;
 
-          const isMint = from.toLowerCase() === ZERO_ADDRESS;
-          const isBurn = to.toLowerCase()   === ZERO_ADDRESS;
+            if (seenTx.has(txHash)) continue;
+            seenTx.set(txHash, Date.now());
 
-          // ========================
-          // TOKEN BİLGİSİ (cache'li)
-          // ========================
-          const token = log.address;
-          const { symbol, decimals } = await getTokenInfo(token);
+            const from = "0x" + log.topics[1].slice(26);
+            const to   = "0x" + log.topics[2].slice(26);
 
-          // Decimal'e göre düzeltilmiş, insan-okunabilir miktar.
-          // Bundan sonraki TÜM eşik karşılaştırmaları bu değeri kullanır.
-          // Ham `value` bir daha eşik kontrolünde KULLANILMAZ.
-          const amount = Number(ethers.formatUnits(value, decimals));
+            const lastSeen = walletCooldown.get(from);
+            const now = Date.now();
+            if (lastSeen && now - lastSeen < COOLDOWN_MS) continue;
+            walletCooldown.set(from, now);
 
-          // ========================
-          // WALLET / TOKEN TAKİBİ (eşik altında olsa da kaydedilir)
-          // ========================
-          await updateWallet(from, amount);
-          await updateWalletScore(from);
-          await updateTokenStats(
-            token,
-            symbol,
-            isMint ? "MINT" : isBurn ? "BURN" : "TRANSFER"
-          );
+            const value = ethers.AbiCoder.defaultAbiCoder().decode(
+              ["uint256"],
+              log.data
+            )[0];
 
-          // ========================
-          // SPAM FİLTRESİ
-          // ========================
-          if (isMint || isBurn) continue;
-          if (amount < WHALE_THRESHOLD) continue; // decimal-aware eşik
+            const isMint = from.toLowerCase() === ZERO_ADDRESS;
+            const isBurn = to.toLowerCase()   === ZERO_ADDRESS;
 
-          // ========================
-          // KAYDET + ALARM
-          // ========================
-          const sizeTier = amount >= LARGE_TRANSFER_THRESHOLD ? "LARGE" : "STANDARD";
+            const token = log.address;
+            const { symbol, decimals } = await getTokenInfo(token);
 
-          await insertWhale({
-            txHash,
-            wallet: from,
-            token: symbol,
-            amount,
-            type: "WHALE"
-          });
+            const amount = Number(ethers.formatUnits(value, decimals));
 
-          const message = `
+            await updateWallet(from, amount);
+            await updateWalletScore(from);
+            await updateTokenStats(
+              token,
+              symbol,
+              isMint ? "MINT" : isBurn ? "BURN" : "TRANSFER"
+            );
+
+            if (isMint || isBurn) continue;
+            if (amount < WHALE_THRESHOLD) continue;
+
+            const sizeTier = amount >= LARGE_TRANSFER_THRESHOLD ? "LARGE" : "STANDARD";
+
+            await insertWhale({
+              txHash,
+              wallet: from,
+              token: symbol,
+              amount,
+              type: "WHALE"
+            });
+
+            const message = `
 🐋 <b>WHALE ALERT</b> (${sizeTier})
 
 Token: ${symbol}
@@ -201,23 +200,24 @@ ${to}
 
 Tx:
 ${txHash}
-          `;
+            `;
 
-          console.log("🐋 WHALE:", symbol, amount);
-          await sendAlert(message, token);
+            console.log("🐋 WHALE:", symbol, amount);
+            await sendAlert(message, token);
 
-        } catch (e) {
-          console.log("log skip:", e.message);
+          } catch (e) {
+            console.log("log skip:", e.message);
+          }
         }
+      } catch (e) {
+        console.log("block error:", e.message);
       }
-    } catch (e) {
-      console.log("block error:", e.message);
-    }
-  });
+    });
 
-  provider.on("error", (err) => {
-    console.log("⚠️ Provider error:", err.message);
-  });
+    p.on("error", (err) => {
+      console.log("⚠️ Provider error:", err.message);
+    });
+  }
 }
 
 module.exports = { startScanner };
