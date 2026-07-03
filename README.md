@@ -10,7 +10,7 @@ Arc Intelligence monitors wallet activity, tracks large transfers, and indexes t
 
 Arc is growing. But on-chain data is scattered, hard to read, and inaccessible to most users.
 
-Arc Intelligence is being built to change that — starting with a whale tracker and expanding into a full ecosystem intelligence layer: who holds what, who is moving funds, which protocols are active, and where to swap or bridge on Arc.
+Arc Intelligence is being built to change that starting with a whale tracker and expanding into a full ecosystem intelligence layer: who holds what, who is moving funds, which protocols are active, and where to swap or bridge on Arc.
 
 The goal is not just to collect data, but to make it understandable.
 
@@ -58,8 +58,8 @@ The goal is not just to collect data, but to make it understandable.
 ### Phase 2 — Web Platform (next)
 - [ ] Ecosystem guide — curated list of Arc DEXs, bridges, and faucets (sourced from Arc official channels)
 - [ ] Web dashboard — live charts: top holders, most active wallets, token volume
-- [ ] Natural language interface — ask questions about Arc network activity and get answers backed by live on-chain data
-- [ ] On-chain data integration — most-used contracts from Arc block explorer
+- [ ] Natural language interface ask questions about Arc network activity and get answers backed by live on-chain data
+- [ ] On-chain data integration most-used contracts from Arc block explorer
 
 ### Phase 3 — Expansion
 - [ ] Multi-chain support
@@ -168,7 +168,7 @@ TOKEN_WHITELIST=
 | `BOT_TOKEN` | yes | Telegram bot token from @BotFather |
 | `CHAT_ID` | no | Fixed chat ID that always receives alerts (admin/owner). Most users subscribe via `/subscribe` instead |
 | `WHALE_THRESHOLD` | no (default 100000) | Minimum token amount (decimal-adjusted) to trigger a whale alert |
-| `LARGE_TRANSFER_THRESHOLD` | no (default 250000) | Amount above which an alert is labeled LARGE — size-based label only, not a liquidity/TVL analysis |
+| `LARGE_TRANSFER_THRESHOLD` | no (default 250000) | Amount above which an alert is labeled LARGE size-based label only, not a liquidity/TVL analysis |
 | `COOLDOWN_MS` | no (default 5000) | Minimum time (ms) between processed transfers from the same wallet |
 | `MEMORY_TTL_MS` | no (default 600000) | How often in-memory dedup and cooldown state is cleaned up |
 | `TOKEN_WHITELIST` | no | Comma-separated token contract addresses to monitor; leave empty to watch all |
