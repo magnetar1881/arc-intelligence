@@ -69,6 +69,50 @@ The goal is not just to collect data, but to make it understandable.
 
 ---
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Arc Testnet RPC                     │
+└─────────────────────┬───────────────────────────────────┘
+                      │  block events (ERC20 Transfer)
+                      ▼
+┌─────────────────────────────────────────────────────────┐
+│                   Block Scanner                         │
+│                                                         │
+│  • Decodes Transfer events                              │
+│  • Decimal-aware threshold filter                       │
+│  • Token info cache (symbol / decimals)                 │
+│  • In-memory dedup + cooldown (TTL-based)               │
+│  • Heartbeat reconnect (2 min silence → restart)        │
+└───────────┬─────────────────────────┬───────────────────┘
+            │                         │
+            ▼                         ▼
+┌───────────────────────┐   ┌─────────────────────────────┐
+│       SQLite DB       │   │       Telegram Bot           │
+│                       │   │                              │
+│  • whales             │   │  /subscribe <token>          │
+│  • wallets            │   │  /unsubscribe                │
+│  • tokens             │   │  /mysubs                     │
+│  • subscriptions      │   │  /top                        │
+│  (WAL mode)           │   │  /wallet <address>           │
+└───────────┬───────────┘   │  /digest [hours]             │
+            │               │  /help                       │
+            │               └─────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────┐
+│                   Web Dashboard                         │
+│                   askarc.xyz                            │
+│                                                         │
+│  • Live whale feed                                      │
+│  • Top wallets                                          │
+│  • Token activity                                       │
+│  • Arc ecosystem directory                              │
+│  • Ask Arc (AI interface — coming soon)                 │
+└─────────────────────────────────────────────────────────┘
+```
+
 ## Tech Stack
 
 - Node.js
