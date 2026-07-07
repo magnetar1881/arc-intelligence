@@ -2,7 +2,7 @@ const express = require("express");
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
-
+const circleKit = require("../appkit/circleKit");
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
 
@@ -147,6 +147,56 @@ app.get("/api/ecosystem", (req, res) => {
 // Ana sayfa
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/index.html"));
+});
+
+// ========================
+// BRIDGE ESTIMATE
+// ========================
+app.get("/api/bridge/estimate", async (req, res) => {
+  const { from, to, amount, token } = req.query;
+
+  if (!from || !to || !amount) {
+    return res.status(400).json({ error: "from, to, amount zorunlu" });
+  }
+
+  const result = await circleKit.estimateBridgeTransfer({
+    fromChain: from,
+    toChain: to,
+    amount,
+    token: token || "USDC"
+  });
+
+  res.json(result);
+});
+
+// ========================
+// SWAP ESTIMATE (adapter gerektirmez — sadece fiyat tahmini)
+// ========================
+app.get("/api/swap/estimate", async (req, res) => {
+  const { chain, tokenIn, tokenOut, amountIn } = req.query;
+
+  if (!chain || !tokenIn || !tokenOut || !amountIn) {
+    return res.status(400).json({ error: "chain, tokenIn, tokenOut, amountIn zorunlu" });
+  }
+
+  const result = await circleKit.estimateSwapTokens({
+    adapter: null,
+    chain,
+    tokenIn,
+    tokenOut,
+    amountIn
+  });
+
+  res.json(result);
+});
+
+// ========================
+// SUPPORTED CHAINS
+// ========================
+app.get("/api/supported-chains", async (req, res) => {
+  const { capability } = req.query;
+  const result = await circleKit.getSupportedChains(capability || "bridge");
+  res.json(result);
 });
 
 app.listen(PORT, () => {
