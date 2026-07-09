@@ -3,6 +3,7 @@ const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
 const fs = require("fs");
 const circleKit = require("../appkit/circleKit");
+const { askArc } = require("../appkit/askArc");
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
 
@@ -14,6 +15,7 @@ const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
 
 // Static dosyalar
 app.use(express.static(path.join(__dirname, "../../public")));
+app.use(express.json());
 
 // ========================
 // API: son whale işlemleri
@@ -196,6 +198,16 @@ app.get("/api/swap/estimate", async (req, res) => {
 app.get("/api/supported-chains", async (req, res) => {
   const { capability } = req.query;
   const result = await circleKit.getSupportedChains(capability || "bridge");
+  res.json(result);
+});
+
+// ========================
+// ASK ARC
+// ========================
+app.post("/api/ask", async (req, res) => {
+  const { question } = req.body;
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  const result = await askArc(question, ip);
   res.json(result);
 });
 
