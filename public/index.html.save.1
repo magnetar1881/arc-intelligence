@@ -458,13 +458,6 @@ async function sendQuestion() {
   const answer = document.getElementById('ask-answer');
   const question = input.value.trim();
 
-// Eski cevabı temizle
-  document.getElementById('ask-result').style.display = 'none';
-  ['action-btn', 'wallet-track-btn'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.remove();
-  });
-
   if (!question) return;
 
   answer.textContent = 'Thinking...';
@@ -486,12 +479,10 @@ async function sendQuestion() {
           renderChart(chartData);
         } catch {
           answer.textContent = text;
-	  addCloseButton(result);
         }
       } else {
         answer.textContent = text;
         showActionButton(text);
-	addCloseButton(result);
       }
     } else {
       answer.textContent = '⚠️ ' + d.error;
@@ -508,7 +499,6 @@ function renderChart(data) {
   const answer = document.getElementById('ask-answer');
 
   result.style.display = 'block';
-  addCloseButton(result);
   answer.innerHTML = `
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px">${data.title}</div>
     <canvas id="ask-chart" height="220"></canvas>
@@ -605,97 +595,39 @@ function renderChart(data) {
   }
 }
 
-function addCloseButton(result) {
-  const existing = document.getElementById('ask-close-btn');
-  if (existing) existing.remove();
-
-  const closeBtn = document.createElement('button');
-  closeBtn.id = 'ask-close-btn';
-  closeBtn.innerHTML = '✕';
-  closeBtn.style.cssText = `
-    float:right;
-    background:transparent;
-    border:none;
-    color:#64748b;
-    font-size:14px;
-    cursor:pointer;
-    padding:0 0 8px 8px;
-  `;
-  closeBtn.onclick = function(e) {
-    e.stopPropagation();
-    result.style.display = 'none';
-    ['action-btn', 'wallet-track-btn', 'ask-close-btn'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.remove();
-    });
-  };
-
-  result.insertBefore(closeBtn, result.firstChild);
-}
-
 function showActionButton(text) {
   const result = document.getElementById('ask-result');
-  
-  // Eski butonları temizle
-  ['action-btn', 'wallet-track-btn'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.remove();
-  });
+  const existing = document.getElementById('action-btn');
+  if (existing) existing.remove();
 
   const t = text.toLowerCase();
-  const isBridgeSwap = t.includes('bridge') || t.includes('swap') || 
-                       t.includes('köprü') || t.includes('layerzero') || 
-                       t.includes('axelar') || t.includes('across') ||
-                       t.includes('curve') || t.includes('hibachi') || 
-                       t.includes('fluid') || t.includes('faucet');
 
-  // Bridge/swap butonu
-  if (isBridgeSwap) {
-    let label = null;
-    let url = null;
+  let label = null;
+  let url = null;
 
-    if (t.includes('bridge') || t.includes('köprü') || t.includes('layerzero') || 
-        t.includes('axelar') || t.includes('across')) {
-      label = '🌉 Bridge to Arc';
-      url = 'https://across.to';
-    } else if (t.includes('swap') || t.includes('curve') || 
-               t.includes('hibachi') || t.includes('fluid')) {
-      label = '🔄 Swap on Arc';
-      url = 'https://hibachi.xyz/trade';
-    } else if (t.includes('faucet')) {
-      label = '🚰 Get Testnet USDC';
-      url = 'https://faucet.circle.com';
-    }
-
-    if (label) {
-      const btn = document.createElement('a');
-      btn.id = 'action-btn';
-      btn.href = url;
-      btn.target = '_blank';
-      btn.rel = 'noopener';
-      btn.textContent = label;
-      btn.style.cssText = `
-        display:inline-block;
-        margin-top:12px;
-        background:var(--blue2);
-        color:white;
-        padding:8px 18px;
-        border-radius:6px;
-        font-size:12px;
-        font-family:var(--sans);
-        text-decoration:none;
-        font-weight:500;
-      `;
-      result.appendChild(btn);
-    }
-    return; // Bridge/swap sorusunda TG butonu gösterme
+  if (t.includes('bridge') || t.includes('layerzero') || t.includes('axelar') || t.includes('across')) {
+    label = '🌉 Bridge to Arc';
+    url = 'https://across.to';
+  } else if (t.includes('swap') || t.includes('curve') || t.includes('hibachi') || t.includes('fluid')) {
+    label = '🔄 Swap on Arc';
+    url = 'https://hibachi.xyz/trade';
+  } else if (t.includes('faucet')) {
+    label = '🚰 Get Testnet USDC';
+    url = 'https://faucet.circle.com';
   }
 
-  // Cüzdan takip butonu (sadece bridge/swap değilse)
-  const walletMatch = text.match(/(?<![:/\w])0x[a-fA-F0-9]{40}(?!\w)/);
+  // Bridge/swap sorusuysa wallet takip butonu gösterme
+  if (t.includes('bridge') || t.includes('swap') || t.includes('köprü')) return; 
+
+  // Cüzdan adresi algılama
+  
   if (walletMatch) {
     const wallet = walletMatch[0];
-    const telegramUrl = `https://t.me/MagNetar1881_bot?start=subscribe_${wallet}`;
+    const existing2 = document.getElementById('wallet-track-btn');
+    if (existing2) existing2.remove();
+
+    const botUsername = 'MagNetar1881_bot'; // Telegram bot kullanıcı adını buraya yaz
+    const telegramUrl = `https://t.me/${botUsername}?start=subscribe_${wallet}`;
 
     const trackBtn = document.createElement('a');
     trackBtn.id = 'wallet-track-btn';
@@ -705,7 +637,8 @@ function showActionButton(text) {
     trackBtn.textContent = '📬 Track on Telegram';
     trackBtn.style.cssText = `
       display:inline-block;
-      margin-top:12px;
+      margin-top:8px;
+      margin-left:8px;
       background:transparent;
       color:var(--blue3);
       padding:8px 18px;
@@ -715,9 +648,40 @@ function showActionButton(text) {
       text-decoration:none;
       font-weight:500;
       border:1px solid var(--blue2);
+      transition:background .15s;
     `;
+    trackBtn.onmouseover = () => trackBtn.style.background = 'var(--border3)';
+    trackBtn.onmouseout = () => trackBtn.style.background = 'transparent';
+
     result.appendChild(trackBtn);
+    return;
   }
+
+  if (!label) return;
+
+  const btn = document.createElement('a');
+  btn.id = 'action-btn';
+  btn.href = url;
+  btn.target = '_blank';
+  btn.rel = 'noopener';
+  btn.textContent = label;
+  btn.style.cssText = `
+    display:inline-block;
+    margin-top:12px;
+    background:var(--blue2);
+    color:white;
+    padding:8px 18px;
+    border-radius:6px;
+    font-size:12px;
+    font-family:var(--sans);
+    text-decoration:none;
+    font-weight:500;
+    transition:background .15s;
+  `;
+  btn.onmouseover = () => btn.style.background = '#1d4ed8';
+  btn.onmouseout = () => btn.style.background = 'var(--blue2)';
+
+  result.appendChild(btn);
 }
 
 function askExample(question) {
