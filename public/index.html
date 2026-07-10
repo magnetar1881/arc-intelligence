@@ -132,6 +132,7 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--muted);f
 .sk-item:last-child{border-bottom:none}
 
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -153,6 +154,53 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--muted);f
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
       <span style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.8px">Ask Arc</span>
     </div>
+
+<div style="font-size:12px;color:var(--muted);text-align:center;line-height:1.7;max-width:560px">
+      Ask anything about Arc network activity, ecosystem tools, or on-chain data.
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:560px">
+      <button onclick="askExample('Who has the highest volume on Arc?')"
+        style="font-size:11px;background:var(--bg3);border:1px solid var(--border2);
+               color:var(--text3);padding:4px 10px;border-radius:4px;cursor:pointer;
+               font-family:var(--sans);transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--blue2)'"
+        onmouseout="this.style.borderColor='var(--border2)'">
+        Who has the highest volume?
+      </button>
+      <button onclick="askExample('Show me the top 5 whale wallets')"
+        style="font-size:11px;background:var(--bg3);border:1px solid var(--border2);
+               color:var(--text3);padding:4px 10px;border-radius:4px;cursor:pointer;
+               font-family:var(--sans);transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--blue2)'"
+        onmouseout="this.style.borderColor='var(--border2)'">
+        Top 5 whale wallets
+      </button>
+      <button onclick="askExample('Where can I swap tokens on Arc?')"
+        style="font-size:11px;background:var(--bg3);border:1px solid var(--border2);
+               color:var(--text3);padding:4px 10px;border-radius:4px;cursor:pointer;
+               font-family:var(--sans);transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--blue2)'"
+        onmouseout="this.style.borderColor='var(--border2)'">
+        Where can I swap?
+      </button>
+      <button onclick="askExample('How do I bridge funds to Arc?')"
+        style="font-size:11px;background:var(--bg3);border:1px solid var(--border2);
+               color:var(--text3);padding:4px 10px;border-radius:4px;cursor:pointer;
+               font-family:var(--sans);transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--blue2)'"
+        onmouseout="this.style.borderColor='var(--border2)'">
+        How do I bridge to Arc?
+      </button>
+      <button onclick="askExample('What tokens are most active on Arc?')"
+        style="font-size:11px;background:var(--bg3);border:1px solid var(--border2);
+               color:var(--text3);padding:4px 10px;border-radius:4px;cursor:pointer;
+               font-family:var(--sans);transition:border-color .15s"
+        onmouseover="this.style.borderColor='var(--blue2)'"
+        onmouseout="this.style.borderColor='var(--border2)'">
+        Most active tokens
+      </button>
+    </div>
+
    <div style="width:100%;max-width:560px;display:flex;gap:8px">
       <input id="ask-input" placeholder="e.g. Which wallets moved the most today?"
         style="flex:1;background:var(--bg4);border:1px solid var(--border2);border-radius:6px;
@@ -422,14 +470,97 @@ async function sendQuestion() {
       body: JSON.stringify({ question })
     });
     const d = await r.json();
+
     if (d.success) {
-      answer.textContent = d.answer;
+      const text = d.answer.trim();
+      if (text.startsWith('{') && text.includes('"type":"chart"')) {
+        try {
+          const chartData = JSON.parse(text);
+          renderChart(chartData);
+        } catch {
+          answer.textContent = text;
+        }
+      } else {
+        answer.textContent = text;
+      }
     } else {
       answer.textContent = '⚠️ ' + d.error;
     }
   } catch(e) {
     answer.textContent = '⚠️ Bağlantı hatası.';
   }
+}
+
+let activeChart = null;
+
+function renderChart(data) {
+  const result = document.getElementById('ask-result');
+  const answer = document.getElementById('ask-answer');
+
+  result.style.display = 'block';
+  answer.innerHTML = `
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px">${data.title}</div>
+    <canvas id="ask-chart" height="220"></canvas>
+  `;
+
+  if (activeChart) { activeChart.destroy(); activeChart = null; }
+
+  const ctx = document.getElementById('ask-chart').getContext('2d');
+  activeChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.labels.map(l => l.length > 12 ? l.slice(0,6)+'...'+l.slice(-4) : l),
+      datasets: [{
+        label: data.valueLabel || 'Value',
+        data: data.values,
+        backgroundColor: 'rgba(37,99,235,0.7)',
+        borderColor: '#2563eb',
+        borderWidth: 1,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw;
+              if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+              if (v >= 1e6) return (v/1e6).toFixed(2) + 'M';
+              if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+              return v.toFixed(2);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10 }, maxRotation: 30 },
+          grid: { color: '#112236' }
+        },
+        y: {
+          ticks: {
+            color: '#64748b',
+            font: { size: 10 },
+            callback: v => {
+              if (v >= 1e9) return (v/1e9).toFixed(1) + 'B';
+              if (v >= 1e6) return (v/1e6).toFixed(1) + 'M';
+              if (v >= 1e3) return (v/1e3).toFixed(1) + 'K';
+              return v;
+            }
+          },
+          grid: { color: '#112236' }
+        }
+      }
+    }
+  });
+}
+
+function askExample(question) {
+  document.getElementById('ask-input').value = question;
+  sendQuestion();
 }
 
 </script>

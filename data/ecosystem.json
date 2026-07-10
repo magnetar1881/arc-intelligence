@@ -19,6 +19,14 @@
       "status": "active",
       "source": "arc.io/ecosystem",
       "added": "2026-06-29"
+    },
+    {
+      "name": "Hibachi",
+      "description": "Decentralized exchange on Arc network.",
+      "url": "https://hibachi.xyz/trade",
+      "status": "active",
+      "source": "community",
+      "added": "2026-07-07"
     }
   ],
 

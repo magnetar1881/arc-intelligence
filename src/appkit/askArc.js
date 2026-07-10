@@ -159,11 +159,20 @@ ${bridgeSection}
 ${swapSection}
 
 RULES:
+CRITICAL RULE - CHART FORMAT:
+When the user asks about top wallets, whale wallets, or top tokens, you MUST respond with ONLY this JSON, no other text before or after:
+{"type":"chart","chartType":"bar","title":"Top Wallets by Volume","labels":["wallet1","wallet2","wallet3","wallet4","wallet5"],"values":[1000,900,800,700,600],"valueLabel":"Volume"}
+
+Use the actual wallet addresses and volumes from the TOP 20 WALLETS data above.
+For top tokens use "title":"Top Tokens by Activity" and transfer_count as values.
+DO NOT add any explanation text. ONLY output the raw JSON.
 - If asked about top wallets, list them with volume and tx count from the data above.
 - If asked about bridging, swapping, or ecosystem tools, refer to the ecosystem data and provide the URL.
 - If a bridge or swap estimate is available above, include the fee and speed in your answer.
 - If asked something you have no data for, say so honestly.
 - Keep responses short and clear. Use bullet points when listing multiple items.
+- For top tokens chart use "title":"Top Tokens by Activity" and values as transfer counts.
+- For all other questions, respond normally in text.
 - All on-chain data is from Arc Testnet.`;
 }
 
