@@ -482,6 +482,7 @@ async function sendQuestion() {
         }
       } else {
         answer.textContent = text;
+        showActionButton(text);
       }
     } else {
       answer.textContent = '⚠️ ' + d.error;
@@ -556,6 +557,54 @@ function renderChart(data) {
       }
     }
   });
+}
+
+function showActionButton(text) {
+  const result = document.getElementById('ask-result');
+  const existing = document.getElementById('action-btn');
+  if (existing) existing.remove();
+
+  const t = text.toLowerCase();
+
+  let label = null;
+  let url = null;
+
+  if (t.includes('bridge') || t.includes('layerzero') || t.includes('axelar') || t.includes('across')) {
+    label = '🌉 Bridge to Arc';
+    url = 'https://across.to';
+  } else if (t.includes('swap') || t.includes('curve') || t.includes('hibachi') || t.includes('fluid')) {
+    label = '🔄 Swap on Arc';
+    url = 'https://hibachi.xyz/trade';
+  } else if (t.includes('faucet')) {
+    label = '🚰 Get Testnet USDC';
+    url = 'https://faucet.circle.com';
+  }
+
+  if (!label) return;
+
+  const btn = document.createElement('a');
+  btn.id = 'action-btn';
+  btn.href = url;
+  btn.target = '_blank';
+  btn.rel = 'noopener';
+  btn.textContent = label;
+  btn.style.cssText = `
+    display:inline-block;
+    margin-top:12px;
+    background:var(--blue2);
+    color:white;
+    padding:8px 18px;
+    border-radius:6px;
+    font-size:12px;
+    font-family:var(--sans);
+    text-decoration:none;
+    font-weight:500;
+    transition:background .15s;
+  `;
+  btn.onmouseover = () => btn.style.background = '#1d4ed8';
+  btn.onmouseout = () => btn.style.background = 'var(--blue2)';
+
+  result.appendChild(btn);
 }
 
 function askExample(question) {
