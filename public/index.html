@@ -557,6 +557,42 @@ function renderChart(data) {
       }
     }
   });
+
+// Grafik labellarında cüzdan adresi varsa Track butonu göster
+  if (data.labels && data.labels[0]?.startsWith('0x')) {
+    const existing = document.getElementById('wallet-track-btn');
+    if (existing) existing.remove();
+
+    const botUsername = 'MagNetar1881_bot';
+    const wallet = data.labels[0];
+    const telegramUrl = `https://t.me/${botUsername}?start=subscribe_${wallet}`;
+
+    const trackBtn = document.createElement('a');
+    trackBtn.id = 'wallet-track-btn';
+    trackBtn.href = telegramUrl;
+    trackBtn.target = '_blank';
+    trackBtn.rel = 'noopener';
+    trackBtn.textContent = '📬 Track #1 Wallet on Telegram';
+    trackBtn.style.cssText = `
+      display:block;
+      margin-top:10px;
+      background:transparent;
+      color:var(--blue3);
+      padding:8px 18px;
+      border-radius:6px;
+      font-size:12px;
+      font-family:var(--sans);
+      text-decoration:none;
+      font-weight:500;
+      border:1px solid var(--blue2);
+      text-align:center;
+      transition:background .15s;
+    `;
+    trackBtn.onmouseover = () => trackBtn.style.background = 'var(--border3)';
+    trackBtn.onmouseout = () => trackBtn.style.background = 'transparent';
+
+    document.getElementById('ask-result').appendChild(trackBtn);
+  }
 }
 
 function showActionButton(text) {
@@ -578,6 +614,44 @@ function showActionButton(text) {
   } else if (t.includes('faucet')) {
     label = '🚰 Get Testnet USDC';
     url = 'https://faucet.circle.com';
+  }
+
+  // Cüzdan adresi algılama
+  const walletMatch = text.match(/0x[a-fA-F0-9]{40}/);
+  if (walletMatch) {
+    const wallet = walletMatch[0];
+    const existing2 = document.getElementById('wallet-track-btn');
+    if (existing2) existing2.remove();
+
+    const botUsername = 'MagNetar1881_bot'; // Telegram bot kullanıcı adını buraya yaz
+    const telegramUrl = `https://t.me/${botUsername}?start=subscribe_${wallet}`;
+
+    const trackBtn = document.createElement('a');
+    trackBtn.id = 'wallet-track-btn';
+    trackBtn.href = telegramUrl;
+    trackBtn.target = '_blank';
+    trackBtn.rel = 'noopener';
+    trackBtn.textContent = '📬 Track on Telegram';
+    trackBtn.style.cssText = `
+      display:inline-block;
+      margin-top:8px;
+      margin-left:8px;
+      background:transparent;
+      color:var(--blue3);
+      padding:8px 18px;
+      border-radius:6px;
+      font-size:12px;
+      font-family:var(--sans);
+      text-decoration:none;
+      font-weight:500;
+      border:1px solid var(--blue2);
+      transition:background .15s;
+    `;
+    trackBtn.onmouseover = () => trackBtn.style.background = 'var(--border3)';
+    trackBtn.onmouseout = () => trackBtn.style.background = 'transparent';
+
+    result.appendChild(trackBtn);
+    return;
   }
 
   if (!label) return;

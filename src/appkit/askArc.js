@@ -162,7 +162,7 @@ RULES:
 CRITICAL RULE - CHART FORMAT:
 When the user asks about top wallets, whale wallets, or top tokens, you MUST respond with ONLY this JSON, no other text before or after:
 {"type":"chart","chartType":"bar","title":"Top Wallets by Volume","labels":["wallet1","wallet2","wallet3","wallet4","wallet5"],"values":[1000,900,800,700,600],"valueLabel":"Volume"}
-
+- If asked about a SPECIFIC wallet address (e.g. "tell me about wallet 0x..."), respond in plain text with that wallet's stats. Do NOT use chart format for single wallet queries.
 Use the actual wallet addresses and volumes from the TOP 20 WALLETS data above.
 For top tokens use "title":"Top Tokens by Activity" and transfer_count as values.
 DO NOT add any explanation text. ONLY output the raw JSON.
