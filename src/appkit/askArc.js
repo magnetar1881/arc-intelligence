@@ -16,21 +16,21 @@ async function getContextData() {
          FROM wallets
          WHERE wallet != '0x0000000000000000000000000000000000000000'
          AND total_volume < 1e15
-         ORDER BY total_volume DESC LIMIT 20`,
+         ORDER BY total_volume DESC LIMIT 10`,
         (err, rows) => err ? reject(err) : resolve(rows)
       );
     }),
     new Promise((resolve, reject) => {
       db.all(
         `SELECT wallet, token, amount, type, timestamp
-         FROM whales ORDER BY timestamp DESC LIMIT 20`,
+         FROM whales ORDER BY timestamp DESC LIMIT 10`,
         (err, rows) => err ? reject(err) : resolve(rows)
       );
     }),
     new Promise((resolve, reject) => {
       db.all(
         `SELECT token, symbol, transfer_count, unique_wallets
-         FROM tokens ORDER BY transfer_count DESC LIMIT 10`,
+         FROM tokens ORDER BY transfer_count DESC LIMIT 5`,
         (err, rows) => err ? reject(err) : resolve(rows)
       );
     }),
