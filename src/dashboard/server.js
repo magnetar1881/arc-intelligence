@@ -40,7 +40,10 @@ app.get("/api/top", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   db.all(
     `SELECT wallet, total_volume, transfer_count, whale_score, last_seen
-     FROM wallets ORDER BY total_volume DESC LIMIT ?`,
+     FROM wallets
+     WHERE wallet != '0x0000000000000000000000000000000000000000'
+     AND total_volume < 1e15
+     ORDER BY total_volume DESC LIMIT ?`,
     [limit],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -209,6 +212,21 @@ app.post("/api/ask", async (req, res) => {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   const result = await askArc(question, ip);
   res.json(result);
+});
+
+// ========================
+// SAYFA ROUTE'LARI
+// ========================
+app.get("/whales", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/whales.html"));
+});
+
+app.get("/wallets", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/wallets.html"));
+});
+
+app.get("/ecosystem", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/ecosystem.html"));
 });
 
 app.listen(PORT, () => {
