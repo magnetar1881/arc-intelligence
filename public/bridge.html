@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Bridge — Arc Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080d1a;--bg2:#0c1322;--bg3:#111b30;--bg4:#162040;
+  --border:#1a2a45;--border2:#233660;--border3:#2d4278;
+  --blue:#3b82f6;--blue2:#2563eb;--blue3:#60a5fa;
+  --purple:#8b5cf6;--green:#10b981;--amber:#f59e0b;--red:#ef4444;
+  --text:#f1f5f9;--text2:#cbd5e1;--text3:#94a3b8;--muted:#64748b;--dim:#4a6080;
+  --sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,13,26,0.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(59,130,246,0.12)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;text-decoration:none;color:var(--text)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 0 10px var(--blue);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.h-right{display:flex;align-items:center;gap:10px}
+.nav-back{font-size:12px;color:var(--blue3);text-decoration:none;font-weight:600}
+.page{max-width:480px;margin:40px auto;padding:0 20px}
+.bridge-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+.bridge-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(139,92,246,.5),transparent)}
+.bridge-title{font-size:16px;font-weight:700;margin-bottom:4px}
+.bridge-sub{font-size:12px;color:var(--text3);margin-bottom:24px}
+.field{margin-bottom:14px}
+.field-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:6px}
+.field-select,.field-input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;color:var(--text);font-size:13px;font-family:var(--sans);outline:none;transition:border-color .2s}
+.field-select:focus,.field-input:focus{border-color:var(--blue2)}
+.field-input::placeholder{color:var(--dim)}
+.arrow-row{text-align:center;margin:4px 0;font-size:16px;color:var(--muted)}
+.estimate-box{background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px}
+.estimate-row{display:flex;justify-content:space-between;margin-bottom:4px}
+.estimate-row:last-child{margin-bottom:0}
+.estimate-label{color:var(--muted)}
+.estimate-value{color:var(--text2);font-family:var(--mono);font-weight:600}
+.speed-tabs{display:flex;gap:6px;margin-bottom:14px}
+.speed-tab{flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;text-align:center;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s;font-family:var(--sans)}
+.speed-tab.active{background:rgba(59,130,246,.12);border-color:var(--blue2);color:var(--blue3)}
+.speed-tab:hover{border-color:var(--border3)}
+.fee-note{font-size:10px;color:var(--dim);margin-bottom:16px;text-align:center}
+.connect-prompt{text-align:center;padding:20px 0}
+.connect-prompt p{font-size:13px;color:var(--text3);margin-bottom:12px}
+.connect-btn-large{padding:12px 28px;background:linear-gradient(135deg,var(--blue2),var(--purple));color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans)}
+.bridge-btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--purple),var(--blue2));color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:opacity .2s}
+.bridge-btn:hover{opacity:.9}
+.bridge-btn:disabled{opacity:.4;cursor:not-allowed}
+.status-msg{margin-top:12px;padding:10px 14px;border-radius:8px;font-size:12px;text-align:center;display:none}
+.status-success{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--green)}
+.status-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--red)}
+.status-loading{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--blue3)}
+.disclaimer{font-size:10px;color:var(--dim);text-align:center;margin-top:16px;line-height:1.6}
+.tg-btn{position:fixed;bottom:20px;right:20px;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#2563eb,#8b5cf6);display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 4px 16px rgba(37,99,235,.3);transition:transform .2s;z-index:99}
+.tg-btn:hover{transform:translateY(-2px)}
+.tg-btn svg{width:20px;height:20px;fill:white}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/"><div class="logo-dot"></div>Arc Intelligence</a>
+  <div class="h-right">
+    <button id="wallet-btn"
+      style="font-size:12px;font-weight:600;font-family:var(--sans);background:transparent;color:var(--blue3);border:1px solid rgba(59,130,246,.3);padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .2s;"
+      onclick="connectWallet()">Connect Wallet</button>
+    <a class="nav-back" href="/">← Back</a>
+  </div>
+</header>
+
+<div class="page">
+  <div class="bridge-card">
+    <div class="bridge-title">Bridge to Arc</div>
+    <div class="bridge-sub">Transfer USDC to Arc Testnet • Powered by Circle CCTP</div>
+
+    <div class="field">
+      <div class="field-label">From chain</div>
+      <select class="field-select" id="from-chain" onchange="getEstimate()">
+        <option value="Ethereum_Sepolia">Ethereum Sepolia</option>
+        <option value="Base_Sepolia">Base Sepolia</option>
+        <option value="Arbitrum_Sepolia">Arbitrum Sepolia</option>
+        <option value="Avalanche_Fuji">Avalanche Fuji</option>
+      </select>
+    </div>
+
+    <div class="arrow-row">↓</div>
+
+    <div class="field">
+      <div class="field-label">To chain</div>
+      <select class="field-select" disabled>
+        <option>Arc Testnet</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <div class="field-label">Amount (USDC)</div>
+      <input class="field-input" id="bridge-amount" type="number" placeholder="e.g. 10" oninput="onAmountChange()"/>
+    </div>
+
+    <div class="field-label" style="margin-bottom:6px">Transfer speed</div>
+    <div class="speed-tabs">
+      <div class="speed-tab active" id="tab-fast" onclick="setSpeed('FAST')">
+        ⚡ Fast<br><span style="font-size:9px;color:var(--muted);font-weight:400">~2 min · has fee</span>
+      </div>
+      <div class="speed-tab" id="tab-slow" onclick="setSpeed('SLOW')">
+        🐌 Standard<br><span style="font-size:9px;color:var(--muted);font-weight:400">~15 min · free</span>
+      </div>
+    </div>
+
+    <div class="estimate-box" id="estimate-box" style="display:none">
+      <div class="estimate-row">
+        <span class="estimate-label">Bridge fee</span>
+        <span class="estimate-value" id="est-fee">—</span>
+      </div>
+      <div class="estimate-row">
+        <span class="estimate-label">You receive</span>
+        <span class="estimate-value" id="est-receive">—</span>
+      </div>
+      <div class="estimate-row">
+        <span class="estimate-label">Estimated time</span>
+        <span class="estimate-value" id="est-time">—</span>
+      </div>
+    </div>
+
+    <div class="fee-note">Powered by Circle CCTP • No additional platform fee for bridge</div>
+
+    <div id="wallet-required" class="connect-prompt">
+      <p>Connect your wallet to bridge</p>
+      <button class="connect-btn-large" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+
+    <button class="bridge-btn" id="bridge-btn" style="display:none" onclick="executeBridge()">
+      Bridge to Arc
+    </button>
+
+    <div class="status-msg" id="status-msg"></div>
+  </div>
+
+  <div class="disclaimer">
+    This is Arc Testnet. No real funds involved.<br>
+    Bridge is powered by Circle's Cross-Chain Transfer Protocol (CCTP).
+  </div>
+</div>
+
+<a class="tg-btn" href="https://t.me/+PWV3AE5DuRgzMTk8" target="_blank" rel="noopener">
+  <svg viewBox="0 0 24 24"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+</a>
+
+<script src="/wallet.js"></script>
+<script>
+let currentSpeed = 'FAST';
+let estimateTimer = null;
+
+function setSpeed(speed) {
+  currentSpeed = speed;
+  document.getElementById('tab-fast').classList.toggle('active', speed === 'FAST');
+  document.getElementById('tab-slow').classList.toggle('active', speed === 'SLOW');
+  getEstimate();
+}
+
+function onAmountChange() {
+  clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(getEstimate, 600);
+}
+
+async function getEstimate() {
+  const from = document.getElementById('from-chain').value;
+  const amount = document.getElementById('bridge-amount').value;
+  if (!amount || Number(amount) <= 0) {
+    document.getElementById('estimate-box').style.display = 'none';
+    return;
+  }
+
+  try {
+    const r = await fetch(`/api/bridge/estimate?from=${from}&to=Arc_Testnet&amount=${amount}&token=USDC`);
+    const d = await r.json();
+
+    if (d.success) {
+      const fee = Number(d.fee || 0);
+      const receive = Number(amount) - fee;
+      document.getElementById('est-fee').textContent = fee > 0 ? fee.toFixed(4) + ' USDC' : 'Free';
+      document.getElementById('est-receive').textContent = receive.toFixed(4) + ' USDC';
+      document.getElementById('est-time').textContent = currentSpeed === 'FAST' ? '~2 minutes' : '~15 minutes';
+      document.getElementById('estimate-box').style.display = 'block';
+    }
+  } catch(e) {}
+}
+
+async function executeBridge() {
+  if (!connectedWallet) { connectWallet(); return; }
+
+  const from = document.getElementById('from-chain').value;
+  const amount = document.getElementById('bridge-amount').value;
+
+  if (!amount || Number(amount) <= 0) {
+    showStatus('Please enter an amount.', 'error');
+    return;
+  }
+
+  showStatus('Preparing bridge transaction...', 'loading');
+  document.getElementById('bridge-btn').disabled = true;
+
+  try {
+    const r = await fetch('/api/bridge/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: connectedWallet, fromChain: from, toChain: 'Arc_Testnet', amount, speed: currentSpeed })
+    });
+    const d = await r.json();
+
+    if (d.success) {
+      showStatus('✅ Bridge initiated! This may take a few minutes.', 'success');
+    } else {
+      showStatus('⚠️ ' + (d.error || 'Bridge failed. App Kit browser wallet support is coming soon.'), 'error');
+    }
+  } catch(e) {
+    showStatus('⚠️ Connection error. Please try again.', 'error');
+  }
+
+  document.getElementById('bridge-btn').disabled = false;
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className = 'status-msg status-' + type;
+  el.style.display = 'block';
+}
+
+function updateBridgeUI() {
+  const walletRequired = document.getElementById('wallet-required');
+  const bridgeBtn = document.getElementById('bridge-btn');
+  if (connectedWallet) {
+    walletRequired.style.display = 'none';
+    bridgeBtn.style.display = 'block';
+  } else {
+    walletRequired.style.display = 'block';
+    bridgeBtn.style.display = 'none';
+  }
+}
+
+const _orig = window.updateWalletUI;
+window.updateWalletUI = function(address) {
+  if (_orig) _orig(address);
+  updateBridgeUI();
+};
+
+document.addEventListener('DOMContentLoaded', updateBridgeUI);
+</script>
+</body>
+</html>
