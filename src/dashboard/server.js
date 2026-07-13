@@ -229,6 +229,33 @@ app.get("/ecosystem", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/ecosystem.html"));
 });
 
+// Yeni sayfa route'ları
+app.get("/swap", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/swap.html"));
+});
+
+app.get("/bridge", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/bridge.html"));
+});
+
+// wallet.js static olarak zaten /public'ten servis ediliyor
+
+// Swap execute — App Kit browser wallet desteği gelince aktif olacak
+app.post("/api/swap/execute", async (req, res) => {
+  res.json({
+    success: false,
+    error: "Browser wallet swap support is coming soon. App Kit client-side swap is in progress."
+  });
+});
+
+// Bridge execute
+app.post("/api/bridge/execute", async (req, res) => {
+  res.json({
+    success: false,
+    error: "Browser wallet bridge support is coming soon. App Kit client-side bridge is in progress."
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
 });

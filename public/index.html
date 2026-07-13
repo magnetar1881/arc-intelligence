@@ -180,12 +180,12 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
 <body>
 
 <header>
-  <a class="logo" href="/">
-    <div class="logo-dot"></div>
-    Arc Intelligence
-  </a>
+  <a class="logo" href="/"><div class="logo-dot"></div>Arc Intelligence</a>
   <div class="h-right">
     <div class="badge-live">● LIVE</div>
+    <a href="/swap" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Swap</a>
+    <a href="/bridge" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Bridge</a>
+    <button id="wallet-btn" style="font-size:12px;font-weight:600;font-family:var(--sans);background:transparent;color:var(--blue3);border:1px solid rgba(59,130,246,.3);padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .2s;" onclick="connectWallet()">Connect Wallet</button>
     <button class="btn-ask" onclick="document.getElementById('ask-arc-section').scrollIntoView({behavior:'smooth'})">Ask Arc</button>
   </div>
 </header>
@@ -563,5 +563,6 @@ init();
 setInterval(()=>{loadStats();loadFeed()},30000);
 setInterval(()=>{loadWallets();loadTokens()},60000);
 </script>
+<script src="/wallet.js"></script>
 </body>
 </html>
