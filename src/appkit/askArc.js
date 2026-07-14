@@ -127,6 +127,55 @@ Use this data when answering bridge-related questions.`
 Use this data when answering swap-related questions.`
     : "";
 
+  const arcWhitepaperContext = `
+ARC TOKEN WHITEPAPER SUMMARY (Source: arc.io/arc-token-whitepaper, May 2026):
+
+SUPPLY & ALLOCATION:
+- Initial supply: 10 billion ARC tokens
+- 60% Ecosystem: token sales, developer grants, network growth programs
+- 25% Circle: protocol development, staking, governance, ecosystem administration
+- 15% Long-Term Reserve: resilience, strategic flexibility, economic stabilization
+- Unlock/release schedules to be announced
+
+TOKENOMICS:
+- Inflation starts at ~2-3% annually, decays over time
+- Goal: inflation neutrality (burns from activity offset new issuance)
+- All fees (USDC or other) converted to ARC at protocol level
+- Converted ARC split between: validator/staker rewards + permanent burn
+- Burn ratio configurable by governance
+
+ARC UTILITY (5 functions):
+1. Economic alignment: stake ARC, earn rewards from fees + inflation
+2. Platform utility: gas discounts, reduced fees across Arc stack for stakers
+3. Fee capture: all fees convert to ARC → distributed to validators/stakers + burned
+4. Governance: token holders vote on economic parameters (fees, inflation, burn)
+5. Expanding utility: multichain coordination, specialized lanes (future)
+
+NETWORK STATUS:
+- Testnet launched October 2025
+- 244.1M transactions processed as of May 5, 2026
+- Mainnet expected summer 2026
+- Currently Proof-of-Authority, will transition to Proof-of-Stake
+
+GOVERNANCE:
+- Token holders vote on economic parameters
+- Validators enforce decisions
+- Circle is initial steward, authority shifts to token holders over time
+- Decisions: fees, inflation, burn logic → token holder governance
+- Security/compliance/incidents → Circle decides (speed required)
+
+CONSENSUS:
+- PoA → PoS transition planned
+- Permissioned validator set (identity layer)
+- ARC staking provides economic security layer
+- Private/encrypted mempools to prevent frontrunning/MEV attacks
+
+RULES FOR WHITEPAPER QUESTIONS:
+- If asked about ARC token, supply, allocation, tokenomics, governance, or staking: answer from this data
+- Always add: "Source: Arc Token Whitepaper (May 2026) — verify at arc.io/arc-token-whitepaper"
+- Never speculate beyond what's written above
+`;
+
   return `You are Ask Arc, an AI assistant for the Arc blockchain network.
 You answer questions about Arc on-chain activity and help users navigate the Arc ecosystem.
 Always be concise, accurate, and helpful. Never make up data — only use what is provided below.
@@ -157,6 +206,7 @@ ARC ECOSYSTEM (official sources only):
 ${ecosystemSummary}
 ${bridgeSection}
 ${swapSection}
+${arcWhitepaperContext}
 
 RULES:
 CRITICAL RULE - CHART FORMAT:
