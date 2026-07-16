@@ -75,7 +75,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
       <span class="tbl-hl">Wallet</span>
       <span class="tbl-hl" style="text-align:right">Volume</span>
       <span class="tbl-hl" style="text-align:right">Txs</span>
-      <span class="tbl-hl">Score</span>
+      <span class="tbl-hl">Behavior</span>
     </div>
     <div id="wallet-list">
       <div class="sk-item"><div class="skeleton sk-line" style="width:70%"></div><div class="skeleton sk-line"></div></div>
@@ -93,11 +93,30 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <script>
 function fmt(n){const v=Number(n);if(!isFinite(v)||v>1e18)return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}
 function shortAddr(a){if(!a)return'—';return a.slice(0,6)+'...'+a.slice(-4)}
-function timeAgo(ts){const diff=Math.floor((Date.now()-new Date(ts+'Z'))/1000);if(diff<60)return diff+'s ago';if(diff<3600)return Math.floor(diff/60)+'m ago';if(diff<86400)return Math.floor(diff/3600)+'h ago';return Math.floor(diff/86400)+'d ago'}
+function timeAgo(ts){
+  if(!ts)return'—';
+  const d=new Date(ts.includes('T')||ts.includes('Z')?ts:ts+' UTC');
+  const diff=Math.floor((Date.now()-d)/1000);
+  if(diff<60)return diff+'s ago';
+  if(diff<3600)return Math.floor(diff/60)+'m ago';
+  if(diff<86400)return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
 
 let allWallets=[];
 let offset=0;
 const PAGE=30;
+
+function behaviorBadge(b) {
+  const map = {
+    holder:  { label: 'HOLDER',  color: '#10b981', bg: 'rgba(16,185,129,.1)',  border: 'rgba(16,185,129,.25)' },
+    trader:  { label: 'TRADER',  color: '#3b82f6', bg: 'rgba(59,130,246,.1)',  border: 'rgba(59,130,246,.25)' },
+    exited:  { label: 'EXITED',  color: '#ef4444', bg: 'rgba(239,68,68,.1)',   border: 'rgba(239,68,68,.25)' },
+    unknown: { label: 'NEW',     color: '#64748b', bg: 'rgba(100,116,139,.1)', border: 'rgba(100,116,139,.25)' }
+  };
+  const s = map[b] || map.unknown;
+  return `<span style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.5px;color:${s.color};background:${s.bg};border:1px solid ${s.border}">${s.label}</span>`;
+}
 
 function render(){
   const el=document.getElementById('wallet-list');
@@ -111,10 +130,7 @@ function render(){
       </div>
       <div class="w-vol">${fmt(w.total_volume)}</div>
       <div class="w-txs">${(w.transfer_count||0).toLocaleString()}</div>
-      <div class="score-wrap">
-        <div class="score-bar"><div class="score-fill" style="width:${(w.whale_score||0)*100}%"></div></div>
-        <span class="score-val">${(w.whale_score||0).toFixed(1)}</span>
-      </div>
+      <div>${behaviorBadge(w.behavior)}</div>
     </div>`).join('');
   const btn=document.getElementById('load-more-btn');
   document.getElementById('wallet-count').textContent=allWallets.length.toLocaleString()+' wallets';
