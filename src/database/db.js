@@ -24,15 +24,19 @@ db.serialize(() => {
     )
   `);
 
-  db.run(`
+db.run(`
     CREATE TABLE IF NOT EXISTS wallets (
       wallet TEXT PRIMARY KEY,
       total_volume REAL DEFAULT 0,
       transfer_count INTEGER DEFAULT 0,
       last_seen DATETIME,
-      whale_score REAL DEFAULT 0
+      whale_score REAL DEFAULT 0,
+      behavior TEXT DEFAULT 'unknown',
+      incoming_volume REAL DEFAULT 0,
+      outgoing_volume REAL DEFAULT 0
     )
   `);
+
 
   db.run(`
     CREATE TABLE IF NOT EXISTS tokens (
@@ -73,16 +77,20 @@ function insertWhale(data) {
   });
 }
 
-function updateWallet(wallet, amount) {
+function updateWallet(wallet, amount, direction = 'in') {
   return new Promise((resolve, reject) => {
+    const inAmount = direction === 'in' ? amount : 0;
+    const outAmount = direction === 'out' ? amount : 0;
     db.run(
-      `INSERT INTO wallets (wallet, total_volume, transfer_count, last_seen)
-       VALUES (?, ?, 1, datetime('now'))
+      `INSERT INTO wallets (wallet, total_volume, transfer_count, last_seen, incoming_volume, outgoing_volume)
+       VALUES (?, ?, 1, datetime('now'), ?, ?)
        ON CONFLICT(wallet) DO UPDATE SET
          total_volume = total_volume + ?,
          transfer_count = transfer_count + 1,
-         last_seen = datetime('now')`,
-      [wallet, amount, amount],
+         last_seen = datetime('now'),
+         incoming_volume = incoming_volume + ?,
+         outgoing_volume = outgoing_volume + ?`,
+      [wallet, amount, inAmount, outAmount, amount, inAmount, outAmount],
       (err) => {
         if (err) reject(err);
         else resolve();
@@ -90,6 +98,7 @@ function updateWallet(wallet, amount) {
     );
   });
 }
+
 
 function updateWalletScore(wallet) {
   return new Promise((resolve, reject) => {
@@ -111,6 +120,28 @@ function updateWalletScore(wallet) {
     );
   });
 }
+
+function updateWalletBehavior(wallet) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE wallets SET behavior =
+       CASE
+         WHEN outgoing_volume = 0 AND incoming_volume > 0 THEN 'holder'
+         WHEN outgoing_volume > 0 AND incoming_volume = 0 THEN 'exited'
+         WHEN outgoing_volume > incoming_volume * 0.8 THEN 'exited'
+         WHEN incoming_volume > 0 AND outgoing_volume > 0 THEN 'trader'
+         ELSE 'unknown'
+       END
+       WHERE wallet = ?`,
+      [wallet],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
 
 function updateTokenStats(token, symbol, type) {
   return new Promise((resolve, reject) => {
@@ -313,6 +344,7 @@ module.exports = {
   insertWhale,
   updateWallet,
   updateWalletScore,
+  updateWalletBehavior,
   updateTokenStats,
   getTopWhales,
   addSubscription,

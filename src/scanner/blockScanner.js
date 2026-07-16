@@ -2,6 +2,7 @@ const {
   insertWhale,
   updateWallet,
   updateWalletScore,
+  updateWalletBehavior,
   updateTokenStats
 } = require("../database/db");
 
@@ -122,6 +123,7 @@ async function startScanner() {
   function attachBlockListener(p) {
     p.on("block", async (blockNumber) => {
       lastBlockTime = Date.now();
+      if (blockNumber % 5 !== 0) return;
 
       try {
         const logs = await p.getLogs({
@@ -165,8 +167,11 @@ async function startScanner() {
 
             const amount = Number(ethers.formatUnits(value, decimals));
 
-            await updateWallet(from, amount);
-            await updateWalletScore(from);
+	    await updateWallet(from, amount, 'out');
+	    await updateWallet(to, amount, 'in');
+	    await updateWalletScore(from);
+	    await updateWalletBehavior(from);
+	    await updateWalletBehavior(to);
             await updateTokenStats(
               token,
               symbol,

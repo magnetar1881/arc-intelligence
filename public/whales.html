@@ -90,7 +90,15 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <script>
 function fmt(n){const v=Number(n);if(!isFinite(v)||v>1e18)return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}
 function shortAddr(a){if(!a)return'—';return a.slice(0,6)+'...'+a.slice(-4)}
-function timeAgo(ts){const diff=Math.floor((Date.now()-new Date(ts+'Z'))/1000);if(diff<60)return diff+'s ago';if(diff<3600)return Math.floor(diff/60)+'m ago';if(diff<86400)return Math.floor(diff/3600)+'h ago';return Math.floor(diff/86400)+'d ago'}
+function timeAgo(ts){
+  if(!ts)return'—';
+  const d=new Date(ts.includes('T')||ts.includes('Z')?ts:ts+' UTC');
+  const diff=Math.floor((Date.now()-d)/1000);
+  if(diff<60)return diff+'s ago';
+  if(diff<3600)return Math.floor(diff/60)+'m ago';
+  if(diff<86400)return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
 
 let allWhales=[];
 let currentFilter='all';

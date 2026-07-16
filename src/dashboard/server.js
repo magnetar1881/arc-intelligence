@@ -9,7 +9,7 @@ const PORT = process.env.DASHBOARD_PORT || 3000;
 
 // DB bağlantısı (read-only, scanner ile çakışmasın)
 const DB_PATH = path.join(__dirname, "../../data/whale.db");
-const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY, (err) => {
+const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) console.log("DB bağlantı hatası:", err.message);
 });
 
@@ -40,6 +40,7 @@ app.get("/api/top", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   db.all(
     `SELECT wallet, total_volume, transfer_count, whale_score, last_seen
+     behavior, incoming_volume, outgoing_volume
      FROM wallets
      WHERE wallet != '0x0000000000000000000000000000000000000000'
      AND total_volume < 1e15

@@ -6,8 +6,14 @@ const { estimateBridgeTransfer, estimateSwapTokens } = require("./circleKit");
 
 const DB_PATH = path.join(__dirname, "../../data/whale.db");
 const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+let groq = null;
 
+function getGroq() {
+  if (!groq) {
+    groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  }
+  return groq;
+}
 async function getContextData() {
   const [topWallets, recentWhales, topTokens, stats] = await Promise.all([
     new Promise((resolve, reject) => {
@@ -272,7 +278,7 @@ async function askArc(question, ip = "unknown") {
 
     const systemPrompt = buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate);
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroq().chat.completions.create({
       model: "llama-3.1-8b-instant",
       messages: [
         { role: "system", content: systemPrompt },

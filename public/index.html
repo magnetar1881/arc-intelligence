@@ -302,7 +302,9 @@ function fmt(n){
 }
 function shortAddr(a){if(!a)return'—';return a.slice(0,6)+'...'+a.slice(-4)}
 function timeAgo(ts){
-  const diff=Math.floor((Date.now()-new Date(ts+'Z'))/1000);
+  if(!ts)return'—';
+  const d=new Date(ts.includes('T')||ts.includes('Z')?ts:ts+' UTC');
+  const diff=Math.floor((Date.now()-d)/1000);
   if(diff<60)return diff+'s ago';
   if(diff<3600)return Math.floor(diff/60)+'m ago';
   if(diff<86400)return Math.floor(diff/3600)+'h ago';
