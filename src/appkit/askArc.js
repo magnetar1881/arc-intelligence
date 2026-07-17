@@ -14,8 +14,9 @@ function getGroq() {
   }
   return groq;
 }
+
 async function getContextData() {
-  const [topWallets, recentWhales, topTokens, stats] = await Promise.all([
+  const [topWallets, recentWhales, topTokens, stats, trending1h, trending24h] = await Promise.all([
     new Promise((resolve, reject) => {
       db.all(
         `SELECT wallet, total_volume, transfer_count, whale_score
@@ -50,10 +51,30 @@ async function getContextData() {
           (SELECT SUM(amount) FROM whales WHERE timestamp >= datetime('now', '-24 hours')) as volume_24h`,
         (err, row) => err ? reject(err) : resolve(row)
       );
+    }),
+    new Promise((resolve, reject) => {
+      db.all(
+        `SELECT w.token, t.symbol, COUNT(*) as tx_count, SUM(w.amount) as volume
+         FROM whales w
+         LEFT JOIN tokens t ON w.token = t.token
+         WHERE w.timestamp >= datetime('now', '-1 hours')
+         GROUP BY w.token ORDER BY tx_count DESC LIMIT 5`,
+        (err, rows) => err ? reject(err) : resolve(rows)
+      );
+    }),
+    new Promise((resolve, reject) => {
+      db.all(
+        `SELECT w.token, t.symbol, COUNT(*) as tx_count, SUM(w.amount) as volume
+         FROM whales w
+         LEFT JOIN tokens t ON w.token = t.token
+         WHERE w.timestamp >= datetime('now', '-24 hours')
+         GROUP BY w.token ORDER BY tx_count DESC LIMIT 5`,
+        (err, rows) => err ? reject(err) : resolve(rows)
+      );
     })
   ]);
 
-  return { topWallets, recentWhales, topTokens, stats };
+  return { topWallets, recentWhales, topTokens, stats, trending1h, trending24h };
 }
 
 function getEcosystemData() {
@@ -103,7 +124,7 @@ function extractSwapTokens(question) {
 }
 
 function buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate) {
-  const { topWallets, recentWhales, topTokens, stats } = contextData;
+  const { topWallets, recentWhales, topTokens, stats, trending1h, trending24h } = contextData;
 
   const ecosystemSummary = Object.entries(ecosystemData)
     .filter(([k]) => !["last_updated", "source", "note"].includes(k))
@@ -208,6 +229,16 @@ ${(topTokens || []).map((t, i) =>
   `${i + 1}. ${t.symbol || t.token} | transfers: ${t.transfer_count} | wallets: ${t.unique_wallets}`
 ).join("\n")}
 
+TRENDING (last 1 hour):
+${(trending1h||[]).length ? trending1h.map((t,i) =>
+  `${i+1}. ${t.symbol||t.token} | txs: ${t.tx_count} | volume: ${Number(t.volume||0).toFixed(2)}`
+).join("\n") : "No activity in the last hour"}
+
+TRENDING (last 24 hours):
+${(trending24h||[]).length ? trending24h.map((t,i) =>
+  `${i+1}. ${t.symbol||t.token} | txs: ${t.tx_count} | volume: ${Number(t.volume||0).toFixed(2)}`
+).join("\n") : "No activity in the last 24 hours"}
+
 ARC ECOSYSTEM (official sources only):
 ${ecosystemSummary}
 ${bridgeSection}
@@ -228,6 +259,7 @@ DO NOT add any explanation text. ONLY output the raw JSON.
 - If asked something you have no data for, say so honestly.
 - Keep responses short and clear. Use bullet points when listing multiple items.
 - For top tokens chart use "title":"Top Tokens by Activity" and values as transfer counts.
+- If asked about recent activity, trending tokens, or what happened in the last hour/day: use the TRENDING data above.
 - For all other questions, respond normally in text.
 - All on-chain data is from Arc Testnet.`;
 }

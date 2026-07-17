@@ -257,6 +257,33 @@ app.post("/api/bridge/execute", async (req, res) => {
   });
 });
 
+// ========================
+// TRENDING — zaman bazlı token aktivitesi
+// ========================
+app.get("/api/trending", (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 1, 168);
+  db.all(
+    `SELECT
+      w.token,
+      t.symbol,
+      COUNT(*) as tx_count,
+      SUM(w.amount) as volume,
+      MIN(w.timestamp) as first_seen,
+      MAX(w.timestamp) as last_seen
+     FROM whales w
+     LEFT JOIN tokens t ON w.token = t.token
+     WHERE w.timestamp >= datetime('now', ?)
+     GROUP BY w.token
+     ORDER BY tx_count DESC
+     LIMIT 10`,
+    [`-${hours} hours`],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ hours, rows });
+    }
+  );
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
 });
