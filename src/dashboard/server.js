@@ -284,6 +284,41 @@ app.get("/api/trending", (req, res) => {
   );
 });
 
+// ========================
+// TOKEN TREND
+// ========================
+app.get("/api/token-trend", (req, res) => {
+  db.all(
+    `SELECT
+      t.token,
+      t.symbol,
+      t.transfer_count,
+      t.unique_wallets,
+      COALESCE(curr.count, 0) as count_1h,
+      COALESCE(prev.count, 0) as count_prev_1h
+     FROM tokens t
+     LEFT JOIN (
+       SELECT token, COUNT(*) as count
+       FROM whales
+       WHERE timestamp >= datetime('now', '-1 hours')
+       GROUP BY token
+     ) curr ON t.token = curr.token
+     LEFT JOIN (
+       SELECT token, COUNT(*) as count
+       FROM whales
+       WHERE timestamp >= datetime('now', '-2 hours')
+       AND timestamp < datetime('now', '-1 hours')
+       GROUP BY token
+     ) prev ON t.token = prev.token
+     ORDER BY t.transfer_count DESC
+     LIMIT 10`,
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
 });
