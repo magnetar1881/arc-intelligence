@@ -374,7 +374,7 @@ async function loadWallets(){
 // ── TOKEN ACTIVITY ──
 async function loadTokens(){
   try{
-    const rows=await fetch('/api/tokens?limit=8').then(r=>r.json());
+    const rows=await fetch('/api/token-trend').then(r=>r.json());
     const el=document.getElementById('token-activity');
     if(!rows.length){el.innerHTML='<div class="empty">No token data yet.</div>';return}
     const maxC=rows[0]?.transfer_count||1;
@@ -382,14 +382,32 @@ async function loadTokens(){
       <span class="t-hl">TOKEN</span>
       <span class="t-hl">ACTIVITY</span>
       <span class="t-hl" style="text-align:right">TXS</span>
-      <span class="t-hl" style="text-align:right">WALLETS</span>
-    </div>`+rows.map(t=>`
-      <div class="t-row">
+      <span class="t-hl" style="text-align:right">TREND</span>
+    </div>`+rows.map(t=>{
+      const curr=t.count_1h||0;
+      const prev=t.count_prev_1h||0;
+      let trend='';
+      if(curr>0||prev>0){
+        if(prev===0&&curr>0){
+          trend=`<span style="color:#10b981;font-size:10px;font-family:monospace">↑ NEW</span>`;
+        } else if(curr===0&&prev>0){
+          trend=`<span style="color:#ef4444;font-size:10px;font-family:monospace">↓ 0</span>`;
+        } else {
+          const pct=Math.round(((curr-prev)/prev)*100);
+          const color=pct>=0?'#10b981':'#ef4444';
+          const arrow=pct>=0?'↑':'↓';
+          trend=`<span style="color:${color};font-size:10px;font-family:monospace;font-weight:600">${arrow} ${Math.abs(pct)}%</span>`;
+        }
+      } else {
+        trend=`<span style="color:var(--dim);font-size:10px">—</span>`;
+      }
+      return`<div class="t-row">
         <div class="t-sym">${t.symbol||shortAddr(t.token)}</div>
         <div class="t-bar-wrap"><div class="t-bar-fill" style="width:${(t.transfer_count/maxC)*100}%"></div></div>
         <div class="t-num">${(t.transfer_count||0).toLocaleString()}</div>
-        <div class="t-num">${(t.unique_wallets||0).toLocaleString()}</div>
-      </div>`).join('');
+        <div class="t-num">${trend}</div>
+      </div>`;
+    }).join('');
   }catch(e){}
 }
 
