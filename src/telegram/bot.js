@@ -19,6 +19,10 @@ bot.on("polling_error", (err) => {
   console.log("Telegram polling error:", err.message);
 });
 
+bot.on("message", (msg) => {
+  console.log("MSG from chat:", msg.chat.id, msg.chat.type, msg.text);
+});
+
 // ========================
 // ALARM GÖNDERME (artık tek CHAT_ID değil, abonelere göre)
 // ========================
