@@ -7,6 +7,7 @@ const {
 } = require("../database/db");
 
 const { ethers } = require("ethers");
+const { askArc } = require("../appkit/askArc");
 const { sendAlert } = require("../telegram/bot");
 
 // ========================
@@ -209,6 +210,23 @@ ${txHash}
 
             console.log("🐋 WHALE:", symbol, amount);
             await sendAlert(message, token);
+
+            // ========================
+            // WHALE AGENT — AI analizi
+            // ========================
+            try {
+              const agentQuestion = `A large transfer just happened on Arc. Wallet ${from} transferred ${amount.toLocaleString()} ${symbol}. What do we know about this wallet? Is it a holder, trader, or new wallet? Any context from recent activity?`;
+
+              const analysis = await askArc(agentQuestion, "whale-agent");
+
+              if (analysis.success && analysis.answer) {
+                const agentMessage = `🤖 <b>AI Analysis</b>\n\n${analysis.answer}`;
+                await sendAlert(agentMessage, token);
+              }
+            } catch (e) {
+              console.log("agent analysis skip:", e.message);
+            }
+
 
           } catch (e) {
             console.log("log skip:", e.message);
