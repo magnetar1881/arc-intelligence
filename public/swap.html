@@ -146,6 +146,12 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 </a>
 
 <script src="/wallet.js"></script>
+
+<script>
+window.CIRCLE_KIT_KEY="KIT_KEY:ce3a3304cd308175d2fce841681630a5:6b440042d5804c826260dbce438b9877";
+</script>
+
+<script src="/swap-bundle.js"></script>
 <script>
 let estimateTimer = null;
 
@@ -191,43 +197,63 @@ async function getEstimate() {
 }
 
 async function executeSwap() {
-  if (!connectedWallet) { connectWallet(); return; }
 
-  const tokenIn = document.getElementById('token-in').value;
-  const tokenOut = document.getElementById('token-out').value;
-  const amountIn = document.getElementById('amount-in').value;
+  console.log("executeSwap başladı");
+  console.log("ethereum:", window.ethereum);
+  console.log("connectedWallet:", connectedWallet);
+
+  if (!connectedWallet) {
+    connectWallet();
+    return;
+  }
+
+  const tokenIn = document.getElementById("token-in").value;
+  const tokenOut = document.getElementById("token-out").value;
+  const amountIn = document.getElementById("amount-in").value;
 
   if (!amountIn || Number(amountIn) <= 0) {
-    showStatus('Please enter an amount.', 'error');
+    showStatus("Please enter an amount.", "error");
     return;
   }
 
   if (tokenIn === tokenOut) {
-    showStatus('Please select different tokens.', 'error');
+    showStatus("Please select different tokens.", "error");
     return;
   }
 
-  showStatus('Preparing swap...', 'loading');
-  document.getElementById('swap-btn').disabled = true;
-
-  try {
-    const r = await fetch('/api/swap/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: connectedWallet, tokenIn, tokenOut, amountIn, chain: 'Arc_Testnet' })
-    });
-    const d = await r.json();
-
-    if (d.success) {
-      showStatus('✅ Swap successful! Tx: ' + (d.txHash ? d.txHash.slice(0,10)+'...' : 'confirmed'), 'success');
-    } else {
-      showStatus('⚠️ ' + (d.error || 'Swap failed'), 'error');
-    }
-  } catch(e) {
-    showStatus('⚠️ Connection error. Please try again.', 'error');
+  if (typeof window.executeCircleSwap !== "function") {
+    showStatus("swap-bundle.js yüklenmedi.", "error");
+    return;
   }
 
-  document.getElementById('swap-btn').disabled = false;
+  showStatus("Waiting MetaMask...", "loading");
+  document.getElementById("swap-btn").disabled = true;
+
+  try {
+
+    const result = await window.executeCircleSwap({
+      tokenIn,
+      tokenOut,
+      amountIn
+    });
+
+    console.log("RESULT =", result);
+
+    if (result.state === "success") {
+      showStatus("✅ Swap Success", "success");
+    } else {
+      showStatus(result.message || result.error || "Swap failed", "error");
+    }
+
+  } catch (e) {
+
+    console.error("FULL ERROR:", e);
+
+    showStatus(e.message || "Swap failed", "error");
+
+  }
+
+  document.getElementById("swap-btn").disabled = false;
 }
 
 function showStatus(msg, type) {
@@ -259,6 +285,8 @@ window.updateWalletUI = function(address) {
 
 document.addEventListener('DOMContentLoaded', updateSwapUI);
 </script>
+<!-- Swap Bundle -->
+<script src="/swap-bundle.js"></script>
 <footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
   <div style="display:flex;align-items:center;gap:16px">
     <span style="font-weight:600">Arc Intelligence — askarc.xyz</span>
