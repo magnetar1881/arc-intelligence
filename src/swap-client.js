@@ -36,8 +36,8 @@ export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
     "accounts:",
     await window.ethereum.request({ method: "eth_accounts" })
   );
-  console.log("provider:", window.ethereum);
 
+  console.log("provider:", window.ethereum);
   console.log("KIT KEY:", window.CIRCLE_KIT_KEY);
   console.log("TOKEN IN:", tokenIn);
   console.log("TOKEN OUT:", tokenOut);
@@ -61,40 +61,30 @@ export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
   console.log("PAYLOAD");
   console.dir(payload);
 
-  const result = await kit.swap(payload);
+  console.log("TOKEN IN FULL", tokenIn);
+  console.log("TOKEN OUT FULL", tokenOut);
+  console.log("ADAPTER FULL", adapter);
 
   try {
-    const result = await kit.swap({
-      from: {
-        adapter,
-        chain: "Arc_Testnet",
-      },
-      tokenIn,
-      tokenOut,
-      amountIn,
-      config: {
-        kitKey: window.CIRCLE_KIT_KEY,
-      },
-    });
+    const result = await kit.swap(payload);
 
     console.log("SWAP RESULT:", result);
     return result;
-
   } catch (e) {
+    console.error("SWAP ERROR:", e);
+    console.error("STACK:", e?.stack);
 
-    console.error("ERROR", e);
-    console.dir(e.cause);
+    console.log("CAUSE:");
+    console.dir(e?.cause);
 
-    if (e.cause?.trace) {
-        console.log("TRACE");
-        console.dir(e.cause.trace);
+    if (e?.cause?.trace) {
+      console.log("TRACE:");
+      console.dir(e.cause.trace);
     }
 
     throw e;
   }
-
 }
 
-// HTML'den erişebilmek için
 window.executeCircleSwap = executeCircleSwap;
 window.estimateCircleSwap = estimateSwap;
