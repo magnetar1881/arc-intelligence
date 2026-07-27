@@ -1,4 +1,4 @@
-var SwapKit = (() => {
+(() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -10950,35 +10950,6 @@ var SwapKit = (() => {
       var SOLANA_ERROR__INVARIANT_VIOLATION__CACHED_ABORTABLE_ITERABLE_CACHE_ENTRY_MISSING = 9900002;
       var SOLANA_ERROR__INVARIANT_VIOLATION__SWITCH_MUST_BE_EXHAUSTIVE = 9900003;
       var SOLANA_ERROR__INVARIANT_VIOLATION__DATA_PUBLISHER_CHANNEL_UNIMPLEMENTED = 9900004;
-      function encodeValue(value) {
-        if (Array.isArray(value)) {
-          const commaSeparatedValues = value.map(encodeValue).join(
-            "%2C%20"
-            /* ", " */
-          );
-          return "%5B" + commaSeparatedValues + /* "]" */
-          "%5D";
-        } else if (typeof value === "bigint") {
-          return `${value}n`;
-        } else {
-          return encodeURIComponent(
-            String(
-              value != null && Object.getPrototypeOf(value) === null ? (
-                // Plain objects with no prototype don't have a `toString` method.
-                // Convert them before stringifying them.
-                { ...value }
-              ) : value
-            )
-          );
-        }
-      }
-      function encodeObjectContextEntry([key, value]) {
-        return `${key}=${encodeValue(value)}`;
-      }
-      function encodeContextObject(context) {
-        const searchParamsString = Object.entries(context).map(encodeObjectContextEntry).join("&");
-        return btoa(searchParamsString);
-      }
       var SolanaErrorMessages = {
         [SOLANA_ERROR__ACCOUNTS__ACCOUNT_NOT_FOUND]: "Account not found at address: $address",
         [SOLANA_ERROR__ACCOUNTS__EXPECTED_ALL_ACCOUNTS_TO_BE_DECODED]: "Not all accounts were decoded. Encoded accounts found at addresses: $addresses.",
@@ -11208,8 +11179,95 @@ var SwapKit = (() => {
         [SOLANA_ERROR__TRANSACTION__SIGNATURES_MISSING]: "Transaction is missing signatures for addresses: $addresses.",
         [SOLANA_ERROR__TRANSACTION__VERSION_NUMBER_OUT_OF_RANGE]: "Transaction version must be in the range [0, 127]. `$actualVersion` given"
       };
+      var START_INDEX = "i";
+      var TYPE2 = "t";
+      function getHumanReadableErrorMessage(code, context = {}) {
+        const messageFormatString = SolanaErrorMessages[code];
+        if (messageFormatString.length === 0) {
+          return "";
+        }
+        let state;
+        function commitStateUpTo(endIndex) {
+          if (state[TYPE2] === 2) {
+            const variableName = messageFormatString.slice(state[START_INDEX] + 1, endIndex);
+            fragments.push(
+              variableName in context ? (
+                // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                `${context[variableName]}`
+              ) : `$${variableName}`
+            );
+          } else if (state[TYPE2] === 1) {
+            fragments.push(messageFormatString.slice(state[START_INDEX], endIndex));
+          }
+        }
+        const fragments = [];
+        messageFormatString.split("").forEach((char, ii) => {
+          if (ii === 0) {
+            state = {
+              [START_INDEX]: 0,
+              [TYPE2]: messageFormatString[0] === "\\" ? 0 : messageFormatString[0] === "$" ? 2 : 1
+              /* Text */
+            };
+            return;
+          }
+          let nextState;
+          switch (state[TYPE2]) {
+            case 0:
+              nextState = {
+                [START_INDEX]: ii,
+                [TYPE2]: 1
+                /* Text */
+              };
+              break;
+            case 1:
+              if (char === "\\") {
+                nextState = {
+                  [START_INDEX]: ii,
+                  [TYPE2]: 0
+                  /* EscapeSequence */
+                };
+              } else if (char === "$") {
+                nextState = {
+                  [START_INDEX]: ii,
+                  [TYPE2]: 2
+                  /* Variable */
+                };
+              }
+              break;
+            case 2:
+              if (char === "\\") {
+                nextState = {
+                  [START_INDEX]: ii,
+                  [TYPE2]: 0
+                  /* EscapeSequence */
+                };
+              } else if (char === "$") {
+                nextState = {
+                  [START_INDEX]: ii,
+                  [TYPE2]: 2
+                  /* Variable */
+                };
+              } else if (!char.match(/\w/)) {
+                nextState = {
+                  [START_INDEX]: ii,
+                  [TYPE2]: 1
+                  /* Text */
+                };
+              }
+              break;
+          }
+          if (nextState) {
+            if (state !== nextState) {
+              commitStateUpTo(ii);
+            }
+            state = nextState;
+          }
+        });
+        commitStateUpTo();
+        return fragments.join("");
+      }
       function getErrorMessage3(code, context = {}) {
-        if (false) {
+        if (true) {
           return getHumanReadableErrorMessage(code, context);
         } else {
           let decodingAdviceMessage = `Solana error #${code}; Decode this error by running \`npx @solana/errors decode -- ${code}`;
@@ -27411,7 +27469,7 @@ Message: ${transactionMessage}.
         var WEB_WORKER = !WINDOW && typeof self === "object";
         var NODE_JS = !root.JS_SHA3_NO_NODE_JS && typeof process === "object" && process.versions && process.versions.node;
         if (NODE_JS) {
-          root = window;
+          root = global;
         } else if (WEB_WORKER) {
           root = self;
         }
@@ -37502,13 +37560,6 @@ ${prettyStateOverride(stateOverride)}`;
     }
   });
 
-  // src/swap-client.js
-  var swap_client_exports = {};
-  __export(swap_client_exports, {
-    estimateSwap: () => estimateSwap,
-    executeCircleSwap: () => executeCircleSwap
-  });
-
   // node_modules/zod/dist/esm/v3/external.js
   var external_exports = {};
   __export(external_exports, {
@@ -46239,7 +46290,7 @@ ${prettyStateOverride(stateOverride)}`;
     }))))),
     unitsConsumed: optional(number())
   }));
-  var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof window !== "undefined" ? window : typeof self !== "undefined" ? self : {};
+  var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
   function getDefaultExportFromCjs(x) {
     return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
   }
@@ -89127,7 +89178,46 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   window.executeCircleSwap = executeCircleSwap;
   window.estimateCircleSwap = estimateSwap;
-  return __toCommonJS(swap_client_exports);
+  async function executeCircleBridge({
+    fromChain,
+    toChain,
+    token,
+    amount
+  }) {
+    console.log("KIT METHODS");
+    console.log(Object.getOwnPropertyNames(Object.getPrototypeOf(kit)));
+    const adapter = await createViemAdapterFromProvider({
+      provider: window.ethereum
+    });
+    console.log("===== BRIDGE =====");
+    console.log({
+      fromChain,
+      toChain,
+      token,
+      amount
+    });
+    const payload = {
+      from: {
+        adapter,
+        chain: fromChain
+      },
+      to: {
+        adapter,
+        chain: toChain
+      },
+      amount,
+      token,
+      config: {
+        kitKey: window.CIRCLE_KIT_KEY
+      }
+    };
+    console.log("BRIDGE PAYLOAD");
+    console.dir(payload);
+    const result = await kit.bridge(payload);
+    console.log(result);
+    return result;
+  }
+  window.executeCircleBridge = executeCircleBridge;
 })();
 /*! Bundled license information:
 
