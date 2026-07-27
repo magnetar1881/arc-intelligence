@@ -2,7 +2,7 @@
 
 Real-time on-chain intelligence platform for Arc Network.
 
-**Live:** https://askarc.xyz | **Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
+**Live:** https://lensora.xyz | **Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
 
 ---
 

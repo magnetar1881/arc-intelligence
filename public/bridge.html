@@ -150,6 +150,8 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 </a>
 
 <script src="/wallet.js"></script>
+<script src="/swap-bundle.js"></script>
+<script type="module" src="/swap-client.js"></script>
 <script>
 let currentSpeed = 'FAST';
 let estimateTimer = null;
@@ -204,23 +206,31 @@ async function executeBridge() {
   document.getElementById('bridge-btn').disabled = true;
 
   try {
-    const r = await fetch('/api/bridge/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: connectedWallet, fromChain: from, toChain: 'Arc_Testnet', amount, speed: currentSpeed })
+    const result = await window.executeCircleBridge({
+      fromChain: from,
+      toChain: "Arc_Testnet",
+      token: "USDC",
+      amount
     });
-    const d = await r.json();
 
-    if (d.success) {
-      showStatus('✅ Bridge initiated! This may take a few minutes.', 'success');
+    if (result.state === "success") {
+      showStatus("✅ Bridge initiated!", "success");
     } else {
-      showStatus('⚠️ ' + (d.error || 'Bridge failed. App Kit browser wallet support is coming soon.'), 'error');
+      showStatus(
+        "⚠️ " + (result.errorMessage || "Bridge failed."),
+        "error"
+      );
     }
-  } catch(e) {
-    showStatus('⚠️ Connection error. Please try again.', 'error');
+  } catch (e) {
+    console.error(e);
+    showStatus(
+      "⚠️ " + (e.message || "Bridge failed."),
+      "error"
+    );
   }
 
   document.getElementById('bridge-btn').disabled = false;
+
 }
 
 function showStatus(msg, type) {
@@ -252,7 +262,7 @@ document.addEventListener('DOMContentLoaded', updateBridgeUI);
 </script>
 <footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
   <div style="display:flex;align-items:center;gap:16px">
-    <span style="font-weight:600">Arc Intelligence — askarc.xyz</span>
+    <span style="font-weight:600">Arc Intelligence — lensora.xyz</span>
     <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.12);border-radius:6px">
       <img src="/arc-logo.png" alt="Arc Network" style="height:16px;opacity:.85"/>
       <span style="font-size:10px;color:var(--text3);font-weight:500">Built on Arc Network</span>

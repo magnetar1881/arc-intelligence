@@ -1,4 +1,5 @@
 import { SwapKit } from "@circle-fin/swap-kit";
+import { AppKit } from "@circle-fin/app-kit";
 import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
 
 const kit = new SwapKit();
@@ -88,3 +89,57 @@ export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
 
 window.executeCircleSwap = executeCircleSwap;
 window.estimateCircleSwap = estimateSwap;
+
+export async function executeCircleBridge({
+  fromChain,
+  toChain,
+  token,
+  amount,
+}) {
+
+  console.log("KIT METHODS");
+  console.log(Object.getOwnPropertyNames(Object.getPrototypeOf(kit)));
+
+  const adapter = await createViemAdapterFromProvider({
+    provider: window.ethereum,
+  });
+
+  console.log("===== BRIDGE =====");
+  console.log({
+    fromChain,
+    toChain,
+    token,
+    amount,
+  });
+
+  const payload = {
+    from: {
+      adapter,
+      chain: fromChain,
+    },
+
+    to: {
+      adapter,
+      chain: toChain,
+    },
+
+    amount,
+
+    token,
+
+    config: {
+      kitKey: window.CIRCLE_KIT_KEY,
+    },
+  };
+
+  console.log("BRIDGE PAYLOAD");
+  console.dir(payload);
+
+  const result = await kit.bridge(payload);
+
+  console.log(result);
+
+  return result;
+}
+
+window.executeCircleBridge = executeCircleBridge;
