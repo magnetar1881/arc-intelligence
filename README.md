@@ -1,6 +1,6 @@
-# Arc Intelligence
+# Lensora
 
-Real-time on-chain intelligence platform for Arc Network.
+AI-powered on-chain intelligence platform for the Arc ecosystem.
 
 **Live:** https://lensora.xyz | **Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
 
@@ -9,17 +9,25 @@ Real-time on-chain intelligence platform for Arc Network.
 ## What It Does
 
 - Monitors ERC-20 activity on Arc in real time
-- Tracks whale wallet movements and classifies behavior (holder / trader / exited)
-- **Ask Arc** - natural language AI interface: ask questions, get answers from live on-chain data
+- Tracks whale wallet movements and classifies wallet behavior (holder / trader / exited)
+- Ask Lensora – AI-powered natural language interface for live on-chain data
+- AI-generated whale analysis directly in Telegram
 - Arc ecosystem directory (DEXs, bridges, wallets, oracles)
 - Telegram alerts with multi-user subscriptions
-- Bridge & Swap pages with MetaMask wallet connect (Circle App Kit)
+- Bridge & Swap interface powered by Circle App Kit (execution will be enabled once browser wallet support is available)
 
 ---
 
+## Circle Tools Used
+
+- Circle App Kit
+- Gateway
+- Unified Balance Kit
+
 ## Stack
 
-Node.js · ethers.js · SQLite · Express · Circle App Kit · Groq/Llama · Telegram Bot API
+Node.js · Express · ethers.js · SQLite · Circle App Kit · Groq/Llama · Telegram Bot API
+
 
 ---
 
@@ -28,7 +36,13 @@ Node.js · ethers.js · SQLite · Express · Circle App Kit · Groq/Llama · Tel
 ```bash
 npm install
 cp .env.example .env
-# fill in RPC_URL, BOT_TOKEN, GROQ_API_KEY, CIRCLE_KIT_KEY
+
+# fill in:
+# RPC_URL
+# BOT_TOKEN
+# GROQ_API_KEY
+# CIRCLE_KIT_KEY
+
 node src/app.js
 ```
 
@@ -43,26 +57,29 @@ node src/app.js
 | `GROQ_API_KEY` | yes | Groq API key (Ask Arc) |
 | `CIRCLE_KIT_KEY` | yes | Circle App Kit key |
 | `SCANNER_ENABLED` | no | `true` to start scanner (default: false) |
-| `WHALE_THRESHOLD` | no | Min token amount for whale alert (default: 100000) |
+| `WHALE_THRESHOLD` | no | Min token amount for whale alert (default: 1000000) |
 
 ---
 
 ## Roadmap
 
-**Data Intelligence**
-- Anomaly detection - unusual wallet behavior alerts
-- Smart money tracking - follow wallets with proven track records
-- Token risk scoring - automatic spam detection
+### Data Intelligence
 
-**AI Layer**
-- Agentic Ask Arc - complex on-chain queries
-- Portfolio tracking - monitor any wallet, get movement alerts
-- Whale signal context - behavioral history on movements
+- Anomaly detection
+- Smart money tracking
+- Token risk scoring
 
-**Ecosystem**
+### AI Layer
+
+- Agentic Ask Lensora
+- Portfolio tracking
+- Whale signal context
+
+### Ecosystem
+
 - DEX liquidity monitoring
-- Stablecoin flow analysis (USDC/EURC)
-- Swap & Bridge execution on mainnet (Circle App Kit)
+- Stablecoin flow analysis (USDC / EURC)
+- Swap & Bridge execution on mainnet
 
 ---
 
