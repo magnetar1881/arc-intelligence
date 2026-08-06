@@ -63,23 +63,44 @@ node src/app.js
 
 ## Roadmap
 
-### Data Intelligence
+### Near Term
 
+#### Data Intelligence
 - Anomaly detection
 - Smart money tracking
 - Token risk scoring
+- Smart Money Score
+- AI transaction explanation
 
-### AI Layer
-
-- Agentic Ask Lensora
+#### AI Layer
 - Portfolio tracking
+- Watchlists
+- AI daily market summaries
 - Whale signal context
 
-### Ecosystem
-
+#### Ecosystem
+- Swap & Bridge execution on mainnet
 - DEX liquidity monitoring
 - Stablecoin flow analysis (USDC / EURC)
-- Swap & Bridge execution on mainnet
+
+---
+
+### Long Term
+
+#### AI Layer
+- Agentic Ask Lensora
+- Agent Mode (AI tasks & automation)
+- Wallet Memory
+- AI Compare
+- AI-assisted on-chain execution
+
+#### Payments
+- x402 micro-payments for premium AI features
+
+#### Ecosystem
+- Cross-chain portfolio tracking
+- Yield discovery across Arc
+- Ecosystem analytics & protocol insights
 
 ---
 
