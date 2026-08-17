@@ -65,6 +65,14 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="page-title">🏆 Top Wallets</div>
   <div class="page-sub">Highest volume wallets on Arc network</div>
+  <div class="wallet-search" style="margin-bottom:16px">
+    <input
+      id="walletSearch"
+      type="text"
+      placeholder="🔍 Search wallet address..."
+      style="width:100%;padding:10px 14px;border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:8px;font-family:var(--sans);font-size:13px"
+    />
+  </div>
   <div class="card">
     <div class="card-head">
       <span class="card-title">Wallets by Volume</span>
@@ -140,12 +148,59 @@ function render(){
 
 function loadMore(){offset+=PAGE;render()}
 
+async function searchWallets() {
+  const input = document.getElementById("walletSearch");
+  const query = input.value.trim();
+
+  if (!query) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/wallets/search?q=${encodeURIComponent(query)}`
+    );
+    if (!response.ok) {
+      console.error("Search failed");
+      return;
+    }
+    const wallets = await response.json();
+    allWallets = wallets;
+    offset = 0;
+    render();
+  } catch (e) {
+    console.error("Search error:", e);
+  }
+}
+
 async function init(){
   try{
     allWallets=await fetch('/api/top?limit=500').then(r=>r.json());
     render();
   }catch(e){}
 }
+
+// Search event listeners
+document.addEventListener("DOMContentLoaded", function() {
+  const searchInput = document.getElementById("walletSearch");
+  
+  // Enter key
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      searchWallets();
+    }
+  });
+
+  // Input temizleme → normal lista geri gelsin
+  searchInput.addEventListener("input", () => {
+    if (!searchInput.value.trim()) {
+      allWallets = [];
+      offset = 0;
+      init();
+    }
+  });
+});
+
 init();
 </script>
 <footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
