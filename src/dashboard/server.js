@@ -39,13 +39,41 @@ app.get("/api/whales", (req, res) => {
 app.get("/api/top", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   db.all(
-    `SELECT wallet, total_volume, transfer_count, whale_score, last_seen
+    `SELECT wallet, total_volume, transfer_count, whale_score, last_seen,
      behavior, incoming_volume, outgoing_volume
      FROM wallets
      WHERE wallet != '0x0000000000000000000000000000000000000000'
      AND total_volume < 1e15
      ORDER BY total_volume DESC LIMIT ?`,
     [limit],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    }
+  );
+});
+
+// ========================
+// API: wallet arama
+// ========================
+app.get("/api/wallets/search", (req, res) => {
+  const query = String(req.query.q || "").trim();
+
+  if (!query) {
+    return res.json([]);
+  }
+
+  const searchTerm = `%${query}%`;
+
+  db.all(
+    `SELECT wallet, total_volume, transfer_count, whale_score,
+            last_seen, behavior, incoming_volume, outgoing_volume
+     FROM wallets
+     WHERE wallet != '0x0000000000000000000000000000000000000000'
+     AND wallet LIKE ?
+     ORDER BY total_volume DESC
+     LIMIT 20`,
+    [searchTerm],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
       res.json(rows);
