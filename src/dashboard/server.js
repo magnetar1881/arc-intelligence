@@ -82,6 +82,67 @@ app.get("/api/wallets/search", (req, res) => {
 });
 
 // ========================
+// API: tek cüzdan detayı
+// ========================
+app.get("/api/wallets/:address", (req, res) => {
+  const address = String(req.params.address || "").trim().toLowerCase();
+
+  if (!address || address.length < 10) {
+    return res.status(400).json({ error: "Geçersiz cüzdan adresi" });
+  }
+
+  db.get(
+    `SELECT wallet, total_volume, transfer_count, whale_score, last_seen,
+            behavior, incoming_volume, outgoing_volume
+     FROM wallets
+     WHERE lower(wallet) = ?`,
+    [address],
+    (err, wallet) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      if (!wallet) {
+        return res.status(404).json({ error: "Cüzdan bulunamadı" });
+      }
+
+      db.all(
+        `SELECT txHash, token, amount, type, timestamp
+         FROM whales
+         WHERE lower(wallet) = ?
+         ORDER BY timestamp DESC
+         LIMIT 50`,
+        [address],
+        (err2, txs) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+
+          db.all(
+            `SELECT token,
+                    COUNT(*) as transfer_count,
+                    SUM(amount) as volume,
+                    MIN(timestamp) as first_seen,
+                    MAX(timestamp) as last_seen
+             FROM whales
+             WHERE lower(wallet) = ?
+             GROUP BY token
+             ORDER BY transfer_count DESC
+             LIMIT 20`,
+            [address],
+            (err3, tokens) => {
+              if (err3) return res.status(500).json({ error: err3.message });
+
+              res.json({
+                wallet,
+                transactions: txs || [],
+                tokenActivity: tokens || []
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// ========================
 // API: token aktivitesi
 // ========================
 app.get("/api/tokens", (req, res) => {
@@ -265,6 +326,10 @@ app.get("/swap", (req, res) => {
 
 app.get("/bridge", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/bridge.html"));
+});
+
+app.get("/wallets/:address", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/wallet.html"));
 });
 
 // wallet.js static olarak zaten /public'ten servis ediliyor
