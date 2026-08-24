@@ -189,7 +189,15 @@ async function startScanner() {
               wallet: from,
               token: symbol,
               amount,
-              type: "WHALE"
+              type: "WHALE_OUT"
+            });
+
+            await insertWhale({
+              txHash,
+              wallet: to,
+              token: symbol,
+              amount,
+              type: "WHALE_IN"
             });
 
             const message = `
