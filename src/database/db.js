@@ -15,12 +15,13 @@ db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS whales (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      txHash TEXT UNIQUE,
+      txHash TEXT,
       wallet TEXT,
       token TEXT,
       amount REAL,
       type TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(txHash, wallet)
     )
   `);
 
