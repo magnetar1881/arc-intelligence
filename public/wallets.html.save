@@ -130,7 +130,7 @@ function render(){
   const el=document.getElementById('wallet-list');
   if(!allWallets.length){el.innerHTML='<div class="empty">No wallet data yet.</div>';return}
   el.innerHTML=allWallets.slice(0,offset+PAGE).map((w,i)=>`
-    <div class="wallet-row" style="cursor:pointer" onclick="window.location.href='/wallets/${w.wallet}'">
+    
       <div class="w-rank">${i+1}</div>
       <div class="w-info">
         <div class="w-addr">${w.wallet}</div>

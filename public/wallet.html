@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Wallet Detail — Arc Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080d1a;--bg2:#0c1322;--bg3:#111b30;--bg4:#162040;
+  --border:#1a2a45;--border2:#233660;--border3:#2d4278;
+  --blue:#3b82f6;--blue2:#2563eb;--blue3:#60a5fa;--blue4:#93c5fd;
+  --purple:#8b5cf6;--green:#10b981;--amber:#f59e0b;--red:#ef4444;
+  --text:#f1f5f9;--text2:#cbd5e1;--text3:#94a3b8;--muted:#64748b;--dim:#4a6080;
+  --sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,13,26,0.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(59,130,246,0.12)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;text-decoration:none;color:var(--text)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 0 10px var(--blue);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.nav-back{font-size:12px;color:var(--blue3);text-decoration:none;font-weight:600;transition:color .15s}
+.nav-back:hover{color:var(--blue4)}
+.page{max-width:960px;margin:0 auto;padding:24px 28px}
+.page-title{font-size:20px;font-weight:700;margin-bottom:4px}
+.page-sub{font-size:13px;color:var(--text3);margin-bottom:20px;font-family:var(--mono);word-break:break-all}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+.stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;font-weight:500}
+.stat-value{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--blue3)}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.card-head{padding:13px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)}
+.tbl-header{padding:8px 20px;display:grid;grid-template-columns:1.4fr 1fr 100px 80px 110px;gap:12px;border-bottom:1px solid var(--border)}
+.tbl-hl{font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+.tx-row{padding:11px 20px;border-bottom:1px solid rgba(26,42,69,.6);display:grid;grid-template-columns:1.4fr 1fr 100px 80px 110px;gap:12px;align-items:center;transition:background .15s}
+.tx-row:hover{background:rgba(59,130,246,.04)}
+.tx-row:last-child{border-bottom:none}
+.mono{font-family:var(--mono);font-size:12px}
+.token-row{padding:11px 20px;border-bottom:1px solid rgba(26,42,69,.6);display:grid;grid-template-columns:1fr 90px 110px 120px;gap:12px;align-items:center}
+.token-row:last-child{border-bottom:none}
+.empty{padding:40px 20px;text-align:center;font-size:13px;color:var(--dim)}
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.badge{font-size:9px;font-family:var(--mono);font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.5px}
+@media(max-width:768px){
+  .page{padding:16px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .tbl-header,.tx-row{grid-template-columns:1fr 80px 70px}
+  .tbl-header span:nth-child(1),.tx-row > *:nth-child(1),
+  .tbl-header span:nth-child(5),.tx-row > *:nth-child(5){display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/"><div class="logo-dot"></div>Arc Intelligence</a>
+  <a class="nav-back" href="/wallets">← Wallets</a>
+</header>
+
+<div class="page">
+  <div class="page-title">Wallet Profile</div>
+  <div class="page-sub" id="wallet-address">Loading...</div>
+
+  <div class="stats" id="stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+    <div class="stat"><div class="stat-label">Total Volume</div><div class="stat-value" id="s-vol">—</div></div>
+    <div class="stat"><div class="stat-label">Incoming</div><div class="stat-value" id="s-in" style="color:var(--green)">—</div></div>
+    <div class="stat"><div class="stat-label">Outgoing</div><div class="stat-value" id="s-out" style="color:var(--amber)">—</div></div>
+    <div class="stat"><div class="stat-label">Transfers</div><div class="stat-value" id="s-txs">—</div></div>
+    <div class="stat"><div class="stat-label">Whale Score</div><div class="stat-value" id="s-score">—</div></div>
+    <div class="stat"><div class="stat-label">Behavior</div><div class="stat-value" id="s-behavior">—</div></div>
+    <div class="stat"><div class="stat-label">Last Seen</div><div class="stat-value" id="s-last" style="font-size:14px">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Recent Transactions</span>
+      <span style="font-size:10px;color:var(--dim)" id="tx-count"></span>
+    </div>
+    <div class="tbl-header">
+      <span class="tbl-hl">Tx Hash</span>
+      <span class="tbl-hl">Token</span>
+      <span class="tbl-hl" style="text-align:right">Amount</span>
+      <span class="tbl-hl">Type</span>
+      <span class="tbl-hl" style="text-align:right">Time</span>
+    </div>
+    <div id="tx-list">
+      <div style="padding:20px"><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:50%"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Token Activity</span>
+    </div>
+    <div class="tbl-header" style="grid-template-columns:1fr 90px 110px 120px">
+      <span class="tbl-hl">Token</span>
+      <span class="tbl-hl" style="text-align:right">Txs</span>
+      <span class="tbl-hl" style="text-align:right">Volume</span>
+      <span class="tbl-hl" style="text-align:right">Last Seen</span>
+    </div>
+    <div id="token-list">
+      <div style="padding:20px"><div class="skeleton" style="height:12px;width:60%"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function fmt(n){
+  const v=Number(n);
+  if(!isFinite(v)||v>1e18)return'—';
+  if(v>=1e12)return(v/1e12).toFixed(2)+'T';
+  if(v>=1e9)return(v/1e9).toFixed(2)+'B';
+  if(v>=1e6)return(v/1e6).toFixed(2)+'M';
+  if(v>=1e3)return(v/1e3).toFixed(1)+'K';
+  return v.toFixed(2);
+}
+function shortHash(h){if(!h)return'—';return h.slice(0,10)+'...'+h.slice(-6)}
+function timeAgo(ts){
+  if(!ts)return'—';
+  const d=new Date(ts.includes('T')||ts.includes('Z')?ts:ts+' UTC');
+  const diff=Math.floor((Date.now()-d)/1000);
+  if(diff<60)return diff+'s ago';
+  if(diff<3600)return Math.floor(diff/60)+'m ago';
+  if(diff<86400)return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
+function behaviorBadge(b){
+  const map={
+    holder:{label:'HOLDER',color:'#10b981',bg:'rgba(16,185,129,.1)',border:'rgba(16,185,129,.25)'},
+    trader:{label:'TRADER',color:'#3b82f6',bg:'rgba(59,130,246,.1)',border:'rgba(59,130,246,.25)'},
+    exited:{label:'EXITED',color:'#ef4444',bg:'rgba(239,68,68,.1)',border:'rgba(239,68,68,.25)'},
+    unknown:{label:'NEW',color:'#64748b',bg:'rgba(100,116,139,.1)',border:'rgba(100,116,139,.25)'}
+  };
+  const s=map[b]||map.unknown;
+  return `<span class="badge" style="color:${s.color};background:${s.bg};border:1px solid ${s.border}">${s.label}</span>`;
+}
+
+async function init(){
+  const pathParts = window.location.pathname.split('/');
+  const address = pathParts[pathParts.length-1];
+
+  if(!address || address.length < 10){
+    document.getElementById('wallet-address').textContent = 'Invalid address';
+    return;
+  }
+
+  document.getElementById('wallet-address').textContent = address;
+
+  try{
+    const res = await fetch(`/api/wallets/${address}`);
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      document.getElementById('tx-list').innerHTML = `<div class="empty">${err.error || 'Wallet not found'}</div>`;
+      document.getElementById('token-list').innerHTML = '';
+      return;
+    }
+    const data = await res.json();
+    const w = data.wallet;
+
+    document.getElementById('s-vol').textContent = fmt(w.total_volume);
+    document.getElementById('s-txs').textContent = (w.transfer_count||0).toLocaleString();
+    document.getElementById('s-score').textContent = Number(w.whale_score||0).toFixed(2);
+    document.getElementById('s-behavior').innerHTML = behaviorBadge(w.behavior);
+    document.getElementById('s-last').textContent = timeAgo(w.last_seen);
+    document.getElementById('s-in').textContent = fmt(w.incoming_volume);
+    document.getElementById('s-out').textContent = fmt(w.outgoing_volume);
+
+    const txs = data.transactions || [];
+    document.getElementById('tx-count').textContent = txs.length + ' shown';
+    if(!txs.length){
+      document.getElementById('tx-list').innerHTML = '<div class="empty">No transactions recorded yet.</div>';
+    } else {
+      document.getElementById('tx-list').innerHTML = txs.map(t => `
+        <div class="tx-row">
+          <div class="mono">
+            <a href="https://testnet.arcscan.app/tx/${t.txHash}" target="_blank" rel="noopener"
+               style="color:var(--blue3);text-decoration:none" title="${t.txHash}">
+              ${shortHash(t.txHash)}
+            </a>
+          </div>
+          <div class="mono" style="color:var(--blue3)">${t.token || '—'}</div>
+          <div class="mono" style="color:var(--green);text-align:right;font-weight:600">${fmt(t.amount)}</div>
+          <div class="mono" style="color:var(--muted)">${t.type || 'WHALE'}</div>
+          <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.timestamp)}</div>
+        </div>
+      `).join('');
+    }
+
+    const tokens = data.tokenActivity || [];
+    if(!tokens.length){
+      document.getElementById('token-list').innerHTML = '<div class="empty">No token activity.</div>';
+    } else {
+      document.getElementById('token-list').innerHTML = tokens.map(t => `
+        <div class="token-row">
+          <div class="mono" style="color:var(--blue3);font-weight:600">${t.token || '—'}</div>
+          <div class="mono" style="text-align:right;color:var(--text2)">${t.transfer_count}</div>
+          <div class="mono" style="text-align:right;color:var(--green)">${fmt(t.volume)}</div>
+          <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.last_seen)}</div>
+        </div>
+      `).join('');
+    }
+
+  }catch(e){
+    console.error(e);
+    document.getElementById('tx-list').innerHTML = '<div class="empty">Failed to load wallet data.</div>';
+  }
+}
+
+init();
+</script>
+
+<footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <span style="font-weight:600">Arc Intelligence — lensora.xyz</span>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.12);border-radius:6px">
+      <img src="/arc-logo.png" alt="Arc Network" style="height:16px;opacity:.85"/>
+      <span style="font-size:10px;color:var(--text3);font-weight:500">Built on Arc Network</span>
+    </div>
+  </div>
+  <span style="font-size:10px;color:var(--muted);max-width:560px;line-height:1.6">For reference only — always verify before transacting.</span>
+</footer>
+</body>
+</html>
