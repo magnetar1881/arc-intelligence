@@ -103,15 +103,57 @@ function updateWallet(wallet, amount, direction = 'in') {
 
 function updateWalletScore(wallet) {
   return new Promise((resolve, reject) => {
+    // Smart Money Score (0.00 – 1.00)
+    // volume + aktivite + behavior + in/out dengesi
     db.run(
       `UPDATE wallets
-       SET whale_score =
-       CASE
-         WHEN total_volume > 100000 THEN 1.0
-         WHEN total_volume > 50000 THEN 0.7
-         WHEN total_volume > 10000 THEN 0.4
-         ELSE 0.1
-       END
+       SET whale_score = ROUND(
+         MIN(1.0,
+           (
+             /* Volume component (max 0.45) */
+             CASE
+               WHEN total_volume >= 1000000 THEN 0.45
+               WHEN total_volume >= 250000  THEN 0.35
+               WHEN total_volume >= 100000  THEN 0.25
+               WHEN total_volume >= 50000   THEN 0.15
+               WHEN total_volume >= 10000   THEN 0.08
+               ELSE 0.03
+             END
+             +
+             /* Activity component (max 0.25) */
+             CASE
+               WHEN transfer_count >= 50 THEN 0.25
+               WHEN transfer_count >= 20 THEN 0.18
+               WHEN transfer_count >= 10 THEN 0.12
+               WHEN transfer_count >= 5  THEN 0.08
+               WHEN transfer_count >= 2  THEN 0.04
+               ELSE 0.02
+             END
+             +
+             /* Behavior component (max 0.20) */
+             CASE behavior
+               WHEN 'trader' THEN 0.20
+               WHEN 'holder' THEN 0.12
+               WHEN 'exited' THEN 0.05
+               ELSE 0.08
+             END
+             +
+             /* Flow balance component (max 0.10) */
+             CASE
+               WHEN incoming_volume > 0 AND outgoing_volume > 0
+                    AND outgoing_volume <= incoming_volume * 1.5
+                    AND outgoing_volume >= incoming_volume * 0.2
+                 THEN 0.10
+               WHEN incoming_volume > 0 AND outgoing_volume = 0
+                 THEN 0.06
+               WHEN outgoing_volume > incoming_volume * 2
+                 THEN 0.02
+               ELSE 0.04
+             END
+           )
+         ),
+         2
+       )
        WHERE wallet = ?`,
       [wallet],
       (err) => {
@@ -159,6 +201,65 @@ function updateTokenStats(token, symbol, type) {
         type === "MINT" ? 1 : 0,
         type === "MINT" ? 1 : 0
       ],
+      (err) => {
+        if (err) reject(err);
+        else resolve();
+      }
+    );
+  });
+}
+
+function updateTokenRiskScore(token) {
+  return new Promise((resolve, reject) => {
+    // trust_score: 0.00 (riskli) → 1.00 (daha güvenilir)
+    db.run(
+      `UPDATE tokens
+       SET trust_score = ROUND(
+         MIN(1.0,
+           MAX(0.0,
+             (
+               /* Activity (max 0.35) */
+               CASE
+                 WHEN transfer_count >= 100 THEN 0.35
+                 WHEN transfer_count >= 50  THEN 0.28
+                 WHEN transfer_count >= 20  THEN 0.20
+                 WHEN transfer_count >= 10  THEN 0.12
+                 WHEN transfer_count >= 3   THEN 0.06
+                 ELSE 0.02
+               END
+               +
+               /* Unique wallets (max 0.30) */
+               CASE
+                 WHEN unique_wallets >= 50 THEN 0.30
+                 WHEN unique_wallets >= 20 THEN 0.22
+                 WHEN unique_wallets >= 10 THEN 0.15
+                 WHEN unique_wallets >= 5  THEN 0.10
+                 WHEN unique_wallets >= 2  THEN 0.05
+                 ELSE 0.02
+               END
+               +
+               /* Mint pressure — yüksek mint oranı risk (max 0.25, ceza) */
+               CASE
+                 WHEN transfer_count = 0 THEN 0.05
+                 WHEN (CAST(mint_count AS REAL) / transfer_count) >= 0.8 THEN 0.02
+                 WHEN (CAST(mint_count AS REAL) / transfer_count) >= 0.5 THEN 0.08
+                 WHEN (CAST(mint_count AS REAL) / transfer_count) >= 0.2 THEN 0.15
+                 ELSE 0.25
+               END
+               +
+               /* Concentration penalty offset (max 0.10) */
+               CASE
+                 WHEN unique_wallets <= 1 AND transfer_count >= 5 THEN 0.01
+                 WHEN unique_wallets <= 3 AND transfer_count >= 15 THEN 0.03
+                 ELSE 0.10
+               END
+             )
+           )
+         ),
+         2
+       )
+       WHERE token = ?`,
+      [token],
       (err) => {
         if (err) reject(err);
         else resolve();
@@ -274,6 +375,20 @@ function getWalletStats(wallet) {
   });
 }
 
+function getTokenTrustScore(token) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT token, symbol, trust_score, transfer_count, mint_count, unique_wallets
+       FROM tokens WHERE token = ? OR symbol = ?`,
+      [token, token],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
 function getRecentWhalesForWallet(wallet, limit = 5) {
   return new Promise((resolve, reject) => {
     db.all(
@@ -347,6 +462,7 @@ module.exports = {
   updateWalletScore,
   updateWalletBehavior,
   updateTokenStats,
+  updateTokenRiskScore,
   getTopWhales,
   addSubscription,
   removeSubscription,
@@ -354,6 +470,7 @@ module.exports = {
   getSubscribersForToken,
   getSubscriptionsForChat,
   getWalletStats,
+  getTokenTrustScore,
   getRecentWhalesForWallet,
   getDigestByToken,
   getDigestByWallet,

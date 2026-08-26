@@ -67,16 +67,16 @@ node src/app.js
 
 #### Data Intelligence
 - Anomaly detection
-- Smart money tracking
-- Token risk scoring
-- Smart Money Score
+- Smart money tracking 
+- Token risk scoring ✓
+- Smart Money Score ✓
 - AI transaction explanation
 
 #### AI Layer
 - Portfolio tracking
 - Watchlists
 - AI daily market summaries
-- Whale signal context
+- Whale signal context ✓
 
 #### Ecosystem
 - Swap & Bridge execution on mainnet
