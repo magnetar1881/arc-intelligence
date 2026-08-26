@@ -1,13 +1,3 @@
-const {
-  insertWhale,
-  updateWallet,
-  updateWalletScore,
-  updateWalletBehavior,
-  updateTokenStats,
-  updateTokenRiskScore,
-  getWalletStats,
-  getTokenTrustScore
-} = require("../database/db");
 
 const { ethers } = require("ethers");
 const { askArc } = require("../appkit/askArc");
@@ -205,64 +195,30 @@ async function startScanner() {
               type: "WHALE_IN"
             });
 
-            // --- Whale signal context ---
-            let fromStats = null;
-            let toStats = null;
-            let tokenMeta = null;
-            try {
-              fromStats = await getWalletStats(from);
-              toStats = await getWalletStats(to);
-              tokenMeta = await getTokenTrustScore(token);
-            } catch (e) {
-              console.log("context fetch skip:", e.message);
-            }
-
-            const fmtScore = (v) =>
-              v === null || v === undefined ? "n/a" : Number(v).toFixed(2);
-            const fmtBehavior = (b) => (b || "unknown").toUpperCase();
-            const trust = tokenMeta ? Number(tokenMeta.trust_score || 0) : null;
-            const riskLabel =
-              trust === null
-                ? "n/a"
-                : trust >= 0.7
-                  ? "LOW"
-                  : trust >= 0.4
-                    ? "MEDIUM"
-                    : "HIGH";
-
             const message = `
 🐋 <b>WHALE ALERT</b> (${sizeTier})
 
 Token: ${symbol}
 Amount: ${amount.toLocaleString()}
-Token trust: <b>${fmtScore(trust)}</b> (risk: ${riskLabel})
 
 From:
-<code>${from}</code>
-Score: ${fmtScore(fromStats?.whale_score)} · ${fmtBehavior(fromStats?.behavior)}
+${from}
 
 To:
-<code>${to}</code>
-Score: ${fmtScore(toStats?.whale_score)} · ${fmtBehavior(toStats?.behavior)}
+${to}
 
 Tx:
-<code>${txHash}</code>
+${txHash}
             `;
 
             console.log("🐋 WHALE:", symbol, amount);
             await sendAlert(message, token);
 
             // ========================
-            // WHALE AGENT — AI analizi (context'li)
+            // WHALE AGENT — AI analizi
             // ========================
             try {
-              const agentQuestion =
-                `A large transfer just happened on Arc. ` +
-                `Wallet ${from} (score ${fmtScore(fromStats?.whale_score)}, behavior ${fmtBehavior(fromStats?.behavior)}) ` +
-                `sent ${amount.toLocaleString()} ${symbol} ` +
-                `to ${to} (score ${fmtScore(toStats?.whale_score)}, behavior ${fmtBehavior(toStats?.behavior)}). ` +
-                `Token trust_score=${fmtScore(trust)} (risk ${riskLabel}). ` +
-                `Give a short whale signal context: what this likely means, who looks like smart money vs noise, and any caution.`;
+              const agentQuestion = `A large transfer just happened on Arc. Wallet ${from} transferred ${amount.toLocaleString()} ${symbol}. What do we know about this wallet? Is it a holder, trader, or new wallet? Any context from recent activity?`;
 
               const analysis = await askArc(agentQuestion, "whale-agent");
 
@@ -273,6 +229,7 @@ Tx:
             } catch (e) {
               console.log("agent analysis skip:", e.message);
             }
+
 
           } catch (e) {
             console.log("log skip:", e.message);

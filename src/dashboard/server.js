@@ -148,7 +148,7 @@ app.get("/api/wallets/:address", (req, res) => {
 app.get("/api/tokens", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 10, 50);
   db.all(
-    `SELECT token, symbol, transfer_count, mint_count, unique_wallets
+    `SELECT token, symbol, transfer_count, mint_count, unique_wallets, trust_score
      FROM tokens ORDER BY transfer_count DESC LIMIT ?`,
     [limit],
     (err, rows) => {
