@@ -389,6 +389,22 @@ function getTokenTrustScore(token) {
   });
 }
 
+function getWhaleByTxHash(txHash) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT txHash, wallet, token, amount, type, timestamp
+       FROM whales
+       WHERE txHash = ?
+       ORDER BY type DESC`,
+      [txHash],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
 function getRecentWhalesForWallet(wallet, limit = 5) {
   return new Promise((resolve, reject) => {
     db.all(
@@ -472,6 +488,7 @@ module.exports = {
   getWalletStats,
   getTokenTrustScore,
   getRecentWhalesForWallet,
+  getWhaleByTxHash,
   getDigestByToken,
   getDigestByWallet,
   getDigestTotalCount
