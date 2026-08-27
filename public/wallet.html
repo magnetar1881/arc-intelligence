@@ -174,14 +174,6 @@ async function explainTx(txHash, btn){
 async function init(){
   const pathParts = window.location.pathname.split('/');
   const address = pathParts[pathParts.length-1];
-  // ... mevcut init kodun aynı kalsın
-}
-
-init();
-
-async function init(){
-  const pathParts = window.location.pathname.split('/');
-  const address = pathParts[pathParts.length-1];
 
   if(!address || address.length < 10){
     document.getElementById('wallet-address').textContent = 'Invalid address';
