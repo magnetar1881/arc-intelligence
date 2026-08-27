@@ -61,6 +61,17 @@ db.run(`
       UNIQUE(chat_id, token)
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(chat_id, kind, value)
+    )
+  `);
 });
 
 function insertWhale(data) {
@@ -472,6 +483,89 @@ function getDigestTotalCount(hours = 24) {
   });
 }
 
+function addWatch(chatId, kind, value) {
+  const k = String(kind || "").toLowerCase();
+  const v = String(value || "").toLowerCase();
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT OR IGNORE INTO watchlist (chat_id, kind, value) VALUES (?, ?, ?)`,
+      [String(chatId), k, v],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this?.changes);
+      }
+    );
+  });
+}
+
+function removeWatch(chatId, kind, value) {
+  const k = String(kind || "").toLowerCase();
+  const v = String(value || "").toLowerCase();
+  return new Promise((resolve, reject) => {
+    db.run(
+      `DELETE FROM watchlist WHERE chat_id = ? AND kind = ? AND value = ?`,
+      [String(chatId), k, v],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this?.changes);
+      }
+    );
+  });
+}
+
+function getWatchlistForChat(chatId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT kind, value, created_at FROM watchlist WHERE chat_id = ? ORDER BY created_at DESC`,
+      [String(chatId)],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function getWatchers(kind, value) {
+  const k = String(kind || "").toLowerCase();
+  const v = String(value || "").toLowerCase();
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT DISTINCT chat_id FROM watchlist WHERE kind = ? AND value = ?`,
+      [k, v],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map((r) => r.chat_id));
+      }
+    );
+  });
+}
+
+function getStablecoinFlow(hours = 24) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         upper(token) as token,
+         COUNT(*) as tx_count,
+         SUM(amount) as volume,
+         SUM(CASE WHEN type = 'WHALE_IN' THEN amount ELSE 0 END) as inflow,
+         SUM(CASE WHEN type = 'WHALE_OUT' THEN amount ELSE 0 END) as outflow,
+         MIN(timestamp) as first_seen,
+         MAX(timestamp) as last_seen
+       FROM whales
+       WHERE timestamp >= datetime('now', ?)
+         AND upper(token) IN ('USDC', 'EURC')
+       GROUP BY upper(token)
+       ORDER BY volume DESC`,
+      [`-${hours} hours`],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
 module.exports = {
   insertWhale,
   updateWallet,
@@ -489,6 +583,11 @@ module.exports = {
   getTokenTrustScore,
   getRecentWhalesForWallet,
   getWhaleByTxHash,
+  addWatch,
+  removeWatch,
+  getWatchlistForChat,
+  getWatchers,
+  getStablecoinFlow,
   getDigestByToken,
   getDigestByWallet,
   getDigestTotalCount

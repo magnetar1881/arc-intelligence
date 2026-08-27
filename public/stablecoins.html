@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Stablecoin Flow — Arc Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080d1a;--bg2:#0c1322;--bg3:#111b30;
+  --border:#1a2a45;--blue3:#60a5fa;--green:#10b981;--amber:#f59e0b;
+  --text:#f1f5f9;--text2:#cbd5e1;--text3:#94a3b8;--dim:#4a6080;
+  --sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,13,26,0.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(59,130,246,0.12)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;text-decoration:none;color:var(--text)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6)}
+.nav-back{font-size:12px;color:var(--blue3);text-decoration:none;font-weight:600}
+.page{max-width:900px;margin:0 auto;padding:24px 28px}
+.page-title{font-size:20px;font-weight:700;margin-bottom:4px}
+.page-sub{font-size:13px;color:var(--text3);margin-bottom:20px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px}
+.stat-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.stat-value{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--blue3)}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.card-head{padding:13px 20px;border-bottom:1px solid var(--border)}
+.card-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)}
+.row{padding:14px 20px;border-bottom:1px solid rgba(26,42,69,.6);display:grid;grid-template-columns:80px 1fr 1fr 1fr 80px;gap:12px;align-items:center}
+.row:last-child{border-bottom:none}
+.mono{font-family:var(--mono);font-size:12px}
+.empty{padding:40px 20px;text-align:center;color:var(--dim)}
+@media(max-width:768px){.stats{grid-template-columns:1fr 1fr}.row{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/"><div class="logo-dot"></div>Arc Intelligence</a>
+  <a class="nav-back" href="/">← Back</a>
+</header>
+<div class="page">
+  <div class="page-title">Stablecoin Flow</div>
+  <div class="page-sub">USDC / EURC whale flow on Arc (last 24h)</div>
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Volume</div><div class="stat-value" id="s-vol">—</div></div>
+    <div class="stat"><div class="stat-label">Inflow</div><div class="stat-value" id="s-in" style="color:var(--green)">—</div></div>
+    <div class="stat"><div class="stat-label">Outflow</div><div class="stat-value" id="s-out" style="color:var(--amber)">—</div></div>
+    <div class="stat"><div class="stat-label">Txs</div><div class="stat-value" id="s-tx">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">By Token</span></div>
+    <div class="row" style="opacity:.7">
+      <div class="mono">Token</div>
+      <div class="mono">Volume</div>
+      <div class="mono">Inflow</div>
+      <div class="mono">Outflow</div>
+      <div class="mono">Txs</div>
+    </div>
+    <div id="list"><div class="empty">Loading...</div></div>
+  </div>
+</div>
+<script>
+function fmt(n){
+  const v=Number(n);
+  if(!isFinite(v)||v>1e18)return'—';
+  if(v>=1e12)return(v/1e12).toFixed(2)+'T';
+  if(v>=1e9)return(v/1e9).toFixed(2)+'B';
+  if(v>=1e6)return(v/1e6).toFixed(2)+'M';
+  if(v>=1e3)return(v/1e3).toFixed(1)+'K';
+  return v.toFixed(2);
+}
+async function init(){
+  try{
+    const data = await fetch('/api/stablecoin-flow?hours=24').then(r=>r.json());
+    document.getElementById('s-vol').textContent = fmt(data.totals?.volume);
+    document.getElementById('s-in').textContent = fmt(data.totals?.inflow);
+    document.getElementById('s-out').textContent = fmt(data.totals?.outflow);
+    document.getElementById('s-tx').textContent = (data.totals?.tx_count||0).toLocaleString();
+    const rows = data.tokens || [];
+    if(!rows.length){
+      document.getElementById('list').innerHTML = '<div class="empty">No USDC/EURC whale flow in this window.</div>';
+      return;
+    }
+    document.getElementById('list').innerHTML = rows.map(t=>`
+      <div class="row">
+        <div class="mono" style="color:var(--blue3);font-weight:700">${t.token}</div>
+        <div class="mono">${fmt(t.volume)}</div>
+        <div class="mono" style="color:var(--green)">${fmt(t.inflow)}</div>
+        <div class="mono" style="color:var(--amber)">${fmt(t.outflow)}</div>
+        <div class="mono">${t.tx_count}</div>
+      </div>
+    `).join('');
+  }catch(e){
+    document.getElementById('list').innerHTML = '<div class="empty">Failed to load flow data.</div>';
+  }
+}
+init();
+</script>
+</body>
+</html>

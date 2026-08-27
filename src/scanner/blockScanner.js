@@ -250,7 +250,7 @@ Tx:
             `;
 
             console.log("🐋 WHALE:", symbol, amount);
-            await sendAlert(message, token);
+            await sendAlert(message, token, [from, to]);await sendAlert(message, token, [from, to]);
 
             // ========================
             // WHALE AGENT — AI analizi (context'li)
@@ -268,7 +268,7 @@ Tx:
 
               if (analysis.success && analysis.answer) {
                 const agentMessage = `🤖 <b>AI Analysis</b>\n\n${analysis.answer}`;
-                await sendAlert(agentMessage, token);
+                await sendAlert(agentMessage, token, [from, to]);
               }
             } catch (e) {
               console.log("agent analysis skip:", e.message);

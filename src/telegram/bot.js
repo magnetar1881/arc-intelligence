@@ -8,6 +8,10 @@ const {
   getSubscriptionsForChat,
   getWalletStats,
   getRecentWhalesForWallet,
+  addWatch,
+  removeWatch,
+  getWatchlistForChat,
+  getWatchers,
   getDigestByToken,
   getDigestByWallet,
   getDigestTotalCount
@@ -26,7 +30,7 @@ bot.on("message", (msg) => {
 // ========================
 // ALARM GÖNDERME (artık tek CHAT_ID değil, abonelere göre)
 // ========================
-async function sendAlert(message, tokenAddress) {
+async function sendAlert(message, tokenAddress, wallets = []) {
   try {
     const subscriberIds = new Set();
 
@@ -38,13 +42,30 @@ async function sendAlert(message, tokenAddress) {
     if (tokenAddress) {
       const subs = await getSubscribersForToken(tokenAddress);
       subs.forEach((id) => subscriberIds.add(id));
+
+      // Token'ı watchlist'e ekleyen kullanıcıları da ekle
+      const tokenWatchers = await getWatchers("token", tokenAddress);
+      tokenWatchers.forEach((id) => subscriberIds.add(id));
+    }
+
+    // Watchlist'e eklenmiş wallet'ları takip eden kullanıcıları ekle
+    for (const w of wallets) {
+      if (!w) continue;
+
+      const walletWatchers = await getWatchers("wallet", w);
+      walletWatchers.forEach((id) => subscriberIds.add(id));
     }
 
     for (const chatId of subscriberIds) {
       try {
-        await bot.sendMessage(chatId, message, { parse_mode: "HTML" });
+        await bot.sendMessage(chatId, message, {
+          parse_mode: "HTML"
+        });
       } catch (err) {
-        console.log(`Telegram send error (chat ${chatId}):`, err.message);
+        console.log(
+          `Telegram send error (chat ${chatId}):`,
+          err.message
+        );
       }
     }
   } catch (err) {
@@ -226,6 +247,50 @@ bot.onText(/\/digest(?:\s+(\d+))?/, async (msg, match) => {
   }
 });
 
+bot.onText(/\/watch\s+(wallet|token)\s+(\S+)/i, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const kind = match[1].toLowerCase();
+  const value = match[2];
+
+  try {
+    await addWatch(chatId, kind, value);
+    bot.sendMessage(chatId, `✅ Watchlist: ${kind} → <code>${value}</code>`, { parse_mode: "HTML" });
+  } catch (err) {
+    console.log("watch error:", err.message);
+    bot.sendMessage(chatId, "Watchlist eklenirken hata oluştu.");
+  }
+});
+
+bot.onText(/\/unwatch\s+(wallet|token)\s+(\S+)/i, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const kind = match[1].toLowerCase();
+  const value = match[2];
+
+  try {
+    await removeWatch(chatId, kind, value);
+    bot.sendMessage(chatId, `🚫 Kaldırıldı: ${kind} → <code>${value}</code>`, { parse_mode: "HTML" });
+  } catch (err) {
+    console.log("unwatch error:", err.message);
+    bot.sendMessage(chatId, "Watchlist silinirken hata oluştu.");
+  }
+});
+
+bot.onText(/\/watchlist/, async (msg) => {
+  const chatId = msg.chat.id;
+  try {
+    const rows = await getWatchlistForChat(chatId);
+    if (!rows.length) {
+      bot.sendMessage(chatId, "Watchlist boş. /watch wallet <adres> veya /watch token USDC");
+      return;
+    }
+    const lines = rows.map((r) => `• ${r.kind}: <code>${r.value}</code>`);
+    bot.sendMessage(chatId, `👀 Watchlist:\n\n${lines.join("\n")}`, { parse_mode: "HTML" });
+  } catch (err) {
+    console.log("watchlist error:", err.message);
+    bot.sendMessage(chatId, "Watchlist alınamadı.");
+  }
+});
+
 // ========================
 // /help
 // ========================
@@ -242,6 +307,11 @@ bot.onText(/\/help/, (msg) => {
 
 /top - en yüksek hacimli whale cüzdanları
 /wallet <adres> - belirli bir cüzdanı sorgula
+/watch wallet <adres>
+/watch token <adres_veya_sembol>
+/unwatch wallet <adres>
+/unwatch token <adres_veya_sembol>
+/watchlist - takip listen
 /digest [saat] - son N saatlik özet (varsayılan 24)
 /help - bu mesajı göster`
   );
