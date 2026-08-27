@@ -91,6 +91,13 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
     </div>
   </div>
 
+  <div class="card" id="explain-card" style="display:none">
+    <div class="card-head">
+      <span class="card-title">AI Transaction Explanation</span>
+    </div>
+    <div id="explain-box" style="padding:16px 20px;font-size:13px;line-height:1.7;color:var(--text2);white-space:pre-wrap"></div>
+  </div>
+
   <div class="card">
     <div class="card-head">
       <span class="card-title">Token Activity</span>
@@ -138,6 +145,40 @@ function behaviorBadge(b){
   return `<span class="badge" style="color:${s.color};background:${s.bg};border:1px solid ${s.border}">${s.label}</span>`;
 }
 
+async function explainTx(txHash, btn){
+  const card = document.getElementById('explain-card');
+  const box = document.getElementById('explain-box');
+  card.style.display = 'block';
+  box.textContent = 'Analyzing...';
+  if(btn) btn.disabled = true;
+
+  try{
+    const res = await fetch('/api/explain-tx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ txHash })
+    });
+    const data = await res.json();
+    if(!data.success){
+      box.textContent = data.error || 'Explanation failed.';
+      return;
+    }
+    box.textContent = data.answer;
+  }catch(e){
+    box.textContent = 'Explanation failed.';
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function init(){
+  const pathParts = window.location.pathname.split('/');
+  const address = pathParts[pathParts.length-1];
+  // ... mevcut init kodun aynı kalsın
+}
+
+init();
+
 async function init(){
   const pathParts = window.location.pathname.split('/');
   const address = pathParts[pathParts.length-1];
@@ -180,6 +221,10 @@ async function init(){
                style="color:var(--blue3);text-decoration:none" title="${t.txHash}">
               ${shortHash(t.txHash)}
             </a>
+            <button type="button" onclick="explainTx('${t.txHash}', this)"
+              style="margin-left:8px;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--blue3);cursor:pointer;font-family:var(--sans)">
+              Explain
+            </button>
           </div>
           <div class="mono" style="color:var(--blue3)">${t.token || '—'}</div>
           <div class="mono" style="color:var(--green);text-align:right;font-weight:600">${fmt(t.amount)}</div>

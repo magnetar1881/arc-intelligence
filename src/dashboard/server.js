@@ -6,6 +6,11 @@ const circleKit = require("../appkit/circleKit");
 const { askArc } = require("../appkit/askArc");
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
+const {
+  getWhaleByTxHash,
+  getWalletStats,
+  getTokenTrustScore
+} = require("../database/db");
 
 // DB bağlantısı (read-only, scanner ile çakışmasın)
 const DB_PATH = path.join(__dirname, "../../data/whale.db");
@@ -302,6 +307,55 @@ app.post("/api/ask", async (req, res) => {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   const result = await askArc(question, ip);
   res.json(result);
+});
+
+// ========================
+// AI TRANSACTION EXPLANATION
+// ========================
+app.post("/api/explain-tx", async (req, res) => {
+  const txHash = String(req.body?.txHash || "").trim();
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+
+  if (!txHash || txHash.length < 10) {
+    return res.status(400).json({ success: false, error: "Geçersiz tx hash" });
+  }
+
+  try {
+    const rows = await getWhaleByTxHash(txHash);
+    if (!rows.length) {
+      return res.status(404).json({ success: false, error: "Bu işlem kaydı bulunamadı" });
+    }
+
+    const outRow = rows.find((r) => r.type === "WHALE_OUT") || rows[0];
+    const inRow = rows.find((r) => r.type === "WHALE_IN") || null;
+
+    const fromWallet = outRow.wallet;
+    const toWallet = inRow ? inRow.wallet : null;
+
+    const [fromStats, toStats] = await Promise.all([
+      getWalletStats(fromWallet),
+      toWallet ? getWalletStats(toWallet) : Promise.resolve(null)
+    ]);
+
+    const tokenMeta = await getTokenTrustScore(outRow.token);
+
+    const question =
+      `Explain this Arc on-chain whale transaction in 4-6 short bullet points. ` +
+      `Tx: ${txHash}. ` +
+      `Token: ${outRow.token}. Amount: ${outRow.amount}. Type: ${outRow.type}. Time: ${outRow.timestamp}. ` +
+      `From wallet: ${fromWallet} (score ${fromStats?.whale_score ?? "n/a"}, behavior ${fromStats?.behavior || "unknown"}). ` +
+      (toWallet
+        ? `To wallet: ${toWallet} (score ${toStats?.whale_score ?? "n/a"}, behavior ${toStats?.behavior || "unknown"}). `
+        : "") +
+      `Token trust_score: ${tokenMeta?.trust_score ?? "n/a"}. ` +
+      `Do not invent data. Explain what this transfer likely means and any risk notes.`;
+
+    const result = await askArc(question, ip);
+    res.json(result);
+  } catch (err) {
+    console.log("explain-tx error:", err.message);
+    res.status(500).json({ success: false, error: "Açıklama üretilemedi" });
+  }
 });
 
 // ========================
