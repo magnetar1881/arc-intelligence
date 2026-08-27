@@ -70,18 +70,18 @@ node src/app.js
 - Smart money tracking 
 - Token risk scoring ✓
 - Smart Money Score ✓
-- AI transaction explanation
+- AI transaction explanation ✓
 
 #### AI Layer
 - Portfolio tracking
-- Watchlists
+- Watchlists ✓
 - AI daily market summaries
 - Whale signal context ✓
 
 #### Ecosystem
 - Swap & Bridge execution on mainnet
 - DEX liquidity monitoring
-- Stablecoin flow analysis (USDC / EURC)
+- Stablecoin flow analysis (USDC / EURC) ✓
 
 ---
 

@@ -9,7 +9,8 @@ const PORT = process.env.DASHBOARD_PORT || 3000;
 const {
   getWhaleByTxHash,
   getWalletStats,
-  getTokenTrustScore
+  getTokenTrustScore,
+  getStablecoinFlow
 } = require("../database/db");
 
 // DB bağlantısı (read-only, scanner ile çakışmasın)
@@ -356,6 +357,34 @@ app.post("/api/explain-tx", async (req, res) => {
     console.log("explain-tx error:", err.message);
     res.status(500).json({ success: false, error: "Açıklama üretilemedi" });
   }
+});
+
+// ========================
+// STABLECOIN FLOW (USDC / EURC)
+// ========================
+app.get("/api/stablecoin-flow", async (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 24, 168);
+  try {
+    const rows = await getStablecoinFlow(hours);
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.tx_count += Number(r.tx_count || 0);
+        acc.volume += Number(r.volume || 0);
+        acc.inflow += Number(r.inflow || 0);
+        acc.outflow += Number(r.outflow || 0);
+        return acc;
+      },
+      { tx_count: 0, volume: 0, inflow: 0, outflow: 0 }
+    );
+
+    res.json({ hours, tokens: rows, totals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/stablecoins", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/stablecoins.html"));
 });
 
 // ========================
