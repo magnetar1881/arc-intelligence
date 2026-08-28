@@ -74,7 +74,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="bridge-card">
     <div class="bridge-title">Bridge to Arc</div>
-    <div class="bridge-sub">Transfer USDC to Arc Testnet • Powered by Circle CCTP</div>
+    <div class="bridge-sub">Testnet demo • kaynak: Lensora Circle cüzdanı • alıcı: senin cüzdanın</div>
 
     <div class="field">
       <div class="field-label">From chain</div>
@@ -202,35 +202,33 @@ async function executeBridge() {
     return;
   }
 
-  showStatus('Preparing bridge transaction...', 'loading');
+  showStatus('Bridging from Lensora Circle wallet...', 'loading');
   document.getElementById('bridge-btn').disabled = true;
 
   try {
-    const result = await window.executeCircleBridge({
-      fromChain: from,
-      toChain: "Arc_Testnet",
-      token: "USDC",
-      amount
+    const res = await fetch("/api/bridge/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: "Arc_Testnet",
+        amount,
+        token: "USDC",
+        recipientAddress: connectedWallet
+      })
     });
+    const data = await res.json();
 
-    if (result.state === "success") {
-      showStatus("✅ Bridge initiated!", "success");
+    if (data.success) {
+      showStatus("✅ Bridge submitted. USDC goes to your connected wallet.", "success");
     } else {
-      showStatus(
-        "⚠️ " + (result.errorMessage || "Bridge failed."),
-        "error"
-      );
+      showStatus(data.error || "Bridge failed", "error");
     }
   } catch (e) {
-    console.error(e);
-    showStatus(
-      "⚠️ " + (e.message || "Bridge failed."),
-      "error"
-    );
+    showStatus(e.message || "Bridge failed", "error");
   }
 
   document.getElementById('bridge-btn').disabled = false;
-
 }
 
 function showStatus(msg, type) {

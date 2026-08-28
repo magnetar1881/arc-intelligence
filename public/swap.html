@@ -75,7 +75,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="swap-card">
     <div class="swap-title">Swap Tokens</div>
-    <div class="swap-sub">Swap on Arc Testnet • 0.20% fee</div>
+    <div class="swap-sub">Testnet demo • kaynak: Lensora Circle cüzdanı • alıcı: senin cüzdanın</div>
 
     <div id="swap-form">
       <div class="token-box">
@@ -84,7 +84,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
           <select class="token-select" id="token-in" onchange="onInputChange()">
             <option value="USDC">USDC</option>
             <option value="EURC">EURC</option>
-            <option value="USDT">USDT</option>
+            <option value="cirBTC">cirBTC</option>
           </select>
           <input class="token-input" id="amount-in" type="number" placeholder="0.00" oninput="onInputChange()"/>
         </div>
@@ -99,7 +99,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
           <select class="token-select" id="token-out" onchange="onInputChange()">
             <option value="EURC">EURC</option>
             <option value="USDC">USDC</option>
-            <option value="USDT">USDT</option>
+            <option value="cirBTC">cirBTC</option>
           </select>
           <input class="token-input" id="amount-out" type="number" placeholder="0.00" readonly style="color:var(--text3)"/>
         </div>
@@ -193,11 +193,6 @@ async function getEstimate() {
 }
 
 async function executeSwap() {
-
-  console.log("executeSwap başladı");
-  console.log("ethereum:", window.ethereum);
-  console.log("connectedWallet:", connectedWallet);
-
   if (!connectedWallet) {
     connectWallet();
     return;
@@ -217,36 +212,30 @@ async function executeSwap() {
     return;
   }
 
-  if (typeof window.executeCircleSwap !== "function") {
-    showStatus("swap-bundle.js yüklenmedi.", "error");
-    return;
-  }
-
-  showStatus("Waiting MetaMask...", "loading");
+  showStatus("Swapping from Lensora Circle wallet...", "loading");
   document.getElementById("swap-btn").disabled = true;
 
   try {
-
-    const result = await window.executeCircleSwap({
-      tokenIn,
-      tokenOut,
-      amountIn
+    const res = await fetch("/api/swap/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chain: "Arc_Testnet",
+        tokenIn,
+        tokenOut,
+        amountIn,
+        recipientAddress: connectedWallet
+      })
     });
+    const data = await res.json();
 
-    console.log("RESULT =", result);
-
-    if (result.state === "success") {
-      showStatus("✅ Swap Success", "success");
+    if (data.success) {
+      showStatus("✅ Swap submitted. Output goes to your connected wallet.", "success");
     } else {
-      showStatus(result.message || result.error || "Swap failed", "error");
+      showStatus(data.error || "Swap failed", "error");
     }
-
   } catch (e) {
-
-    console.error("FULL ERROR:", e);
-
     showStatus(e.message || "Swap failed", "error");
-
   }
 
   document.getElementById("swap-btn").disabled = false;

@@ -419,18 +419,46 @@ app.get("/wallets/:address", (req, res) => {
 
 // Swap execute — App Kit browser wallet desteği gelince aktif olacak
 app.post("/api/swap/execute", async (req, res) => {
-  res.json({
-    success: false,
-    error: "Browser wallet swap support is coming soon. App Kit client-side swap is in progress."
+  const { chain, tokenIn, tokenOut, amountIn, recipientAddress } = req.body || {};
+
+  if (!amountIn || !recipientAddress) {
+    return res.status(400).json({
+      success: false,
+      error: "amountIn ve recipientAddress zorunlu"
+    });
+  }
+
+  const result = await circleKit.executeSwapTokens({
+    chain: chain || "Arc_Testnet",
+    tokenIn: tokenIn || "USDC",
+    tokenOut: tokenOut || "EURC",
+    amountIn,
+    recipientAddress
   });
+
+  res.json(result);
 });
 
 // Bridge execute
 app.post("/api/bridge/execute", async (req, res) => {
-  res.json({
-    success: false,
-    error: "Browser wallet bridge support is coming soon. App Kit client-side bridge is in progress."
+  const { from, to, amount, token, recipientAddress } = req.body || {};
+
+  if (!from || !to || !amount || !recipientAddress) {
+    return res.status(400).json({
+      success: false,
+      error: "from, to, amount ve recipientAddress zorunlu"
+    });
+  }
+
+  const result = await circleKit.executeBridgeTransfer({
+    fromChain: from,
+    toChain: to,
+    amount,
+    token: token || "USDC",
+    recipientAddress
   });
+
+  res.json(result);
 });
 
 // ========================

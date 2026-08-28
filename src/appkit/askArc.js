@@ -311,7 +311,7 @@ async function askArc(question, ip = "unknown") {
     const systemPrompt = buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate);
 
     const completion = await getGroq().chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: process.env.GROQ_MODEL || "openai/gpt-oss-20b",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: question }
