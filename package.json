@@ -5,21 +5,31 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "create-wallet": "tsx --env-file=.env create-wallet.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@circle-fin/adapter-circle-wallets": "^1.7.0",
     "@circle-fin/adapter-viem-v2": "1.14.0",
     "@circle-fin/app-kit": "1.9.0",
+    "@circle-fin/developer-controlled-wallets": "^10.8.0",
     "@circle-fin/swap-kit": "1.4.0",
     "@google/generative-ai": "^0.24.1",
+    "@solana/kit": "^8.1.0",
+    "@solana/web3.js": "^1.98.4",
     "dotenv": "^17.4.2",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
     "groq-sdk": "^1.3.0",
     "node-telegram-bot-api": "^0.67.0",
     "sqlite3": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
   }
 }
