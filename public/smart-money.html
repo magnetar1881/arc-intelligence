@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Smart Money — Arc Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080d1a;--bg2:#0c1322;--border:#1a2a45;--blue3:#60a5fa;--green:#10b981;--text:#f1f5f9;--text3:#94a3b8;--dim:#4a6080;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+header{padding:12px 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);background:rgba(8,13,26,.9)}
+.logo{color:var(--text);text-decoration:none;font-weight:700}
+.page{max-width:980px;margin:0 auto;padding:24px}
+.row{display:grid;grid-template-columns:40px 1fr 90px 110px 90px 90px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center}
+.row a{color:var(--blue3);text-decoration:none;font-family:var(--mono);font-size:12px}
+.mono{font-family:var(--mono);font-size:12px}
+.empty{padding:40px;text-align:center;color:var(--dim)}
+.badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/">Arc Intelligence</a>
+  <a href="/" style="color:var(--blue3);text-decoration:none;font-size:12px">← Back</a>
+</header>
+<div class="page">
+  <h1 style="font-size:20px;margin-bottom:6px">Smart Money</h1>
+  <p style="color:var(--text3);font-size:13px;margin-bottom:18px">Wallets ranked by Smart Money Score</p>
+  <div class="row" style="opacity:.6;font-size:11px">
+    <div>#</div><div>Wallet</div><div>Score</div><div>Volume</div><div>Txs</div><div>Behavior</div>
+  </div>
+  <div id="list"><div class="empty">Loading...</div></div>
+</div>
+<script>
+function fmt(n){const v=Number(n);if(!isFinite(v))return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}
+function short(a){return a?a.slice(0,6)+'…'+a.slice(-4):'—'}
+async function init(){
+  const rows=await fetch('/api/smart-money?limit=50').then(r=>r.json());
+  if(!rows.length){document.getElementById('list').innerHTML='<div class="empty">No scored wallets yet.</div>';return}
+  document.getElementById('list').innerHTML=rows.map((w,i)=>`
+    <div class="row">
+      <div class="mono">${i+1}</div>
+      <div><a href="/wallets/${w.wallet}">${short(w.wallet)}</a></div>
+      <div class="mono" style="color:var(--blue3)">${Number(w.whale_score||0).toFixed(2)}</div>
+      <div class="mono">${fmt(w.total_volume)}</div>
+      <div class="mono">${(w.transfer_count||0).toLocaleString()}</div>
+      <div class="badge">${(w.behavior||'—').toUpperCase()}</div>
+    </div>`).join('');
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Anomalies — Arc Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080d1a;--bg2:#0c1322;--border:#1a2a45;--blue3:#60a5fa;--amber:#f59e0b;--red:#ef4444;--text:#f1f5f9;--text3:#94a3b8;--dim:#4a6080;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh}
+header{padding:12px 28px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+.logo{color:var(--text);text-decoration:none;font-weight:700}
+.page{max-width:980px;margin:0 auto;padding:24px}
+.row{display:grid;grid-template-columns:90px 1fr 80px 110px 90px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:center}
+.mono{font-family:var(--mono);font-size:12px}
+.row a{color:var(--blue3);text-decoration:none}
+.empty{padding:40px;text-align:center;color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/">Arc Intelligence</a>
+  <a href="/" style="color:var(--blue3);text-decoration:none;font-size:12px">← Back</a>
+</header>
+<div class="page">
+  <h1 style="font-size:20px;margin-bottom:6px">Anomaly Detection</h1>
+  <p style="color:var(--text3);font-size:13px;margin-bottom:18px">Spikes and oversized whale transfers (24h)</p>
+  <div class="row" style="opacity:.6;font-size:11px">
+    <div>Type</div><div>Wallet</div><div>Token</div><div>Amount</div><div>Score</div>
+  </div>
+  <div id="list"><div class="empty">Loading...</div></div>
+</div>
+<script>
+function fmt(n){const v=Number(n);if(!isFinite(v))return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}
+function short(a){return a?a.slice(0,6)+'…'+a.slice(-4):'—'}
+async function init(){
+  const data=await fetch('/api/anomalies?hours=24').then(r=>r.json());
+  const rows=data.anomalies||[];
+  if(!rows.length){document.getElementById('list').innerHTML='<div class="empty">No anomalies in this window.</div>';return}
+  document.getElementById('list').innerHTML=rows.map(a=>`
+    <div class="row">
+      <div class="mono" style="color:var(--amber)">${a.anomaly_type}</div>
+      <div><a href="/wallets/${a.wallet}">${short(a.wallet)}</a></div>
+      <div class="mono">${a.token||'—'}</div>
+      <div class="mono">${fmt(a.amount)}</div>
+      <div class="mono">${Number(a.whale_score||0).toFixed(2)}</div>
+    </div>`).join('');
+}
+init();
+</script>
+</body>
+</html>

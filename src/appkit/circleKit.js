@@ -138,13 +138,40 @@ async function estimateBridgeTransfer({ fromChain, toChain, amount, token = "USD
 async function estimateSwapTokens({ adapter, chain, tokenIn, tokenOut, amountIn }) {
   try {
     const k = getKit();
+    const adapter = getCircleAdapter();
+    const source = process.env.CIRCLE_EVM_WALLET;
+
     const estimate = await k.estimateSwap({
-      from: { adapter, chain },
-      tokenIn,
-      tokenOut,
-      amountIn,
-      config: { kitKey: process.env.CIRCLE_KIT_KEY }
+      from: {
+        adapter,
+        chain: chain || "Arc_Testnet",
+        address: source
+      },
+      tokenIn: tokenIn || "USDC",
+      tokenOut: tokenOut || "EURC",
+      amountIn: amountIn || "1.00",
+      config: {
+        kitKey: process.env.CIRCLE_KIT_KEY,
+        allowanceStrategy: "approve"
+      }
     });
+
+    const outAmt =
+      estimate?.estimatedOutput?.amount ??
+      estimate?.estimatedOutput ??
+      null;
+
+    const minAmt =
+      estimate?.stopLimit?.amount ??
+      estimate?.stopLimit ??
+      null;
+
+    return {
+      success: true,
+      ...estimate,
+      estimatedOutput: outAmt,
+      stopLimit: minAmt
+    };
     return {
       success: true,
       tokenIn,

@@ -10,7 +10,8 @@ const {
   getWhaleByTxHash,
   getWalletStats,
   getTokenTrustScore,
-  getStablecoinFlow
+  getStablecoinFlow,
+  getAnomalies
 } = require("../database/db");
 
 // DB bağlantısı (read-only, scanner ile çakışmasın)
@@ -243,6 +244,108 @@ app.get("/api/ecosystem", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "ecosystem.json okunamadı" });
   }
+});
+
+// ========================
+// API: anomalies
+// ========================
+app.get("/api/anomalies", async (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 24, 168);
+  try {
+    const rows = await getAnomalies(hours);
+    res.json({ hours, count: rows.length, anomalies: rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========================
+// API: Smart Money
+// ========================
+app.get("/api/smart-money", (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  db.all(
+    `SELECT wallet, total_volume, transfer_count, incoming_volume, outgoing_volume,
+            whale_score, behavior, last_seen
+     FROM wallets
+     WHERE whale_score IS NOT NULL
+     ORDER BY whale_score DESC, total_volume DESC
+     LIMIT ?`,
+    [limit],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows || []);
+    }
+  );
+});
+
+app.get("/smart-money", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/smart-money.html"));
+});
+
+app.get("/anomalies", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/anomalies.html"));
+});
+
+// ========================
+// API: Portfolio
+// ========================
+app.get("/api/portfolio/:address", (req, res) => {
+  const address = String(req.params.address || "").toLowerCase();
+  if (!address.startsWith("0x") || address.length < 10) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+
+  db.get(
+    `SELECT * FROM wallets WHERE lower(wallet) = ?`,
+    [address],
+    (err, wallet) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      db.all(
+        `SELECT token, COUNT(*) as txs, SUM(amount) as volume, MAX(timestamp) as last_seen
+         FROM whales WHERE lower(wallet) = ?
+         GROUP BY token ORDER BY volume DESC LIMIT 20`,
+        [address],
+        (err2, tokens) => {
+          if (err2) return res.status(500).json({ error: err2.message });
+          res.json({
+            address,
+            wallet: wallet || null,
+            tokens: tokens || []
+          });
+        }
+      );
+    }
+  );
+});
+
+app.get("/portfolio", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/portfolio.html"));
+});
+
+// ========================
+// API: DEX Liquidity Proxy
+// ========================
+app.get("/api/dex-liquidity", (req, res) => {
+  db.all(
+    `SELECT token, symbol, transfer_count, mint_count, unique_wallets, trust_score
+     FROM tokens
+     ORDER BY transfer_count DESC
+     LIMIT 30`,
+    [],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({
+        note: "Proxy: token transfer activity until pool addresses are known on mainnet",
+        tokens: rows || []
+      });
+    }
+  );
+});
+
+app.get("/dex", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/dex.html"));
 });
 
 // Ana sayfa
