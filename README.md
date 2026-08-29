@@ -98,7 +98,6 @@ node src/app.js
 - x402 micro-payments for premium AI features
 
 #### Ecosystem
-- Cross-chain portfolio tracking
 - Yield discovery across Arc
 - Ecosystem analytics & protocol insights
 
