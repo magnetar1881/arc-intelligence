@@ -66,21 +66,21 @@ node src/app.js
 ### Near Term
 
 #### Data Intelligence
-- Anomaly detection
-- Smart money tracking 
+- Anomaly detection ✓
+- Smart money tracking ✓ 
 - Token risk scoring ✓
 - Smart Money Score ✓
 - AI transaction explanation ✓
 
 #### AI Layer
-- Portfolio tracking
+- Portfolio tracking ✓
 - Watchlists ✓
 - AI daily market summaries
 - Whale signal context ✓
 
 #### Ecosystem
 - Swap & Bridge execution on mainnet
-- DEX liquidity monitoring
+- DEX liquidity monitoring ✓
 - Stablecoin flow analysis (USDC / EURC) ✓
 
 ---

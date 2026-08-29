@@ -566,6 +566,47 @@ function getStablecoinFlow(hours = 24) {
   });
 }
 
+function getAnomalies(hours = 24) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         w.txHash,
+         w.wallet,
+         w.token,
+         w.amount,
+         w.type,
+         w.timestamp,
+         wa.whale_score,
+         wa.behavior,
+         wa.total_volume,
+         CASE
+           WHEN wa.transfer_count > 1
+                AND w.amount > (wa.total_volume / wa.transfer_count) * 5
+             THEN 'SPIKE'
+           WHEN w.amount >= 100000 THEN 'WHALE_SIZE'
+           ELSE 'UNUSUAL'
+         END as anomaly_type
+       FROM whales w
+       LEFT JOIN wallets wa ON lower(wa.wallet) = lower(w.wallet)
+       WHERE w.timestamp >= datetime('now', ?)
+         AND (
+           w.amount >= 100000
+           OR (
+             wa.transfer_count > 1
+             AND w.amount > (wa.total_volume / wa.transfer_count) * 5
+           )
+         )
+       ORDER BY w.amount DESC
+       LIMIT 50`,
+      [`-${hours} hours`],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
 module.exports = {
   insertWhale,
   updateWallet,
@@ -579,6 +620,7 @@ module.exports = {
   removeAllSubscriptionsForChat,
   getSubscribersForToken,
   getSubscriptionsForChat,
+  getAnomalies,
   getWalletStats,
   getTokenTrustScore,
   getRecentWhalesForWallet,

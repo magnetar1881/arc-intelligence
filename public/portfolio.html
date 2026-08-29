@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Portfolio — Arc Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080d1a;--bg2:#0c1322;--border:#1a2a45;--blue3:#60a5fa;--text:#f1f5f9;--text3:#94a3b8;--dim:#4a6080;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh}
+header{padding:12px 28px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)}
+.logo{color:var(--text);text-decoration:none;font-weight:700}
+.page{max-width:800px;margin:0 auto;padding:24px}
+input,button{font-family:var(--sans)}
+input{width:100%;padding:12px;border-radius:8px;border:1px solid var(--border);background:#111b30;color:var(--text);margin:12px 0}
+button{padding:10px 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+.mono{font-family:var(--mono);font-size:12px}
+.row{display:grid;grid-template-columns:1fr 80px 110px;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/">Arc Intelligence</a>
+  <a href="/" style="color:var(--blue3);text-decoration:none;font-size:12px">← Back</a>
+</header>
+<div class="page">
+  <h1 style="font-size:20px">Portfolio</h1>
+  <p style="color:var(--text3);font-size:13px">On-chain activity we indexed for a wallet (not live RPC balances)</p>
+  <input id="addr" placeholder="0x..."/>
+  <button onclick="load()">Load</button>
+  <div id="meta" style="margin:16px 0;color:var(--text3);font-size:13px"></div>
+  <div id="list"></div>
+</div>
+<script>
+function fmt(n){const v=Number(n);if(!isFinite(v))return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';return v.toFixed(2)}
+async function load(){
+  const address=document.getElementById('addr').value.trim();
+  const data=await fetch('/api/portfolio/'+address).then(r=>r.json());
+  if(data.error){document.getElementById('meta').textContent=data.error;return}
+  const w=data.wallet;
+  document.getElementById('meta').textContent = w
+    ? `Score ${Number(w.whale_score||0).toFixed(2)} · ${w.behavior||'—'} · vol ${fmt(w.total_volume)} · txs ${w.transfer_count||0}`
+    : 'No wallet stats yet. Token activity below if any.';
+  const tokens=data.tokens||[];
+  document.getElementById('list').innerHTML = tokens.length
+    ? tokens.map(t=>`<div class="row"><div class="mono">${t.token}</div><div class="mono">${t.txs}</div><div class="mono">${fmt(t.volume)}</div></div>`).join('')
+    : '<div style="color:#4a6080;padding:20px">No indexed token activity.</div>';
+}
+const q=new URLSearchParams(location.search).get('address');
+if(q){document.getElementById('addr').value=q;load()}
+</script>
+</body>
+</html>

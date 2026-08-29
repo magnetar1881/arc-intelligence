@@ -183,9 +183,12 @@ async function getEstimate() {
     const d = await r.json();
 
     if (d.success) {
-      document.getElementById('amount-out').value = Number(d.estimatedOutput).toFixed(4);
-      document.getElementById('est-output').textContent = Number(d.estimatedOutput).toFixed(4) + ' ' + tokenOut;
-      document.getElementById('est-min').textContent = Number(d.stopLimit).toFixed(4) + ' ' + tokenOut;
+      const outAmt = d.estimatedOutput?.amount ?? d.estimatedOutput;
+      const minAmt = d.stopLimit?.amount ?? d.stopLimit;
+
+      document.getElementById('amount-out').value = Number(outAmt).toFixed(4);
+      document.getElementById('est-output').textContent = Number(outAmt).toFixed(4) + ' ' + tokenOut;
+      document.getElementById('est-min').textContent = Number(minAmt).toFixed(4) + ' ' + tokenOut;
       document.getElementById('est-impact').textContent = '< 0.1%';
       document.getElementById('estimate-box').style.display = 'block';
     }

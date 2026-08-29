@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>DEX Activity — Arc Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#080d1a;--border:#1a2a45;--blue3:#60a5fa;--text:#f1f5f9;--text3:#94a3b8;--sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace}
+body{background:var(--bg);color:var(--text);font-family:var(--sans)}
+header{padding:12px 28px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)}
+.logo{color:var(--text);text-decoration:none;font-weight:700}
+.page{max-width:900px;margin:0 auto;padding:24px}
+.row{display:grid;grid-template-columns:1fr 90px 90px 90px 80px;gap:10px;padding:12px 0;border-bottom:1px solid var(--border)}
+.mono{font-family:var(--mono);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/">Arc Intelligence</a>
+  <a href="/" style="color:var(--blue3);text-decoration:none;font-size:12px">← Back</a>
+</header>
+<div class="page">
+  <h1 style="font-size:20px">DEX / Token Flow</h1>
+  <p style="color:var(--text3);font-size:13px;margin:8px 0 18px">Activity proxy until mainnet pool addresses are published</p>
+  <div class="row" style="opacity:.6;font-size:11px"><div>Token</div><div>Txs</div><div>Mints</div><div>Wallets</div><div>Trust</div></div>
+  <div id="list">Loading...</div>
+</div>
+<script>
+async function init(){
+  const data=await fetch('/api/dex-liquidity').then(r=>r.json());
+  const rows=data.tokens||[];
+  document.getElementById('list').innerHTML = rows.map(t=>`
+    <div class="row">
+      <div class="mono">${t.symbol||t.token}</div>
+      <div class="mono">${t.transfer_count||0}</div>
+      <div class="mono">${t.mint_count||0}</div>
+      <div class="mono">${t.unique_wallets||0}</div>
+      <div class="mono">${Number(t.trust_score||0).toFixed(2)}</div>
+    </div>`).join('') || 'No token stats yet.';
+}
+init();
+</script>
+</body>
+</html>
