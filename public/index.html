@@ -317,12 +317,13 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
 // ── UTILS ──
 function fmt(n){
   const v=Number(n);
-  if(!isFinite(v)||v>1e18)return'—';
-  if(v>=1e12)return(v/1e12).toFixed(2)+'T';
+  if(!isFinite(v)||v<=0)return'—';
+  if(v>1e15)return'—';
   if(v>=1e9)return(v/1e9).toFixed(2)+'B';
   if(v>=1e6)return(v/1e6).toFixed(2)+'M';
   if(v>=1e3)return(v/1e3).toFixed(1)+'K';
-  return v.toFixed(2);
+  if(v>=1)return v.toFixed(2);
+  return v.toFixed(4);
 }
 function shortAddr(a){if(!a)return'—';return a.slice(0,6)+'...'+a.slice(-4)}
 function timeAgo(ts){
@@ -461,45 +462,81 @@ function renderChart(data){
   const result=document.getElementById('ask-result');
   const answer=document.getElementById('ask-answer');
   result.style.display='block';
+
+  const raw=(data.labels||[]).map(String);
+  const labels=raw.map(s=>s.startsWith('0x')&&s.length>12?s.slice(0,6)+'…'+s.slice(-4):s);
+
   answer.innerHTML=`
-    <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;letter-spacing:.4px;text-transform:uppercase">${data.title}</div>
-    <canvas id="ask-chart" height="140"></canvas>`;
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#cbd5e1">${data.title||'Top wallets'}</div>
+      <div style="font-size:11px;color:#64748b">${data.valueLabel||'Indexed volume'}</div>
+    </div>
+    <div style="height:220px"><canvas id="ask-chart"></canvas></div>
+    <div id="ask-chart-table" style="margin-top:14px"></div>`;
+
   if(activeChart){activeChart.destroy();activeChart=null}
   const ctx=document.getElementById('ask-chart').getContext('2d');
+  const grad=ctx.createLinearGradient(0,0,400,0);
+  grad.addColorStop(0,'#2563eb');
+  grad.addColorStop(1,'#8b5cf6');
+
   activeChart=new Chart(ctx,{
     type:'bar',
     data:{
-      labels:data.labels.map(l=>l.length>12?l.slice(0,6)+'...'+l.slice(-4):l),
+      labels,
       datasets:[{
-        label:data.valueLabel||'Value',
-        data:data.values,
-        backgroundColor:'rgba(37,99,235,0.55)',
-        borderColor:'#3b82f6',
-        borderWidth:1,
-        borderRadius:3,
-        hoverBackgroundColor:'rgba(139,92,246,0.65)'
+        data:data.values||[],
+        backgroundColor:grad,
+        borderRadius:8,
+        borderSkipped:false,
+        barThickness:18
       }]
     },
     options:{
+      indexAxis:'y',
       responsive:true,
+      maintainAspectRatio:false,
       plugins:{
         legend:{display:false},
-        tooltip:{callbacks:{label:c=>{const v=c.raw;if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}}}
+        tooltip:{
+          backgroundColor:'#0c1322',
+          borderColor:'#1a2a45',
+          borderWidth:1,
+          titleColor:'#e2e8f0',
+          bodyColor:'#93c5fd',
+          callbacks:{label:c=>' '+fmt(c.raw)}
+        }
       },
       scales:{
-        x:{ticks:{color:'#64748b',font:{size:9},maxRotation:25},grid:{color:'rgba(26,42,69,.4)'}},
-        y:{ticks:{color:'#64748b',font:{size:9},callback:v=>{if(v>=1e9)return(v/1e9).toFixed(1)+'B';if(v>=1e6)return(v/1e6).toFixed(1)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v}},grid:{color:'rgba(26,42,69,.4)'}}
+        x:{
+          ticks:{color:'#64748b',font:{size:10},callback:v=>fmt(v)},
+          grid:{color:'rgba(255,255,255,.04)'}
+        },
+        y:{
+          ticks:{color:'#e2e8f0',font:{family:'JetBrains Mono',size:11}},
+          grid:{display:false}
+        }
       }
     }
   });
-  if(data.labels&&data.labels[0]?.startsWith('0x')){
+
+  document.getElementById('ask-chart-table').innerHTML=
+    '<div style="display:grid;grid-template-columns:36px 1fr 120px;gap:8px;padding:6px 0;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px"><div>#</div><div>Wallet</div><div style="text-align:right">Volume</div></div>'+
+    raw.map((w,i)=>`
+      <div style="display:grid;grid-template-columns:36px 1fr 120px;gap:8px;padding:8px 0;border-top:1px solid rgba(26,42,69,.7);align-items:center">
+        <div style="font-family:JetBrains Mono,monospace;font-size:11px;color:#64748b">${i+1}</div>
+        <a href="/wallets/${w}" style="font-family:JetBrains Mono,monospace;font-size:12px;color:#60a5fa;text-decoration:none">${labels[i]}</a>
+        <div style="font-family:JetBrains Mono,monospace;font-size:12px;text-align:right;color:#e2e8f0">${fmt((data.values||[])[i])}</div>
+      </div>`).join('');
+
+  if(raw[0]&&raw[0].startsWith('0x')){
     const eb=document.getElementById('wallet-track-btn');if(eb)eb.remove();
     const tb=document.createElement('a');
     tb.id='wallet-track-btn';
-    tb.href=`https://t.me/MagNetar1881_bot?start=subscribe_${data.labels[0]}`;
+    tb.href=`https://t.me/MagNetar1881_bot?start=subscribe_${raw[0]}`;
     tb.target='_blank';tb.rel='noopener';
     tb.textContent='📬 Track #1 Wallet on Telegram';
-    tb.style.cssText='display:block;margin-top:8px;background:transparent;color:var(--blue3);padding:6px 14px;border-radius:6px;font-size:11px;font-family:var(--sans);text-decoration:none;font-weight:600;border:1px solid var(--border3);text-align:center;transition:all .2s;';
+    tb.style.cssText='display:block;margin-top:8px;background:transparent;color:var(--blue3);padding:6px 14px;border-radius:6px;font-size:11px;font-family:var(--sans);text-decoration:none;font-weight:600;border:1px solid var(--border3);text-align:center;';
     result.appendChild(tb);
   }
   addCloseButton(result);
@@ -571,6 +608,46 @@ async function sendQuestion(){
   const answer=document.getElementById('ask-answer');
   const question=input.value.trim();
   if(!question)return;
+
+  const q=question.toLowerCase();
+  const wantsWallets=/top\s*(5|10)?\s*(whale\s*)?wallet|highest volume|en (yüksek|çok) hacim|whale wallet/.test(q);
+  const wantsTokens=/most active token|top token|en (aktif|çok) token/.test(q);
+
+  if(wantsWallets){
+    try{
+      const rows=await fetch('/api/top?limit=5').then(r=>r.json());
+      if(Array.isArray(rows)&&rows.length){
+        renderChart({
+          type:'chart',
+          chartType:'bar',
+          title:'Top wallets by volume',
+          labels:rows.map(r=>r.wallet),
+          values:rows.map(r=>Number(r.total_volume)||0),
+          valueLabel:'Indexed volume'
+        });
+        return;
+      }
+    }catch(e){}
+  }
+
+  if(wantsTokens){
+    try{
+      const rows=await fetch('/api/token-trend').then(r=>r.json());
+      if(Array.isArray(rows)&&rows.length){
+        const top=rows.slice(0,5);
+        renderChart({
+          type:'chart',
+          chartType:'bar',
+          title:'Most active tokens',
+          labels:top.map(r=>r.symbol||r.token),
+          values:top.map(r=>Number(r.transfer_count)||0),
+          valueLabel:'Transfers'
+        });
+        return;
+      }
+    }catch(e){}
+  }
+
   ['action-btn','wallet-track-btn','ask-close-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.remove()});
   answer.textContent='Thinking...';
   result.style.display='block';
