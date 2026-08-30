@@ -29,6 +29,9 @@ const LARGE_TRANSFER_THRESHOLD = Number(process.env.LARGE_TRANSFER_THRESHOLD || 
 // Aynı cüzdandan ardışık işlemler arası bekleme (ms)
 const COOLDOWN_MS = Number(process.env.COOLDOWN_MS || 5000);
 
+const SCAN_EVERY_N_BLOCKS = Number(process.env.SCAN_EVERY_N_BLOCKS || 15);
+let rpcBackoffUntil = 0;
+
 // seenTx / walletCooldown bellek temizlik aralığı (ms)
 const MEMORY_TTL_MS = Number(process.env.MEMORY_TTL_MS || 10 * 60 * 1000);
 
@@ -127,7 +130,8 @@ async function startScanner() {
   function attachBlockListener(p) {
     p.on("block", async (blockNumber) => {
       lastBlockTime = Date.now();
-      if (blockNumber % 5 !== 0) return;
+      if (blockNumber % SCAN_EVERY_N_BLOCKS !== 0) return;
+      if (Date.now() < rpcBackoffUntil) return;
 
       try {
         const logs = await p.getLogs({
@@ -279,7 +283,12 @@ Tx:
           }
         }
       } catch (e) {
-        console.log("block error:", e.message);
+        const msg = String(e.message || e);
+        console.log("block error:", msg);
+        if (msg.toLowerCase().includes("rate limit") || msg.includes("-32005")) {
+          rpcBackoffUntil = Date.now() + 30 * 1000;
+          console.log("⏳ RPC backoff 30s");
+        }
       }
     });
 
