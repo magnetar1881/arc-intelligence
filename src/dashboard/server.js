@@ -215,6 +215,35 @@ app.get("/api/stats", (req, res) => {
     .catch((err) => res.status(500).json({ error: err.message }));
 });
 
+app.get("/api/stable-hero", (req, res) => {
+  db.get(`SELECT MAX(timestamp) as last_seen FROM whales`, [], (e1, last) => {
+    db.all(
+      `SELECT upper(token) as token,
+              COUNT(*) as txs,
+              SUM(amount) as volume
+       FROM whales
+       WHERE upper(token) IN ('USDC','EURC','CIRBTC')
+         AND timestamp >= datetime('now','-24 hours')
+       GROUP BY upper(token)`,
+      [],
+      (e2, rows) => {
+        if (e1 || e2) return res.status(500).json({ error: (e1||e2).message });
+        const map = {};
+        (rows || []).forEach(r => { map[r.token] = r; });
+        res.json({
+          last_seen: last?.last_seen || null,
+          usdc_txs: map.USDC?.txs || 0,
+          usdc_vol: map.USDC?.volume || 0,
+          eurc_txs: map.EURC?.txs || 0,
+          eurc_vol: map.EURC?.volume || 0,
+          cirbtc_txs: map.CIRBTC?.txs || 0,
+          cirbtc_vol: map.CIRBTC?.volume || 0
+        });
+      }
+    );
+  });
+});
+
 // ========================
 // API: digest (son N saat)
 // ========================
