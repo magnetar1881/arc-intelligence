@@ -210,23 +210,45 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
       <button class="ask-chip" onclick="askExample('Where can I swap tokens on Arc?')">Where can I swap?</button>
       <button class="ask-chip" onclick="askExample('How do I bridge funds to Arc?')">How do I bridge to Arc?</button>
       <button class="ask-chip" onclick="askExample('What tokens are most active on Arc?')">Most active tokens</button>
+      <button class="ask-chip" onclick="askExample('top USDC movers')">top USDC movers</button>
     </div>
     <div class="ask-input-row">
       <input id="ask-input" class="ask-input" placeholder="e.g. Which wallets moved the most today?" onkeydown="if(event.key==='Enter')sendQuestion()"/>
       <button class="ask-btn" onclick="sendQuestion()">Ask →</button>
+      <button type="button" onclick="copyAskLink()" style="font-size:12px;font-weight:600;background:transparent;color:var(--blue3);border:1px solid rgba(59,130,246,.3);padding:10px 12px;border-radius:8px;cursor:pointer;font-family:var(--sans)">Copy link</button>
     </div>
     <div class="ask-result" id="ask-result">
       <div id="ask-answer"></div>
     </div>
   </div>
 
+  <div id="my-wallet-card" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--blue3);margin-bottom:4px">My wallet</div>
+        <div id="mw-addr" style="font-family:var(--mono);font-size:13px;color:var(--text2)"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a id="mw-open" href="#" style="font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none">Open profile →</a>
+        <a id="mw-alert" href="#" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:#94a3b8;text-decoration:none">Alert</a>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px">
+      <div><div style="font-size:10px;color:var(--muted)">Score</div><div id="mw-score" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Behavior</div><div id="mw-beh" style="font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Volume</div><div id="mw-vol" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Transfers</div><div id="mw-txs" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+    </div>
+    <div id="mw-empty" style="display:none;margin-top:10px;font-size:12px;color:var(--text3)">No indexed activity yet for this wallet.</div>
+  </div>
+
   <!-- STATS -->
   <div class="stats">
-    <div class="stat"><div class="stat-label">Total Whale Txs</div><div class="stat-value" id="s-total">0</div></div>
-    <div class="stat"><div class="stat-label">Whales (24h)</div><div class="stat-value" id="s-24h">0</div></div>
-    <div class="stat"><div class="stat-label">Volume (24h)</div><div class="stat-value" id="s-vol">0</div></div>
+    <div class="stat"><div class="stat-label">USDC (24h)</div><div class="stat-value" id="s-usdc">0</div></div>
+    <div class="stat"><div class="stat-label">EURC (24h)</div><div class="stat-value" id="s-eurc">0</div></div>
+    <div class="stat"><div class="stat-label">cirBTC (24h)</div><div class="stat-value" id="s-cirbtc">0</div></div>
     <div class="stat"><div class="stat-label">Tracked Wallets</div><div class="stat-value" id="s-wallets">0</div></div>
-    <div class="stat"><div class="stat-label">Tokens Seen</div><div class="stat-value" id="s-tokens">0</div></div>
+    <div class="stat"><div class="stat-label">Last indexed</div><div class="stat-value" id="s-last" style="font-size:16px">—</div></div>
   </div>
 
   <!-- MAIN GRID: whale feed (5) + top wallets (5) -->
@@ -339,12 +361,15 @@ function timeAgo(ts){
 // ── STATS ──
 async function loadStats(){
   try{
-    const d=await fetch('/api/stats').then(r=>r.json());
-    document.getElementById('s-total').textContent=(d.total_whales||0).toLocaleString();
-    document.getElementById('s-24h').textContent=(d.whales_24h||0).toLocaleString();
-    document.getElementById('s-vol').textContent=fmt(d.volume_24h||0);
+    const [d,s]=await Promise.all([
+      fetch('/api/stats').then(r=>r.json()),
+      fetch('/api/stable-hero').then(r=>r.json())
+    ]);
     document.getElementById('s-wallets').textContent=(d.total_wallets||0).toLocaleString();
-    document.getElementById('s-tokens').textContent=(d.total_tokens||0).toLocaleString();
+    document.getElementById('s-usdc').textContent=fmt(s.usdc_vol)+' · '+(s.usdc_txs||0);
+    document.getElementById('s-eurc').textContent=fmt(s.eurc_vol)+' · '+(s.eurc_txs||0);
+    document.getElementById('s-cirbtc').textContent=fmt(s.cirbtc_vol)+' · '+(s.cirbtc_txs||0);
+    document.getElementById('s-last').textContent=s.last_seen?timeAgo(s.last_seen):'—';
   }catch(e){}
 }
 
@@ -353,13 +378,23 @@ async function loadFeed(){
   try{
     const rows=await fetch('/api/whales?limit=5').then(r=>r.json());
     const el=document.getElementById('whale-feed');
-    if(!rows.length){el.innerHTML='<div class="empty">No whale transactions yet.</div>';return}
+
+    if(!rows.length){
+      el.innerHTML='<div class="empty">No whale transactions yet.</div>';
+      return;
+    }
+
     el.innerHTML=rows.map(w=>{
       const large=Number(w.amount)>=250000;
+
       return`<div class="w-item">
         <div>
           <div class="w-token">${w.token}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
-          <div class="w-addr">${shortAddr(w.wallet)}</div>
+          <div class="w-addr">
+            ${shortAddr(w.wallet)}
+            <a href="https://t.me/MagNetar1881_bot?start=subscribe_${w.wallet}" target="_blank" rel="noopener"
+               style="font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px">Alert</a>
+          </div>
         </div>
         <div>
           <div class="w-amt">${fmt(w.amount)}</div>
@@ -367,6 +402,7 @@ async function loadFeed(){
         </div>
       </div>`;
     }).join('');
+
     document.getElementById('feed-time')&&(document.getElementById('feed-time').textContent='Updated '+new Date().toLocaleTimeString());
   }catch(e){}
 }
@@ -676,14 +712,56 @@ async function sendQuestion(){
 
 function askExample(q){document.getElementById('ask-input').value=q;sendQuestion()}
 
+function copyAskLink(){
+  const q=(document.getElementById('ask-input').value||'').trim()||'top USDC movers';
+  const url=location.origin+'/?q='+encodeURIComponent(q);
+  navigator.clipboard.writeText(url).catch(()=>{});
+}
+
+async function loadMyWallet(address){
+  const card=document.getElementById('my-wallet-card');
+  if(!card)return;
+  if(!address){card.style.display='none';return}
+  card.style.display='block';
+  document.getElementById('mw-addr').textContent=address;
+  document.getElementById('mw-open').href='/wallets/'+address;
+  document.getElementById('mw-alert').href='https://t.me/MagNetar1881_bot?start=subscribe_'+address;
+  try{
+    const d=await fetch('/api/wallets/'+address).then(r=>r.json());
+    const w=d.wallet||d;
+    const has=w&&(w.wallet||w.total_volume!=null);
+    document.getElementById('mw-score').textContent=has?Number(w.whale_score||0).toFixed(2):'—';
+    document.getElementById('mw-beh').textContent=has?(w.behavior||'—').toUpperCase():'—';
+    document.getElementById('mw-vol').textContent=has?fmt(w.total_volume):'—';
+    document.getElementById('mw-txs').textContent=has?(w.transfer_count||0).toLocaleString():'—';
+    document.getElementById('mw-empty').style.display=has?'none':'block';
+  }catch(e){
+    document.getElementById('mw-empty').style.display='block';
+  }
+}
+
 // ── INIT ──
 async function init(){
   await Promise.all([loadStats(),loadFeed(),loadWallets(),loadTokens(),loadEcosystem()]);
+  const q=new URLSearchParams(location.search).get('q');
+  if(q){
+    const input=document.getElementById('ask-input');
+    if(input){input.value=q;sendQuestion()}
+  }
+  if(typeof connectedWallet==='string'&&connectedWallet) loadMyWallet(connectedWallet);
 }
 init();
 setInterval(()=>{loadStats();loadFeed()},30000);
 setInterval(()=>{loadWallets();loadTokens()},60000);
 </script>
 <script src="/wallet.js"></script>
+<script>
+const _mwOrig = window.updateWalletUI;
+window.updateWalletUI = function(address){
+  if (_mwOrig) _mwOrig(address);
+  if (typeof loadMyWallet === 'function') loadMyWallet(address || connectedWallet);
+};
+if (typeof connectedWallet === 'string' && connectedWallet) loadMyWallet(connectedWallet);
+</script>
 </body>
 </html>

@@ -63,6 +63,8 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="page-title">Wallet Profile</div>
   <div class="page-sub" id="wallet-address">Loading...</div>
+  <a id="w-alert-link" href="#" target="_blank" rel="noopener"
+     style="display:inline-block;margin-top:8px;font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none">Alert this wallet</a>
 
   <div class="stats" id="stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
     <div class="stat"><div class="stat-label">Total Volume</div><div class="stat-value" id="s-vol">—</div></div>
@@ -181,6 +183,9 @@ async function init(){
   }
 
   document.getElementById('wallet-address').textContent = address;
+
+  const al=document.getElementById('w-alert-link');
+  if(al) al.href='https://t.me/MagNetar1881_bot?start=subscribe_'+address;
 
   try{
     const res = await fetch(`/api/wallets/${address}`);
