@@ -184,7 +184,9 @@ async function startScanner() {
             await updateTokenStats(
               token,
               symbol,
-              isMint ? "MINT" : isBurn ? "BURN" : "TRANSFER"
+              isMint ? "MINT" : isBurn ? "BURN" : "TRANSFER",
+              from,
+              to
             );
             await updateTokenRiskScore(token);
 
@@ -254,7 +256,7 @@ Tx:
             `;
 
             console.log("🐋 WHALE:", symbol, amount);
-            await sendAlert(message, token, [from, to]);await sendAlert(message, token, [from, to]);
+            await sendAlert(message, token, [from, to]);
 
             // ========================
             // WHALE AGENT — AI analizi (context'li)
