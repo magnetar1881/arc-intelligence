@@ -74,7 +74,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="bridge-card">
     <div class="bridge-title">Bridge to Arc</div>
-    <div class="bridge-sub">Testnet demo • kaynak: Lensora Circle cüzdanı • alıcı: senin cüzdanın</div>
+    <div class="bridge-sub">Testnet demo • source: Lensora Circle wallet • fees paid on source • recipient gets the full amount</div>
 
     <div class="field">
       <div class="field-label">From chain</div>
@@ -220,7 +220,26 @@ async function executeBridge() {
     const data = await res.json();
 
     if (data.success) {
-      showStatus("✅ Bridge submitted. USDC goes to your connected wallet.", "success");
+      const hash = data.txHash || data.result?.txHash || data.result?.hash || data.hash || '';
+      const steps = data.result?.steps || data.steps || [];
+      const stepHash = (steps[0] && (
+        steps[0].txHash ||
+        steps[0].hash ||
+        steps[0].data?.txHash
+      )) || '';
+
+      const tx = hash || stepHash;
+      const scan = 'https://sepolia.etherscan.io/tx/';
+
+      const statusEl = document.getElementById('status-msg');
+
+      statusEl.innerHTML = tx
+        ? '✅ Bridge submitted. <a href="' + scan + tx + '" target="_blank" rel="noopener" style="color:#93c5fd">View on explorer</a>'
+        : '✅ Bridge submitted. Check the destination wallet on the explorer.';
+
+      statusEl.className = 'status-msg status-success';
+      statusEl.style.display = 'block';
+
     } else {
       showStatus(data.error || "Bridge failed", "error");
     }

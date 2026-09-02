@@ -100,9 +100,13 @@ async function executeBridgeTransfer({ fromChain, toChain, amount, token, recipi
         adapter,
         chain: toChain || "Arc_Testnet",
         address: recipientAddress,
+        useForwarder: true
       },
       amount: String(amount),
       token: token || "USDC",
+      config: {
+        feePayment: "source"
+      }
     });
 
     return { success: true, result };
