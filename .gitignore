@@ -1,6 +1,11 @@
-node_modules
+node_modules/
 .env
+.env.local
 data/whale.db
 data/whale.db-shm
 data/whale.db-wal
 *.log
+*.save
+*.save.*
+.DS_Store
+recovery/

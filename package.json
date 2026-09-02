@@ -1,16 +1,19 @@
 {
-  "name": "arc-whale-alert",
+  "name": "lensora",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "AI-powered on-chain intelligence platform for the Arc ecosystem",
+  "main": "src/app.js",
   "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "create-wallet": "tsx --env-file=.env create-wallet.ts"
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "scanner": "SCANNER_ENABLED=true node src/app.js",
+    "create-wallet": "tsx --env-file=.env create-wallet.ts",
+    "test": "node --test test/**/*.test.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["arc", "whale", "on-chain", "telegram", "ai", "lensora"],
+  "author": "magnetar1881",
+  "license": "MIT",
   "dependencies": {
     "@circle-fin/adapter-circle-wallets": "^1.7.0",
     "@circle-fin/adapter-viem-v2": "1.14.0",

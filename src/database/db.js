@@ -72,6 +72,15 @@ db.run(`
       UNIQUE(chat_id, kind, value)
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS token_wallets (
+      token TEXT NOT NULL,
+      wallet TEXT NOT NULL,
+      first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (token, wallet)
+    )
+  `);
 });
 
 function insertWhale(data) {
@@ -197,24 +206,60 @@ function updateWalletBehavior(wallet) {
 }
 
 
-function updateTokenStats(token, symbol, type) {
+function updateTokenStats(token, symbol, type, fromWallet = null, toWallet = null) {
   return new Promise((resolve, reject) => {
+    const mintInc = type === "MINT" ? 1 : 0;
+
+    // Önce token satırını oluştur / güncelle
     db.run(
       `INSERT INTO tokens (token, symbol, transfer_count, mint_count, unique_wallets)
-       VALUES (?, ?, 1, ?, 1)
+       VALUES (?, ?, 1, ?, 0)
        ON CONFLICT(token) DO UPDATE SET
          transfer_count = transfer_count + 1,
-         mint_count = mint_count + ?,
-         unique_wallets = unique_wallets + 1`,
-      [
-        token,
-        symbol,
-        type === "MINT" ? 1 : 0,
-        type === "MINT" ? 1 : 0
-      ],
+         mint_count = mint_count + ?`,
+      [token, symbol, mintInc, mintInc],
       (err) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) return reject(err);
+
+        // Gerçek unique wallet’ları kaydet
+        const walletsToAdd = [fromWallet, toWallet].filter(Boolean);
+        if (walletsToAdd.length === 0) return resolve();
+
+        let pending = walletsToAdd.length;
+        let errorOccurred = false;
+
+        walletsToAdd.forEach((w) => {
+          db.run(
+            `INSERT OR IGNORE INTO token_wallets (token, wallet) VALUES (?, ?)`,
+            [token, w.toLowerCase()],
+            function (err2) {
+              if (errorOccurred) return;
+              if (err2) {
+                errorOccurred = true;
+                return reject(err2);
+              }
+
+              // Yeni eklendiyse unique_wallets sayısını artır
+              if (this.changes > 0) {
+                db.run(
+                  `UPDATE tokens SET unique_wallets = unique_wallets + 1 WHERE token = ?`,
+                  [token],
+                  (err3) => {
+                    pending--;
+                    if (err3 && !errorOccurred) {
+                      errorOccurred = true;
+                      return reject(err3);
+                    }
+                    if (pending === 0 && !errorOccurred) resolve();
+                  }
+                );
+              } else {
+                pending--;
+                if (pending === 0 && !errorOccurred) resolve();
+              }
+            }
+          );
+        });
       }
     );
   });
