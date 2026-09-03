@@ -11,7 +11,8 @@ const {
   getWalletStats,
   getTokenTrustScore,
   getStablecoinFlow,
-  getAnomalies
+  getAnomalies,
+  getRecentSignals
 } = require("../database/db");
 
 // DB bağlantısı (read-only, scanner ile çakışmasın)
@@ -653,6 +654,90 @@ app.get("/api/token-trend", (req, res) => {
       res.json(rows);
     }
   );
+});
+
+const signalHits = new Map();
+const SIGNAL_FREE_LIMIT = Number(process.env.SIGNAL_FREE_LIMIT || 30);
+const SIGNALS_API_KEY = process.env.SIGNALS_API_KEY || "";
+
+function signalClientId(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown");
+}
+
+function allowSignalRequest(req) {
+  const key = String(req.headers["x-api-key"] || req.query.api_key || "");
+  if (SIGNALS_API_KEY && key === SIGNALS_API_KEY) {
+    return { ok: true, plan: "key" };
+  }
+
+  const id = signalClientId(req);
+  const now = Date.now();
+  const hourAgo = now - 60 * 60 * 1000;
+  const prev = (signalHits.get(id) || []).filter((t) => t > hourAgo);
+  if (prev.length >= SIGNAL_FREE_LIMIT) {
+    return { ok: false, plan: "free" };
+  }
+  prev.push(now);
+  signalHits.set(id, prev);
+  return { ok: true, plan: "free" };
+}
+
+function stripSignal(row, plan) {
+  const evidence = plan === "key" ? (row.evidence || []) : (row.evidence || []).slice(0, 2);
+  return {
+    id: row.id,
+    type: row.type,
+    asset: row.asset,
+    window_min: row.window_min,
+    confidence: row.confidence,
+    total_amount: row.total_amount,
+    wallet_count: row.wallet_count,
+    explanation: row.explanation,
+    created_at: row.created_at,
+    evidence
+  };
+}
+
+app.get("/api/v1/signals", async (req, res) => {
+  const gate = allowSignalRequest(req);
+  if (!gate.ok) {
+    return res.status(429).json({
+      error: "rate_limited",
+      message: "Ücretsiz limit doldu. Destek sonrası X-Api-Key ile açılacak.",
+      limit: SIGNAL_FREE_LIMIT,
+      paid: false
+    });
+  }
+
+  const limit = Math.min(parseInt(req.query.limit) || 10, gate.plan === "key" ? 100 : 10);
+  const type = req.query.type || null;
+
+  try {
+    const rows = await getRecentSignals(limit, type);
+    res.json({
+      paid: gate.plan === "key",
+      count: rows.length,
+      signals: rows.map((r) => stripSignal(r, gate.plan))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/v1/signals/:id", async (req, res) => {
+  const gate = allowSignalRequest(req);
+  if (!gate.ok) {
+    return res.status(429).json({ error: "rate_limited", paid: false });
+  }
+
+  try {
+    const rows = await getRecentSignals(100);
+    const found = rows.find((r) => String(r.id) === String(req.params.id));
+    if (!found) return res.status(404).json({ error: "not_found" });
+    res.json({ paid: gate.plan === "key", signal: stripSignal(found, gate.plan) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => {

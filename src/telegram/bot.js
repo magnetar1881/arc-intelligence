@@ -14,7 +14,9 @@ const {
   getWatchers,
   getDigestByToken,
   getDigestByWallet,
-  getDigestTotalCount
+  getDigestTotalCount,
+  getStrategyWatchers,
+  getRecentSignals
 } = require("../database/db");
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
@@ -71,6 +73,79 @@ async function sendAlert(message, tokenAddress, wallets = []) {
   } catch (err) {
     console.log("sendAlert error:", err.message);
   }
+}
+
+function formatSignalCard(signal) {
+  const ev = (signal.evidence || []).slice(0, 3);
+  const evLines = ev
+    .map((e) => {
+      if (e.txHash) return `• <code>${e.txHash.slice(0, 10)}…</code> ${e.amount ? Number(e.amount).toLocaleString() : ""}`;
+      if (e.token) return `• ${e.token} out:${e.outflow || 0} in:${e.inflow || 0}`;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return `<b>SIGNAL · ${String(signal.type).toUpperCase()}</b>
+Asset: <b>${signal.asset}</b>
+Confidence: ${signal.confidence}
+Amount: ${Number(signal.totalAmount || 0).toLocaleString()}
+Wallets: ${signal.walletCount}
+
+${signal.explanation || ""}
+${evLines ? "\n" + evLines : ""}`;
+}
+
+async function notifyStrategyWatchers(signal) {
+  try {
+    const chatIds = new Set();
+
+    if (process.env.CHAT_ID) chatIds.add(String(process.env.CHAT_ID));
+
+    const keys = [signal.type];
+    if (signal.type === "accumulation" || signal.type === "large_transfer") {
+      keys.push("smart_cluster");
+    }
+    if (signal.type === "stable_rotation") keys.push("stable_rotation");
+    if (signal.type === "fresh_receiver") keys.push("fresh_receiver");
+    if (signal.type === "smart_cluster") keys.push("smart_cluster");
+
+    for (const key of keys) {
+      const ids = await getStrategyWatchers(key);
+      ids.forEach((id) => chatIds.add(String(id)));
+    }
+
+    const text = formatSignalCard(signal);
+    for (const chatId of chatIds) {
+      try {
+        await bot.sendMessage(chatId, text, { parse_mode: "HTML" });
+      } catch (err) {
+        console.log(`strategy notify error (chat ${chatId}):`, err.message);
+      }
+    }
+  } catch (err) {
+    console.log("notifyStrategyWatchers error:", err.message);
+  }
+}
+
+const STRATEGY_LABELS = {
+  stable_rotation: "USDC ↔ EURC rotasyonu",
+  smart_cluster: "Smart money kümesi",
+  fresh_receiver: "Yeni alıcı + büyük transfer"
+};
+
+function strategyKeyboard() {
+  return {
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "USDC ↔ EURC rotasyonu", callback_data: "strat:stable_rotation" }],
+        [{ text: "Smart money kümesi", callback_data: "strat:smart_cluster" }],
+        [{ text: "Yeni alıcı (fresh receiver)", callback_data: "strat:fresh_receiver" }],
+        [{ text: "Watchlistim", callback_data: "strat:list" }]
+      ]
+    }
+  };
 }
 
 // ========================
@@ -291,6 +366,105 @@ bot.onText(/\/watchlist/, async (msg) => {
   }
 });
 
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(
+    chatId,
+    `<b>Lensora</b>
+
+Arc üstündeki büyük stablecoin hareketlerini izler.
+Adres yazmana gerek yok — bir strateji seç.
+
+Mevcut whale alarmları için /subscribe
+Son sinyaller: /signals`,
+    strategyKeyboard()
+  );
+});
+
+bot.onText(/\/signals/, async (msg) => {
+  const chatId = msg.chat.id;
+  try {
+    const rows = await getRecentSignals(5);
+    if (!rows.length) {
+      bot.sendMessage(chatId, "Henüz sinyal yok. Eşik yüksekse (WHALE_THRESHOLD) beklenen bu.");
+      return;
+    }
+    for (const s of rows) {
+      await bot.sendMessage(chatId, formatSignalCard(s), { parse_mode: "HTML" });
+    }
+  } catch (err) {
+    console.log("signals cmd error:", err.message);
+    bot.sendMessage(chatId, "Sinyaller alınamadı.");
+  }
+});
+
+bot.onText(/\/strategy(?:\s+(\S+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const key = (match[1] || "").toLowerCase();
+  const allowed = ["stable_rotation", "smart_cluster", "fresh_receiver"];
+
+  if (!allowed.includes(key)) {
+    bot.sendMessage(
+      chatId,
+      `Kullanım:
+/strategy stable_rotation
+/strategy smart_cluster
+/strategy fresh_receiver
+/unstrategy <aynı_ad>`,
+      strategyKeyboard()
+    );
+    return;
+  }
+
+  try {
+    await addWatch(chatId, "strategy", key);
+    bot.sendMessage(chatId, `Strateji açıldı: <b>${STRATEGY_LABELS[key]}</b>`, {
+      parse_mode: "HTML"
+    });
+  } catch (err) {
+    console.log("strategy error:", err.message);
+    bot.sendMessage(chatId, "Strateji eklenemedi.");
+  }
+});
+
+bot.onText(/\/unstrategy(?:\s+(\S+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const key = (match[1] || "").toLowerCase();
+  try {
+    await removeWatch(chatId, "strategy", key);
+    bot.sendMessage(chatId, `Strateji kapatıldı: ${key}`);
+  } catch (err) {
+    console.log("unstrategy error:", err.message);
+    bot.sendMessage(chatId, "Strateji silinemedi.");
+  }
+});
+
+bot.on("callback_query", async (q) => {
+  const chatId = q.message.chat.id;
+  const data = q.data || "";
+  try {
+    if (data === "strat:list") {
+      const rows = await getWatchlistForChat(chatId);
+      const lines = rows.length
+        ? rows.map((r) => `• ${r.kind}: <code>${r.value}</code>`).join("\n")
+        : "Liste boş.";
+      await bot.sendMessage(chatId, `Watchlist:\n\n${lines}`, { parse_mode: "HTML" });
+    } else if (data.startsWith("strat:")) {
+      const key = data.slice(6);
+      await addWatch(chatId, "strategy", key);
+      await bot.sendMessage(
+        chatId,
+        `Strateji açıldı: <b>${STRATEGY_LABELS[key] || key}</b>\nKapatmak: /unstrategy ${key}`,
+        { parse_mode: "HTML" }
+      );
+    }
+    await bot.answerCallbackQuery(q.id);
+  } catch (err) {
+    console.log("callback error:", err.message);
+    try { await bot.answerCallbackQuery(q.id, { text: "Hata" }); } catch (_) {}
+  }
+});
+
 // ========================
 // /help
 // ========================
@@ -312,9 +486,13 @@ bot.onText(/\/help/, (msg) => {
 /unwatch wallet <adres>
 /unwatch token <adres_veya_sembol>
 /watchlist - takip listen
+/start - strateji seç
+/strategy stable_rotation|smart_cluster|fresh_receiver
+/unstrategy <ad>
+/signals - son sinyaller
 /digest [saat] - son N saatlik özet (varsayılan 24)
 /help - bu mesajı göster`
   );
 });
 
-module.exports = { sendAlert };
+module.exports = { sendAlert, notifyStrategyWatchers, formatSignalCard };

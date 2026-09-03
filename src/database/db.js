@@ -81,6 +81,24 @@ db.run(`
       PRIMARY KEY (token, wallet)
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS signals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      asset TEXT NOT NULL,
+      window_min INTEGER NOT NULL,
+      confidence TEXT NOT NULL,
+      total_amount REAL NOT NULL,
+      wallet_count INTEGER NOT NULL,
+      explanation TEXT,
+      evidence_json TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_signals_created ON signals(created_at DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(type, asset)`);
 });
 
 function insertWhale(data) {
@@ -652,6 +670,109 @@ function getAnomalies(hours = 24) {
   });
 }
 
+function insertSignal(data) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO signals
+       (type, asset, window_min, confidence, total_amount, wallet_count, explanation, evidence_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        data.type,
+        String(data.asset || "").toUpperCase(),
+        data.windowMin,
+        data.confidence,
+        data.totalAmount,
+        data.walletCount,
+        data.explanation || "",
+        JSON.stringify(data.evidence || [])
+      ],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+function getRecentSignals(limit = 20, type = null) {
+  const lim = Math.min(Number(limit) || 20, 100);
+  return new Promise((resolve, reject) => {
+    const sql = type
+      ? `SELECT * FROM signals WHERE type = ? ORDER BY created_at DESC LIMIT ?`
+      : `SELECT * FROM signals ORDER BY created_at DESC LIMIT ?`;
+    const params = type ? [type, lim] : [lim];
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      const parsed = (rows || []).map((r) => {
+        let evidence = [];
+        try { evidence = JSON.parse(r.evidence_json || "[]"); } catch (_) {}
+        return { ...r, evidence, evidence_json: undefined };
+      });
+      resolve(parsed);
+    });
+  });
+}
+
+function getSignalsSinceMinutes(minutes = 30, asset = null) {
+  return new Promise((resolve, reject) => {
+    const sql = asset
+      ? `SELECT * FROM signals
+         WHERE created_at >= datetime('now', ?)
+           AND upper(asset) = upper(?)
+         ORDER BY created_at DESC`
+      : `SELECT * FROM signals
+         WHERE created_at >= datetime('now', ?)
+         ORDER BY created_at DESC`;
+    const params = asset ? [`-${minutes} minutes`, asset] : [`-${minutes} minutes`];
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows || []);
+    });
+  });
+}
+
+function getRecentWhaleCluster(asset, minutes = 30) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         w.txHash,
+         w.wallet,
+         w.token,
+         w.amount,
+         w.type,
+         w.timestamp,
+         wa.whale_score,
+         wa.behavior,
+         wa.transfer_count
+       FROM whales w
+       LEFT JOIN wallets wa ON lower(wa.wallet) = lower(w.wallet)
+       WHERE w.timestamp >= datetime('now', ?)
+         AND upper(w.token) = upper(?)
+       ORDER BY w.timestamp DESC
+       LIMIT 80`,
+      [`-${minutes} minutes`, asset],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function getStrategyWatchers(strategyKey) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT DISTINCT chat_id FROM watchlist
+       WHERE kind = 'strategy' AND value = ?`,
+      [String(strategyKey || "").toLowerCase()],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map((r) => r.chat_id));
+      }
+    );
+  });
+}
+
 module.exports = {
   insertWhale,
   updateWallet,
@@ -677,5 +798,10 @@ module.exports = {
   getStablecoinFlow,
   getDigestByToken,
   getDigestByWallet,
-  getDigestTotalCount
+  getDigestTotalCount,
+  insertSignal,
+  getRecentSignals,
+  getSignalsSinceMinutes,
+  getRecentWhaleCluster,
+  getStrategyWatchers
 };
