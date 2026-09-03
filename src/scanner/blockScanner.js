@@ -12,6 +12,7 @@ const {
 const { ethers } = require("ethers");
 const { askArc } = require("../appkit/askArc");
 const { sendAlert } = require("../telegram/bot");
+const { evaluateSignals } = require("./signalEngine");
 
 // ========================
 // CONFIG
@@ -221,6 +222,30 @@ async function startScanner() {
               tokenMeta = await getTokenTrustScore(token);
             } catch (e) {
               console.log("context fetch skip:", e.message);
+            }
+
+            try {
+              const newSignals = await evaluateSignals({
+                txHash,
+                from,
+                to,
+                symbol,
+                amount,
+                fromStats,
+                toStats
+              });
+              if (newSignals.length) {
+                console.log(
+                  "signals emitted:",
+                  newSignals.map((s) => `${s.type}:${s.asset}`).join(", ")
+                );
+                const { notifyStrategyWatchers } = require("../telegram/bot");
+                for (const s of newSignals) {
+                  await notifyStrategyWatchers(s);
+                }
+              }
+            } catch (e) {
+              console.log("evaluateSignals skip:", e.message);
             }
 
             const fmtScore = (v) =>
