@@ -18,6 +18,12 @@ const { evaluateSignals } = require("./signalEngine");
 // CONFIG
 // ========================
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+// Arc dual-USDC (resmi adresler)
+// Native / EIP-7708: 18 decimal — her USDC hareketi
+// ERC-20 USDC: 6 decimal — aynı hareketin ikinci log'u, ATLANIR
+const ARC_USDC_SYSTEM = "0xfffffffffffffffffffffffffffffffffffffffe";
+const ARC_USDC_ERC20  = "0x3600000000000000000000000000000000000000";
+
 
 // Whale eşiği — decimal'e göre düzeltilmiş (insan-okunabilir) birim
 // Ham value ile ASLA karşılaştırılmaz, sadece formatUnits sonrası amount ile kullanılır
@@ -151,9 +157,10 @@ async function startScanner() {
             ) continue;
 
             const txHash = log.transactionHash;
+            const logId = `${txHash}:${log.index ?? log.logIndex ?? 0}`;
 
-            if (seenTx.has(txHash)) continue;
-            seenTx.set(txHash, Date.now());
+            if (seenTx.has(logId)) continue;
+            seenTx.set(logId, Date.now());
 
             const from = "0x" + log.topics[1].slice(26);
             const to   = "0x" + log.topics[2].slice(26);
@@ -171,8 +178,24 @@ async function startScanner() {
             const isMint = from.toLowerCase() === ZERO_ADDRESS;
             const isBurn = to.toLowerCase()   === ZERO_ADDRESS;
 
-            const token = log.address;
-            const { symbol, decimals } = await getTokenInfo(token);
+            const emitter = String(log.address || "").toLowerCase();
+
+            // ERC-20 USDC log'u = sistem log'unun kopyası. Sayma.
+            if (emitter === ARC_USDC_ERC20.toLowerCase()) continue;
+
+            let token = log.address;
+            let symbol;
+            let decimals;
+
+            if (emitter === ARC_USDC_SYSTEM.toLowerCase()) {
+              token = ARC_USDC_ERC20;
+              symbol = "USDC";
+              decimals = 18;
+            } else {
+              const info = await getTokenInfo(token);
+              symbol = info.symbol;
+              decimals = info.decimals;
+            }
 
             const amount = Number(ethers.formatUnits(value, decimals));
 

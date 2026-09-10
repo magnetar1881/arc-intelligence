@@ -703,7 +703,7 @@ app.get("/api/v1/signals", async (req, res) => {
   if (!gate.ok) {
     return res.status(429).json({
       error: "rate_limited",
-      message: "Ücretsiz limit doldu. Destek sonrası X-Api-Key ile açılacak.",
+      message: "Ücretsiz limit doldu.",
       limit: SIGNAL_FREE_LIMIT,
       paid: false
     });
@@ -714,9 +714,21 @@ app.get("/api/v1/signals", async (req, res) => {
 
   try {
     const rows = await getRecentSignals(limit, type);
+
+    let lastSignalAt = null;
+    if (rows.length) lastSignalAt = rows[0].created_at;
+    else {
+      const latest = await getRecentSignals(1);
+      if (latest.length) lastSignalAt = latest[0].created_at;
+    }
+
     res.json({
       paid: gate.plan === "key",
       count: rows.length,
+      threshold: Number(process.env.WHALE_THRESHOLD || 100000),
+      window_min: Number(process.env.SIGNAL_WINDOW_MIN || 30),
+      last_signal_at: lastSignalAt,
+      last_indexed: lastSignalAt,
       signals: rows.map((r) => stripSignal(r, gate.plan))
     });
   } catch (err) {
