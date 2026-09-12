@@ -6,6 +6,7 @@ const circleKit = require("../appkit/circleKit");
 const { askArc } = require("../appkit/askArc");
 const app = express();
 const PORT = process.env.DASHBOARD_PORT || 3000;
+const { describeWallet } = require("../database/labels");
 const {
   getWhaleByTxHash,
   getWalletStats,
@@ -747,6 +748,16 @@ app.get("/api/v1/signals/:id", async (req, res) => {
     const found = rows.find((r) => String(r.id) === String(req.params.id));
     if (!found) return res.status(404).json({ error: "not_found" });
     res.json({ paid: gate.plan === "key", signal: stripSignal(found, gate.plan) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/v1/wallet/:address/label", async (req, res) => {
+  try {
+    const address = String(req.params.address || "");
+    const stats = await getWalletStats(address);
+    res.json(describeWallet(address, stats || {}));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
