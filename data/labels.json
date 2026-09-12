@@ -1,0 +1,10 @@
+{
+  "0x3600000000000000000000000000000000000000": {
+    "label": "USDC",
+    "kind": "circle"
+  },
+  "0x89b50855aa3be2f677cd6303cec089b5f319d72a": {
+    "label": "EURC",
+    "kind": "circle"
+  }
+}

@@ -20,6 +20,7 @@ const {
 } = require("../database/db");
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const { describeWallet } = require("../database/labels");
 
 bot.on("polling_error", (err) => {
   console.log("Telegram polling error:", err.message);
@@ -258,10 +259,12 @@ bot.onText(/\/wallet (.+)/, async (msg, match) => {
     }
 
     const recent = await getRecentWhalesForWallet(wallet, 5);
+    const tag = describeWallet(wallet, stats);
 
     let text = `🔍 <b>Wallet Tracker</b>
 
 <code>${wallet}</code>
+Kind: <b>${tag.kind}</b>${tag.label ? " · " + tag.label : ""}${tag.fresh ? " · FRESH" : ""}
 
 Total Volume: <b>${Number(stats.total_volume).toFixed(2)}</b>
 Transfer Count: ${stats.transfer_count}
