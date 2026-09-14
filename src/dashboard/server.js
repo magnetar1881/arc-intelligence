@@ -391,17 +391,23 @@ app.get("/api/bridge/estimate", async (req, res) => {
   const { from, to, amount, token } = req.query;
 
   if (!from || !to || !amount) {
-    return res.status(400).json({ error: "from, to, amount zorunlu" });
+    return res.status(400).json({ success: false, error: "from, to, amount required" });
   }
 
-  const result = await circleKit.estimateBridgeTransfer({
-    fromChain: from,
-    toChain: to,
-    amount,
-    token: token || "USDC"
-  });
-
-  res.json(result);
+  try {
+    const result = await circleKit.estimateBridgeTransfer({
+      fromChain: from,
+      toChain: to,
+      amount,
+      token: token || "USDC"
+    });
+    return res.json(result);
+  } catch (err) {
+    return res.status(200).json({
+      success: false,
+      error: err.message || "estimate failed"
+    });
+  }
 });
 
 // ========================
@@ -584,15 +590,18 @@ app.post("/api/bridge/execute", async (req, res) => {
     });
   }
 
-  const result = await circleKit.executeBridgeTransfer({
-    fromChain: from,
-    toChain: to,
-    amount,
-    token: token || "USDC",
-    recipientAddress
-  });
-
-  res.json(result);
+  try {
+    const result = await circleKit.executeBridgeTransfer({
+      fromChain: from,
+      toChain: to,
+      amount,
+      token: token || "USDC",
+      recipientAddress
+    });
+    return res.json(result);
+  } catch (err) {
+    return res.json({ success: false, error: err.message || "bridge execute failed" });
+  }
 });
 
 // ========================
