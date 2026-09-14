@@ -73,25 +73,31 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 
 <div class="page">
   <div class="bridge-card">
-    <div class="bridge-title">Bridge to Arc</div>
-    <div class="bridge-sub">Testnet demo • source: Lensora Circle wallet • fees paid on source • recipient gets the full amount</div>
+    <div class="bridge-title">Bridge</div>
+    <div class="bridge-sub">USDC · Ethereum / Base / Arbitrum ↔ Arc</div>
 
     <div class="field">
-      <div class="field-label">From chain</div>
-      <select class="field-select" id="from-chain" onchange="getEstimate()">
+      <div class="field-label">From</div>
+      <select class="field-select" id="from-chain" onchange="onFromChange()">
         <option value="Ethereum_Sepolia">Ethereum Sepolia</option>
         <option value="Base_Sepolia">Base Sepolia</option>
         <option value="Arbitrum_Sepolia">Arbitrum Sepolia</option>
-        <option value="Avalanche_Fuji">Avalanche Fuji</option>
+        <option value="Arc_Testnet">Arc Testnet</option>
       </select>
     </div>
 
-    <div class="arrow-row">↓</div>
+    <div class="arrow-row">
+      <button type="button" id="flip-btn" onclick="flipBridge()"
+        style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:16px;">↓</button>
+    </div>
 
     <div class="field">
-      <div class="field-label">To chain</div>
-      <select class="field-select" disabled>
-        <option>Arc Testnet</option>
+      <div class="field-label">To</div>
+      <select class="field-select" id="to-chain" onchange="getEstimate()">
+        <option value="Arc_Testnet" selected>Arc Testnet</option>
+        <option value="Ethereum_Sepolia">Ethereum Sepolia</option>
+        <option value="Base_Sepolia">Base Sepolia</option>
+        <option value="Arbitrum_Sepolia">Arbitrum Sepolia</option>
       </select>
     </div>
 
@@ -141,6 +147,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 
   <div class="disclaimer">
     This is Arc Testnet. No real funds involved.<br>
+    Exit is Arc → Ethereum / Base / Arbitrum only. No fiat.
     Bridge is powered by Circle's Cross-Chain Transfer Protocol (CCTP).
   </div>
 </div>
@@ -153,13 +160,17 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <script src="/swap-bundle.js"></script>
 <script type="module" src="/swap-client.js"></script>
 <script>
-let currentSpeed = 'FAST';
+let currentSpeed = "FAST";
 let estimateTimer = null;
+const PEERS = ["Ethereum_Sepolia", "Base_Sepolia", "Arbitrum_Sepolia"];
+const ARC = "Arc_Testnet";
 
 function setSpeed(speed) {
   currentSpeed = speed;
-  document.getElementById('tab-fast').classList.toggle('active', speed === 'FAST');
-  document.getElementById('tab-slow').classList.toggle('active', speed === 'SLOW');
+  const fast = document.getElementById("tab-fast");
+  const slow = document.getElementById("tab-slow");
+  if (fast) fast.classList.toggle("active", speed === "FAST");
+  if (slow) slow.classList.toggle("active", speed === "SLOW");
   getEstimate();
 }
 
@@ -168,42 +179,86 @@ function onAmountChange() {
   estimateTimer = setTimeout(getEstimate, 600);
 }
 
+function flipBridge() {
+  const fromEl = document.getElementById("from-chain");
+  const toEl = document.getElementById("to-chain");
+  if (!fromEl || !toEl) return;
+  const tmp = fromEl.value;
+  fromEl.value = toEl.value;
+  toEl.value = tmp;
+  getEstimate();
+}
+
+function onFromChange() {
+  const fromEl = document.getElementById("from-chain");
+  const toEl = document.getElementById("to-chain");
+  if (!fromEl || !toEl) return;
+  if (fromEl.value === ARC && toEl.value === ARC) toEl.value = PEERS[0];
+  if (PEERS.includes(fromEl.value)) toEl.value = ARC;
+  getEstimate();
+}
+
 async function getEstimate() {
-  const from = document.getElementById('from-chain').value;
-  const amount = document.getElementById('bridge-amount').value;
+  const fromEl = document.getElementById("from-chain");
+  const toEl = document.getElementById("to-chain");
+  const amountEl = document.getElementById("bridge-amount");
+  const box = document.getElementById("estimate-box");
+  if (!fromEl || !toEl || !amountEl) return;
+
+  const from = fromEl.value;
+  const to = toEl.value;
+  const amount = amountEl.value;
   if (!amount || Number(amount) <= 0) {
-    document.getElementById('estimate-box').style.display = 'none';
+    if (box) box.style.display = "none";
     return;
   }
 
   try {
-    const r = await fetch(`/api/bridge/estimate?from=${from}&to=Arc_Testnet&amount=${amount}&token=USDC`);
-    const d = await r.json();
-
-    if (d.success) {
-      const fee = Number(d.fee || 0);
-      const receive = Number(amount) - fee;
-      document.getElementById('est-fee').textContent = fee > 0 ? fee.toFixed(4) + ' USDC' : 'Free';
-      document.getElementById('est-receive').textContent = receive.toFixed(4) + ' USDC';
-      document.getElementById('est-time').textContent = currentSpeed === 'FAST' ? '~2 minutes' : '~15 minutes';
-      document.getElementById('estimate-box').style.display = 'block';
+    const r = await fetch(
+      `/api/bridge/estimate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}&token=USDC`
+    );
+    const text = await r.text();
+    let d;
+    try {
+      d = JSON.parse(text);
+    } catch (e) {
+      showStatus("Estimate failed: server did not return JSON", "error");
+      return;
     }
-  } catch(e) {}
+    if (!d.success) {
+      showStatus(d.error || "Estimate failed", "error");
+      return;
+    }
+    const fee = Number(d.fee || 0);
+    const receive = Number(amount) - fee;
+    document.getElementById("est-fee").textContent = fee > 0 ? fee.toFixed(4) + " USDC" : "Free";
+    document.getElementById("est-receive").textContent = receive.toFixed(4) + " USDC";
+    document.getElementById("est-time").textContent = currentSpeed === "FAST" ? "~2 minutes" : "~15 minutes";
+    if (box) box.style.display = "block";
+  } catch (e) {
+    showStatus(e.message || "Estimate failed", "error");
+  }
 }
 
 async function executeBridge() {
-  if (!connectedWallet) { connectWallet(); return; }
-
-  const from = document.getElementById('from-chain').value;
-  const amount = document.getElementById('bridge-amount').value;
-
-  if (!amount || Number(amount) <= 0) {
-    showStatus('Please enter an amount.', 'error');
+  await syncWallet();
+  if (!window.connectedWallet) {
+    if (typeof connectWallet === "function") connectWallet();
     return;
   }
 
-  showStatus('Bridging from Lensora Circle wallet...', 'loading');
-  document.getElementById('bridge-btn').disabled = true;
+  const from = document.getElementById("from-chain").value;
+  const to = document.getElementById("to-chain").value;
+  const amount = document.getElementById("bridge-amount").value;
+
+  if (!amount || Number(amount) <= 0) {
+    showStatus("Please enter an amount.", "error");
+    return;
+  }
+
+  showStatus("Submitting bridge...", "loading");
+  const btn = document.getElementById("bridge-btn");
+  if (btn) btn.disabled = true;
 
   try {
     const res = await fetch("/api/bridge/execute", {
@@ -211,71 +266,60 @@ async function executeBridge() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         from,
-        to: "Arc_Testnet",
+        to,
         amount,
         token: "USDC",
-        recipientAddress: connectedWallet
+        recipientAddress: window.connectedWallet
       })
     });
     const data = await res.json();
-
     if (data.success) {
-      const hash = data.txHash || data.result?.txHash || data.result?.hash || data.hash || '';
-      const steps = data.result?.steps || data.steps || [];
-      const stepHash = (steps[0] && (
-        steps[0].txHash ||
-        steps[0].hash ||
-        steps[0].data?.txHash
-      )) || '';
-
-      const tx = hash || stepHash;
-      const scan = 'https://sepolia.etherscan.io/tx/';
-
-      const statusEl = document.getElementById('status-msg');
-
-      statusEl.innerHTML = tx
-        ? '✅ Bridge submitted. <a href="' + scan + tx + '" target="_blank" rel="noopener" style="color:#93c5fd">View on explorer</a>'
-        : '✅ Bridge submitted. Check the destination wallet on the explorer.';
-
-      statusEl.className = 'status-msg status-success';
-      statusEl.style.display = 'block';
-
+      showStatus("Bridge submitted.", "success");
     } else {
       showStatus(data.error || "Bridge failed", "error");
     }
   } catch (e) {
     showStatus(e.message || "Bridge failed", "error");
   }
-
-  document.getElementById('bridge-btn').disabled = false;
+  if (btn) btn.disabled = false;
 }
 
 function showStatus(msg, type) {
-  const el = document.getElementById('status-msg');
+  const el = document.getElementById("status-msg");
+  if (!el) return;
   el.textContent = msg;
-  el.className = 'status-msg status-' + type;
-  el.style.display = 'block';
+  el.className = "status-msg status-" + type;
+  el.style.display = "block";
 }
 
 function updateBridgeUI() {
-  const walletRequired = document.getElementById('wallet-required');
-  const bridgeBtn = document.getElementById('bridge-btn');
-  if (connectedWallet) {
-    walletRequired.style.display = 'none';
-    bridgeBtn.style.display = 'block';
-  } else {
-    walletRequired.style.display = 'block';
-    bridgeBtn.style.display = 'none';
-  }
+  const walletRequired = document.getElementById("wallet-required");
+  const bridgeBtn = document.getElementById("bridge-btn");
+  if (!walletRequired || !bridgeBtn) return;
+  const ok = Boolean(window.connectedWallet);
+  walletRequired.style.display = ok ? "none" : "block";
+  bridgeBtn.style.display = ok ? "block" : "none";
+}
+window.updateBridgeUI = updateBridgeUI;
+
+async function syncWallet() {
+  try {
+    if (window.ethereum) {
+      const acc = await window.ethereum.request({ method: "eth_accounts" });
+      window.connectedWallet = acc && acc[0] ? acc[0] : null;
+    }
+  } catch (e) {}
+  updateBridgeUI();
 }
 
-const _orig = window.updateWalletUI;
-window.updateWalletUI = function(address) {
-  if (_orig) _orig(address);
-  updateBridgeUI();
-};
-
-document.addEventListener('DOMContentLoaded', updateBridgeUI);
+document.addEventListener("DOMContentLoaded", function () {
+  const flip = document.getElementById("flip-btn");
+  if (flip) flip.onclick = flipBridge;
+  const fromEl = document.getElementById("from-chain");
+  if (fromEl) fromEl.onchange = onFromChange;
+  syncWallet();
+  setInterval(syncWallet, 800);
+});
 </script>
 <footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
   <div style="display:flex;align-items:center;gap:16px">

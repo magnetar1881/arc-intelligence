@@ -27,6 +27,56 @@ function getCircleAdapter() {
   return circleAdapter;
 }
 
+const ARC_CHAINS = new Set(["arc", "arc_testnet", "arc-testnet"]);
+
+const OUT_CHAINS = {
+  ethereum:         "Ethereum",
+  ethereum_sepolia: "Ethereum_Sepolia",
+  base:             "Base",
+  base_sepolia:     "Base_Sepolia",
+  arbitrum:         "Arbitrum",
+  arbitrum_sepolia: "Arbitrum_Sepolia"
+};
+
+function norm(chain) {
+  return String(chain || "").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function isArc(chain) {
+  return ARC_CHAINS.has(norm(chain));
+}
+
+function resolveOutChain(chain) {
+  const key = norm(chain);
+  if (!OUT_CHAINS[key]) {
+    throw new Error("Çıkış yalnızca Ethereum, Base veya Arbitrum.");
+  }
+  return OUT_CHAINS[key];
+}
+
+function assertBridgeRoute(fromChain, toChain) {
+  const fromArc = isArc(fromChain);
+  const toArc = isArc(toChain);
+
+  if (fromArc && toArc) {
+    throw new Error("Aynı ağ içinde köprü yok.");
+  }
+
+  // Çıkış: Arc → ETH / Base / Arb
+  if (fromArc && !toArc) {
+    resolveOutChain(toChain);
+    return;
+  }
+
+  // Giriş: ETH / Base / Arb → Arc (eski davranış)
+  if (!fromArc && toArc) {
+    resolveOutChain(fromChain);
+    return;
+  }
+
+  throw new Error("Köprü yalnızca Arc ile Ethereum / Base / Arbitrum arasında.");
+}
+
 function assertExecuteEnabled(amount) {
   if (process.env.EXECUTE_ENABLED !== "true") {
     throw new Error("Execute kapalı. .env içinde EXECUTE_ENABLED=true yap.");
@@ -82,6 +132,7 @@ async function executeSwapTokens({ chain, tokenIn, tokenOut, amountIn, recipient
 async function executeBridgeTransfer({ fromChain, toChain, amount, token, recipientAddress }) {
   try {
     assertExecuteEnabled(amount);
+    assertBridgeRoute(fromChain, toChain);
 
     const source = process.env.CIRCLE_EVM_WALLET;
     if (!source) throw new Error("CIRCLE_EVM_WALLET eksik");
@@ -109,7 +160,12 @@ async function executeBridgeTransfer({ fromChain, toChain, amount, token, recipi
       }
     });
 
-    return { success: true, result };
+    return {
+      success: true,
+      result: JSON.parse(
+        JSON.stringify(result, (_, v) => (typeof v === "bigint" ? v.toString() : v))
+      )
+    };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -117,13 +173,39 @@ async function executeBridgeTransfer({ fromChain, toChain, amount, token, recipi
 
 async function estimateBridgeTransfer({ fromChain, toChain, amount, token = "USDC" }) {
   try {
+    assertBridgeRoute(fromChain, toChain);
+
     const k = getKit();
+    let adapter = null;
+    try {
+      adapter = getCircleAdapter();
+    } catch (e) {
+      adapter = null;
+    }
+
+    const from = adapter
+      ? {
+          adapter,
+          chain: fromChain,
+          address: process.env.CIRCLE_EVM_WALLET || undefined
+        }
+      : { chain: fromChain };
+
+    const to = adapter
+      ? {
+          adapter,
+          chain: toChain,
+          address: process.env.CIRCLE_EVM_WALLET || undefined
+        }
+      : { chain: toChain };
+
     const estimate = await k.estimateBridge({
-      from: { chain: fromChain },
-      to: { chain: toChain },
+      from,
+      to,
       token,
       amount
     });
+
     return {
       success: true,
       amount,
