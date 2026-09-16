@@ -3,6 +3,7 @@ import { AppKit } from "@circle-fin/app-kit";
 import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
 
 const kit = new SwapKit();
+const appKit = new AppKit({ developerFee: null });
 
 export async function estimateSwap({ tokenIn, tokenOut, amountIn }) {
   const adapter = await createViemAdapterFromProvider({
@@ -12,7 +13,7 @@ export async function estimateSwap({ tokenIn, tokenOut, amountIn }) {
   return await kit.estimate({
     from: {
       adapter,
-      chain: "Arc_Testnet",
+      chain: "Arc",
     },
     tokenIn,
     tokenOut,
@@ -43,13 +44,13 @@ export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
   console.log("TOKEN IN:", tokenIn);
   console.log("TOKEN OUT:", tokenOut);
   console.log("AMOUNT:", amountIn);
-  console.log("CHAIN:", "Arc_Testnet");
+  console.log("CHAIN:", "Arc");
   console.log("ADAPTER:", adapter);
 
   const payload = {
     from: {
       adapter,
-      chain: "Arc_Testnet",
+      chain: "Arc",
     },
     tokenIn,
     tokenOut,
@@ -96,48 +97,18 @@ export async function executeCircleBridge({
   token,
   amount,
 }) {
-
-  console.log("KIT METHODS");
-  console.log(Object.getOwnPropertyNames(Object.getPrototypeOf(kit)));
+  if (!window.ethereum) throw new Error("No browser wallet");
 
   const adapter = await createViemAdapterFromProvider({
     provider: window.ethereum,
   });
 
-  console.log("===== BRIDGE =====");
-  console.log({
-    fromChain,
-    toChain,
-    token,
-    amount,
+  const result = await appKit.bridge({
+    from: { adapter, chain: fromChain },
+    to: { adapter, chain: toChain },
+    amount: String(amount),
+    token: token || "USDC",
   });
-
-  const payload = {
-    from: {
-      adapter,
-      chain: fromChain,
-    },
-
-    to: {
-      adapter,
-      chain: toChain,
-    },
-
-    amount,
-
-    token,
-
-    config: {
-      kitKey: window.CIRCLE_KIT_KEY,
-    },
-  };
-
-  console.log("BRIDGE PAYLOAD");
-  console.dir(payload);
-
-  const result = await kit.bridge(payload);
-
-  console.log(result);
 
   return result;
 }

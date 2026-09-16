@@ -79,10 +79,10 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
     <div class="field">
       <div class="field-label">From</div>
       <select class="field-select" id="from-chain" onchange="onFromChange()">
-        <option value="Ethereum_Sepolia">Ethereum Sepolia</option>
-        <option value="Base_Sepolia">Base Sepolia</option>
-        <option value="Arbitrum_Sepolia">Arbitrum Sepolia</option>
-        <option value="Arc_Testnet">Arc Testnet</option>
+        <option value="Ethereum">Ethereum</option>
+        <option value="Base">Base</option>
+        <option value="Arbitrum">Arbitrum</option>
+        <option value="Arc">Arc</option>
       </select>
     </div>
 
@@ -94,10 +94,10 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
     <div class="field">
       <div class="field-label">To</div>
       <select class="field-select" id="to-chain" onchange="getEstimate()">
-        <option value="Arc_Testnet" selected>Arc Testnet</option>
-        <option value="Ethereum_Sepolia">Ethereum Sepolia</option>
-        <option value="Base_Sepolia">Base Sepolia</option>
-        <option value="Arbitrum_Sepolia">Arbitrum Sepolia</option>
+        <option value="Arc" selected>Arc</option>
+        <option value="Ethereum">Ethereum</option>
+        <option value="Base">Base</option>
+        <option value="Arbitrum">Arbitrum</option>
       </select>
     </div>
 
@@ -146,7 +146,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
   </div>
 
   <div class="disclaimer">
-    This is Arc Testnet. No real funds involved.<br>
+    You sign in MetaMask. Lensora does not send from its own wallet.
     Exit is Arc → Ethereum / Base / Arbitrum only. No fiat.
     Bridge is powered by Circle's Cross-Chain Transfer Protocol (CCTP).
   </div>
@@ -162,8 +162,8 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <script>
 let currentSpeed = "FAST";
 let estimateTimer = null;
-const PEERS = ["Ethereum_Sepolia", "Base_Sepolia", "Arbitrum_Sepolia"];
-const ARC = "Arc_Testnet";
+const PEERS = ["Ethereum", "Base", "Arbitrum"];
+const ARC = "Arc";
 
 function setSpeed(speed) {
   currentSpeed = speed;
@@ -243,41 +243,38 @@ async function getEstimate() {
 async function executeBridge() {
   await syncWallet();
   if (!window.connectedWallet) {
-    if (typeof connectWallet === "function") connectWallet();
+    if (typeof connectWallet === "function") await connectWallet();
+  }
+  if (!window.ethereum || !window.connectedWallet) {
+    showStatus("Connect MetaMask first.", "error");
+    return;
+  }
+  if (typeof window.executeCircleBridge !== "function") {
+    showStatus("Client bridge bundle missing. Run: node build-swap.mjs", "error");
     return;
   }
 
   const from = document.getElementById("from-chain").value;
   const to = document.getElementById("to-chain").value;
   const amount = document.getElementById("bridge-amount").value;
-
   if (!amount || Number(amount) <= 0) {
-    showStatus("Please enter an amount.", "error");
+    showStatus("Enter an amount.", "error");
     return;
   }
 
-  showStatus("Submitting bridge...", "loading");
+  showStatus("Confirm in MetaMask...", "loading");
   const btn = document.getElementById("bridge-btn");
   if (btn) btn.disabled = true;
 
   try {
-    const res = await fetch("/api/bridge/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to,
-        amount,
-        token: "USDC",
-        recipientAddress: window.connectedWallet
-      })
+    const result = await window.executeCircleBridge({
+      fromChain: from,
+      toChain: to,
+      token: "USDC",
+      amount
     });
-    const data = await res.json();
-    if (data.success) {
-      showStatus("Bridge submitted.", "success");
-    } else {
-      showStatus(data.error || "Bridge failed", "error");
-    }
+    showStatus("Bridge submitted from your wallet.", "success");
+    console.log(result);
   } catch (e) {
     showStatus(e.message || "Bridge failed", "error");
   }

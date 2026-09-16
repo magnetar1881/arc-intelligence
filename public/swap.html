@@ -75,7 +75,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 <div class="page">
   <div class="swap-card">
     <div class="swap-title">Swap Tokens</div>
-    <div class="swap-sub">Testnet demo • kaynak: Lensora Circle cüzdanı • alıcı: senin cüzdanın</div>
+    <div class="swap-sub">Arc mainnet • signed in your wallet • Lensora never spends its USDC</div>
 
     <div id="swap-form">
       <div class="token-box">
@@ -136,8 +136,8 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
   </div>
 
   <div class="disclaimer">
-    This is Arc Testnet. No real funds involved.<br>
-    Always verify transactions before signing.
+    You sign in MetaMask. Lensora does not send from its own wallet.<br>
+    Always verify the transaction before you approve.
   </div>
 </div>
 
@@ -179,7 +179,7 @@ async function getEstimate() {
   if (tokenIn === tokenOut) return;
 
   try {
-    const r = await fetch(`/api/swap/estimate?chain=Arc_Testnet&tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}`);
+    const r = await fetch(`/api/swap/estimate?chain=Arc&tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}`);
     const d = await r.json();
 
     if (d.success) {
@@ -196,8 +196,15 @@ async function getEstimate() {
 }
 
 async function executeSwap() {
-  if (!connectedWallet) {
-    connectWallet();
+  if (!window.connectedWallet && typeof connectWallet === "function") {
+    await connectWallet();
+  }
+  if (!window.ethereum || !window.connectedWallet) {
+    showStatus("Connect MetaMask first.", "error");
+    return;
+  }
+  if (typeof window.executeCircleSwap !== "function") {
+    showStatus("Client swap bundle missing. Run: node build-swap.mjs", "error");
     return;
   }
 
@@ -209,34 +216,21 @@ async function executeSwap() {
     showStatus("Please enter an amount.", "error");
     return;
   }
-
   if (tokenIn === tokenOut) {
     showStatus("Please select different tokens.", "error");
     return;
   }
 
-  showStatus("Swapping from Lensora Circle wallet...", "loading");
+  showStatus("Confirm in MetaMask...", "loading");
   document.getElementById("swap-btn").disabled = true;
 
   try {
-    const res = await fetch("/api/swap/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chain: "Arc_Testnet",
-        tokenIn,
-        tokenOut,
-        amountIn,
-        recipientAddress: connectedWallet
-      })
-    });
-    const data = await res.json();
-
-    if (data.success) {
-      showStatus("✅ Swap submitted. Output goes to your connected wallet.", "success");
-    } else {
-      showStatus(data.error || "Swap failed", "error");
+    if (typeof window.executeCircleSwap !== "function") {
+      throw new Error("Client swap bundle missing. Run: node build-swap.mjs");
     }
+    const result = await window.executeCircleSwap({ tokenIn, tokenOut, amountIn });
+    showStatus("Swap submitted from your wallet.", "success");
+    console.log(result);
   } catch (e) {
     showStatus(e.message || "Swap failed", "error");
   }
@@ -253,15 +247,12 @@ function showStatus(msg, type) {
 
 // Cüzdan durumuna göre UI güncelle
 function updateSwapUI() {
-  const walletRequired = document.getElementById('wallet-required');
-  const swapBtn = document.getElementById('swap-btn');
-  if (connectedWallet) {
-    walletRequired.style.display = 'none';
-    swapBtn.style.display = 'block';
-  } else {
-    walletRequired.style.display = 'block';
-    swapBtn.style.display = 'none';
-  }
+  const walletRequired = document.getElementById("wallet-required");
+  const swapBtn = document.getElementById("swap-btn");
+  if (!walletRequired || !swapBtn) return;
+  const ok = Boolean(window.connectedWallet);
+  walletRequired.style.display = ok ? "none" : "block";
+  swapBtn.style.display = ok ? "block" : "none";
 }
 
 // wallet.js'deki updateWalletUI'yi override et
@@ -271,7 +262,8 @@ window.updateWalletUI = function(address) {
   updateSwapUI();
 };
 
-document.addEventListener('DOMContentLoaded', updateSwapUI);
+document.addEventListener("DOMContentLoaded", updateSwapUI);
+setInterval(updateSwapUI, 800);
 </script>
 <!-- Swap Bundle -->
 <script src="/swap-bundle.js"></script>

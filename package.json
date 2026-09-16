@@ -11,7 +11,14 @@
     "create-wallet": "tsx --env-file=.env create-wallet.ts",
     "test": "node --test test/**/*.test.js"
   },
-  "keywords": ["arc", "whale", "on-chain", "telegram", "ai", "lensora"],
+  "keywords": [
+    "arc",
+    "whale",
+    "on-chain",
+    "telegram",
+    "ai",
+    "lensora"
+  ],
   "author": "magnetar1881",
   "license": "MIT",
   "dependencies": {
@@ -32,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   }
