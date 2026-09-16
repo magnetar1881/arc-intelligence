@@ -57,6 +57,72 @@
     }
   ],
 
+  "contracts": [
+    {
+      "name": "USDC native emitter",
+      "description": "EIP-7708 Transfer logs, 18 decimals. Count this stream only.",
+      "url": "https://docs.arc.io/arc/references/usdc-system-events",
+      "address": "0xfffffffffffffffffffffffffffffffffffffffe",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "USDC ERC-20 interface",
+      "description": "6 decimals. Duplicate of native transfer — do not double-count.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0x3600000000000000000000000000000000000000",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "EURC",
+      "description": "Circle EURC on Arc mainnet, 6 decimals.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "CCTP TokenMessengerV2",
+      "description": "Circle CCTP V2 messenger on Arc mainnet.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "CCTP MessageTransmitterV2",
+      "description": "Circle CCTP V2 message transmitter on Arc mainnet.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "GatewayWallet",
+      "description": "Circle Gateway wallet on Arc mainnet.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    },
+    {
+      "name": "GatewayMinter",
+      "description": "Circle Gateway minter on Arc mainnet.",
+      "url": "https://docs.arc.io/arc/references/contract-addresses",
+      "address": "0x2222222d7164433c4C09B0b0D809a9b52C04C205",
+      "status": "active",
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    }
+  ],
+
   "borrow_lend": [
     {
       "name": "Aave",
@@ -156,28 +222,19 @@
 
   "explorers": [
     {
-      "name": "ArcScan",
-      "description": "Official Arc testnet block explorer.",
-      "url": "https://testnet.arcscan.app",
+      "name": "Arc Explorer",
+      "description": "Official Arc mainnet block explorer.",
+      "url": "https://explorer.arc.io",
       "status": "active",
-      "source": "arc.io/ecosystem",
-      "added": "2026-06-29"
-    },
+      "source": "docs.arc.io",
+      "added": "2026-09-16"
+    }
+  ],
+
     {
       "name": "Blockscout",
       "description": "Open-source block explorer for EVM-based chains.",
       "url": "https://blockscout.com",
-      "status": "active",
-      "source": "arc.io/ecosystem",
-      "added": "2026-06-29"
-    }
-  ],
-
-  "faucets": [
-    {
-      "name": "Circle Faucet",
-      "description": "Official faucet for Arc testnet USDC and EURC.",
-      "url": "https://faucet.circle.com",
       "status": "active",
       "source": "arc.io/ecosystem",
       "added": "2026-06-29"

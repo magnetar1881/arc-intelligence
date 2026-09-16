@@ -1,63 +1,40 @@
 # Lensora
 
-AI-powered on-chain intelligence platform for the Arc ecosystem.
+On-chain radar for Arc mainnet: whale moves, stablecoin signals, Telegram strategies, free signals API.
 
-**Live:** https://lensora.xyz | **Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
+**Live:** https://lensora.xyz
+**Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
+**Repo:** magnetar1881/arc-intelligence
 
----
+Lensora does not spend its own USDC. Swap and bridge are signed in the user's MetaMask. Server `POST /api/swap/execute` and `POST /api/bridge/execute` return 403.
 
-## What It Does
+## Network
 
-- Monitors ERC-20 activity on Arc in real time
-- Tracks whale wallet movements and classifies wallet behavior (holder / trader / exited)
-- Ask Lensora – AI-powered natural language interface for live on-chain data
-- AI-generated whale analysis directly in Telegram
-- Arc ecosystem directory (DEXs, bridges, wallets, oracles)
-- Telegram alerts with multi-user subscriptions
-- Bridge & Swap interface powered by Circle App Kit (execution will be enabled once browser wallet support is available)
+| | |
+|---|---|
+| Chain | Arc mainnet |
+| Chain ID | **5042** (`ethers` `getNetwork()` → `5042 unknown` is correct) |
+| RPC | `https://rpc.mainnet.arc.io` |
+| Do not use | Testnet `5042002` |
 
----
+### Tokens we index
 
-## Circle Tools Used
+| Asset | Address | Decimals | Notes |
+|---|---|---|---|
+| USDC (native Transfer) | `0xfff…ffe` | 18 | Count this |
+| USDC ERC-20 | `0x3600…000` | 6 | Duplicate log — skip |
+| EURC | `0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1` | 6 | Mainnet only |
 
-- Circle App Kit
-- Gateway
-- Unified Balance Kit
+Whale threshold: **100,000** human units (USDC ≈ USD).
 
-## Stack
-
-Node.js · Express · ethers.js · SQLite · Circle App Kit · Groq/Llama · Telegram Bot API
-
-
----
-
-## Quick Start
+## Quick start
 
 ```bash
 npm install
 cp .env.example .env
-
-# fill in:
-# RPC_URL
-# BOT_TOKEN
-# GROQ_API_KEY
-# CIRCLE_KIT_KEY
-
+# fill RPC_URL, BOT_TOKEN, GROQ_API_KEY, CIRCLE_KIT_KEY
+# SCANNER_ENABLED=true
 node src/app.js
-```
-
----
-
-## Key Config (.env)
-
-| Variable | Required | Description |
-|---|---|---|
-| `RPC_URL` | yes | Arc RPC endpoint |
-| `BOT_TOKEN` | yes | Telegram bot token |
-| `GROQ_API_KEY` | yes | Groq API key (Ask Arc) |
-| `CIRCLE_KIT_KEY` | yes | Circle App Kit key |
-| `SCANNER_ENABLED` | no | `true` to start scanner (default: false) |
-| `WHALE_THRESHOLD` | no | Min token amount for whale alert (default: 1000000) |
 
 ---
 

@@ -557,51 +557,18 @@ app.get("/wallets/:address", (req, res) => {
 
 // wallet.js static olarak zaten /public'ten servis ediliyor
 
-// Swap execute — App Kit browser wallet desteği gelince aktif olacak
-app.post("/api/swap/execute", async (req, res) => {
-  const { chain, tokenIn, tokenOut, amountIn, recipientAddress } = req.body || {};
-
-  if (!amountIn || !recipientAddress) {
-    return res.status(400).json({
-      success: false,
-      error: "amountIn ve recipientAddress zorunlu"
-    });
-  }
-
-  const result = await circleKit.executeSwapTokens({
-    chain: chain || "Arc_Testnet",
-    tokenIn: tokenIn || "USDC",
-    tokenOut: tokenOut || "EURC",
-    amountIn,
-    recipientAddress
+app.post("/api/swap/execute", (_req, res) => {
+  return res.status(403).json({
+    success: false,
+    error: "Server execute disabled. Sign in MetaMask (client-only)."
   });
-
-  res.json(result);
 });
 
-// Bridge execute
-app.post("/api/bridge/execute", async (req, res) => {
-  const { from, to, amount, token, recipientAddress } = req.body || {};
-
-  if (!from || !to || !amount || !recipientAddress) {
-    return res.status(400).json({
-      success: false,
-      error: "from, to, amount ve recipientAddress zorunlu"
-    });
-  }
-
-  try {
-    const result = await circleKit.executeBridgeTransfer({
-      fromChain: from,
-      toChain: to,
-      amount,
-      token: token || "USDC",
-      recipientAddress
-    });
-    return res.json(result);
-  } catch (err) {
-    return res.json({ success: false, error: err.message || "bridge execute failed" });
-  }
+app.post("/api/bridge/execute", (_req, res) => {
+  return res.status(403).json({
+    success: false,
+    error: "Server execute disabled. Sign in MetaMask (client-only)."
+  });
 });
 
 // ========================

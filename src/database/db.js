@@ -694,13 +694,27 @@ function insertSignal(data) {
   });
 }
 
-function getRecentSignals(limit = 20, type = null) {
+function getRecentSignals(limit = 20, type = null, assets = ["USDC", "EURC"]) {
   const lim = Math.min(Number(limit) || 20, 100);
+  const list = (assets || []).map((a) => String(a).toUpperCase()).filter(Boolean);
+
   return new Promise((resolve, reject) => {
-    const sql = type
-      ? `SELECT * FROM signals WHERE type = ? ORDER BY created_at DESC LIMIT ?`
-      : `SELECT * FROM signals ORDER BY created_at DESC LIMIT ?`;
-    const params = type ? [type, lim] : [lim];
+    let sql = `SELECT * FROM signals`;
+    const params = [];
+    const where = [];
+
+    if (type) {
+      where.push(`type = ?`);
+      params.push(type);
+    }
+    if (list.length) {
+      where.push(`upper(asset) IN (${list.map(() => "?").join(",")})`);
+      params.push(...list);
+    }
+    if (where.length) sql += ` WHERE ` + where.join(" AND ");
+    sql += ` ORDER BY created_at DESC LIMIT ?`;
+    params.push(lim);
+
     db.all(sql, params, (err, rows) => {
       if (err) return reject(err);
       const parsed = (rows || []).map((r) => {
@@ -710,6 +724,32 @@ function getRecentSignals(limit = 20, type = null) {
       });
       resolve(parsed);
     });
+  });
+}
+
+function getRecentSignalsSinceHours(hours = 24, assets = ["USDC", "EURC"]) {
+  const h = Math.min(Number(hours) || 24, 168);
+  const list = (assets || []).map((a) => String(a).toUpperCase()).filter(Boolean);
+
+  return new Promise((resolve, reject) => {
+    const placeholders = list.map(() => "?").join(",");
+    db.all(
+      `SELECT * FROM signals
+       WHERE upper(asset) IN (${placeholders})
+         AND created_at >= datetime('now', ?)
+       ORDER BY created_at DESC
+       LIMIT 5`,
+      [...list, `-${h} hours`],
+      (err, rows) => {
+        if (err) return reject(err);
+        const parsed = (rows || []).map((r) => {
+          let evidence = [];
+          try { evidence = JSON.parse(r.evidence_json || "[]"); } catch (_) {}
+          return { ...r, evidence, evidence_json: undefined };
+        });
+        resolve(parsed);
+      }
+    );
   });
 }
 
@@ -801,6 +841,7 @@ module.exports = {
   getDigestTotalCount,
   insertSignal,
   getRecentSignals,
+  getRecentSignalsSinceHours,
   getSignalsSinceMinutes,
   getRecentWhaleCluster,
   getStrategyWatchers

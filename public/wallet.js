@@ -3,24 +3,59 @@
 // ========================
 let connectedWallet = null;
 
+const ARC_MAINNET = {
+  chainId: "0x13B2", // 5042
+  chainName: "Arc",
+  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+  rpcUrls: ["https://rpc.mainnet.arc.io"],
+  blockExplorerUrls: ["https://explorer.arc.io"]
+};
+
+async function ensureArcMainnet() {
+  const current = await window.ethereum.request({ method: "eth_chainId" });
+  if (current && parseInt(current, 16) === 5042) return;
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: ARC_MAINNET.chainId }]
+    });
+  } catch (e) {
+    if (e.code === 4902 || String(e.message || "").includes("Unrecognized chain")) {
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [ARC_MAINNET]
+      });
+    } else {
+      throw e;
+    }
+  }
+}
+
 async function connectWallet() {
-  if (typeof window.ethereum === 'undefined') {
-    alert('MetaMask bulunamadı. Lütfen MetaMask yükleyin: https://metamask.io');
+  if (typeof window.ethereum === "undefined") {
+    alert("MetaMask bulunamadı. Lütfen MetaMask yükleyin: https://metamask.io");
     return null;
   }
 
   try {
+    await ensureArcMainnet();
+
     const accounts = await window.ethereum.request({
-      method: 'eth_requestAccounts'
+      method: "eth_requestAccounts"
     });
 
     connectedWallet = accounts[0];
+    window.connectedWallet = connectedWallet;
     updateWalletUI(connectedWallet);
 
     // Hesap değişince güncelle
-    window.ethereum.on('accountsChanged', (accounts) => {
+    window.ethereum.on("accountsChanged", (accounts) => {
       connectedWallet = accounts[0] || null;
+      window.connectedWallet = connectedWallet;
       updateWalletUI(connectedWallet);
+    });
+    window.ethereum.on("chainChanged", () => {
+      ensureArcMainnet().catch(() => {});
     });
 
     return connectedWallet;

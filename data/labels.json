@@ -1,10 +1,5 @@
 {
-  "0x3600000000000000000000000000000000000000": {
-    "label": "USDC",
-    "kind": "circle"
-  },
-  "0x89b50855aa3be2f677cd6303cec089b5f319d72a": {
-    "label": "EURC",
-    "kind": "circle"
-  }
+  "0xfffffffffffffffffffffffffffffffffffffffe": { "label": "USDC (native emitter)", "kind": "circle" },
+  "0x3600000000000000000000000000000000000000": { "label": "USDC (ERC-20 interface)", "kind": "circle" },
+  "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1": { "label": "EURC", "kind": "circle" }
 }

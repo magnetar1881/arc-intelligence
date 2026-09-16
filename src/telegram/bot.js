@@ -16,11 +16,26 @@ const {
   getDigestByWallet,
   getDigestTotalCount,
   getStrategyWatchers,
-  getRecentSignals
+  getRecentSignals,
+  getRecentSignalsSinceHours
 } = require("../database/db");
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const { describeWallet } = require("../database/labels");
+
+const ALLOWED_ASSETS = new Set(["USDC", "EURC"]);
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function isAllowedAsset(asset) {
+  return ALLOWED_ASSETS.has(String(asset || "").toUpperCase());
+}
 
 bot.on("polling_error", (err) => {
   console.log("Telegram polling error:", err.message);
@@ -35,6 +50,14 @@ bot.on("message", (msg) => {
 // ========================
 async function sendAlert(message, tokenAddress, wallets = []) {
   try {
+    const tokenHint = String(tokenAddress || "").toUpperCase();
+    if (tokenHint && !isAllowedAsset(tokenHint) && !tokenHint.startsWith("0X")) {
+      return;
+    }
+    // USDC sistem log'u token olarak 0x3600 adresini yolluyor — sembol zaten scanner'da kesildi.
+    // ekstra güvenlik: mesajda CRS/TST geçmesin
+    if (/CRS|UUC|GHF|HBF|TST/i.test(String(message))) return;
+
     const subscriberIds = new Set();
 
     // .env'deki CHAT_ID varsa, her zaman alarm alan "sabit" alıcı olarak kalır
@@ -80,25 +103,33 @@ function formatSignalCard(signal) {
   const ev = (signal.evidence || []).slice(0, 3);
   const evLines = ev
     .map((e) => {
-      if (e.txHash) return `• <code>${e.txHash.slice(0, 10)}…</code> ${e.amount ? Number(e.amount).toLocaleString() : ""}`;
-      if (e.token) return `• ${e.token} out:${e.outflow || 0} in:${e.inflow || 0}`;
+      if (e.txHash) {
+        return `• <code>${escapeHtml(String(e.txHash).slice(0, 10))}…</code> ${
+          e.amount ? Number(e.amount).toLocaleString() : ""
+        }`;
+      }
+      if (e.token) {
+        return `• ${escapeHtml(e.token)} out:${e.outflow || 0} in:${e.inflow || 0}`;
+      }
       return "";
     })
     .filter(Boolean)
     .join("\n");
 
-  return `<b>SIGNAL · ${String(signal.type).toUpperCase()}</b>
-Asset: <b>${signal.asset}</b>
-Confidence: ${signal.confidence}
+  return `<b>SIGNAL · ${escapeHtml(String(signal.type || "").toUpperCase())}</b>
+Asset: <b>${escapeHtml(signal.asset)}</b>
+Confidence: ${escapeHtml(signal.confidence)}
 Amount: ${Number(signal.totalAmount || 0).toLocaleString()}
 Wallets: ${signal.walletCount}
 
-${signal.explanation || ""}
+${escapeHtml(signal.explanation || "")}
 ${evLines ? "\n" + evLines : ""}`;
 }
 
 async function notifyStrategyWatchers(signal) {
   try {
+    if (!isAllowedAsset(signal.asset)) return;
+
     const chatIds = new Set();
 
     if (process.env.CHAT_ID) chatIds.add(String(process.env.CHAT_ID));
@@ -182,7 +213,7 @@ bot.onText(/\/unsubscribe(?:\s+(\S+))?/, async (msg, match) => {
       bot.sendMessage(chatId, `🚫 Abonelik kaldırıldı: ${token}`);
     } else {
       await removeAllSubscriptionsForChat(chatId);
-      bot.sendMessage(chatId, "🚫 Tüm abonelikler kaldırıldı.");
+      bot.sendMessage(chatId, "🚫 Tüm aboneliklerin kaldırıldı.");
     }
   } catch (err) {
     console.log("unsubscribe error:", err.message);
@@ -375,13 +406,32 @@ bot.onText(/\/start/, async (msg) => {
     chatId,
     `<b>Lensora</b>
 
-Arc üstündeki büyük stablecoin hareketlerini izler.
-Adres yazmana gerek yok — bir strateji seç.
+Arc mainnet (5042) üstünde USDC / EURC hareketlerini izler.
+Eşik: 100.000. Lensora kendi USDC’sini harcamaz.
 
-Mevcut whale alarmları için /subscribe
-Son sinyaller: /signals`,
+Adres yazmana gerek yok — bir strateji seç.
+Alarm: /subscribe · Sinyaller: /signals`,
     strategyKeyboard()
   );
+
+  try {
+    const recent = await getRecentSignalsSinceHours(24, ["USDC", "EURC"]);
+    if (!recent.length) {
+      await bot.sendMessage(
+        chatId,
+        "Son 24 saatte USDC/EURC sinyali yok. Scanner açılınca burada görünür."
+      );
+      return;
+    }
+    await bot.sendMessage(chatId, `<b>Son 24s · ${recent.length} sinyal</b>`, {
+      parse_mode: "HTML"
+    });
+    for (const s of recent) {
+      await bot.sendMessage(chatId, formatSignalCard(s), { parse_mode: "HTML" });
+    }
+  } catch (err) {
+    console.log("start recent signals error:", err.message);
+  }
 });
 
 bot.onText(/\/signals/, async (msg) => {

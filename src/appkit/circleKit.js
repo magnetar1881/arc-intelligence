@@ -27,7 +27,7 @@ function getCircleAdapter() {
   return circleAdapter;
 }
 
-const ARC_CHAINS = new Set(["arc", "arc_testnet", "arc-testnet"]);
+const ARC_CHAINS = new Set(["arc", "arc", "arc"]);
 
 const OUT_CHAINS = {
   ethereum:         "Ethereum",
@@ -106,14 +106,14 @@ async function executeSwapTokens({ chain, tokenIn, tokenOut, amountIn, recipient
     const params = {
       from: {
         adapter,
-        chain: chain || "Arc_Testnet",
+        chain: chain || "Arc",
         address: source,
       },
       tokenIn: tokenIn || "USDC",
       tokenOut: tokenOut || "EURC",
       amountIn: String(amountIn),
       to: {
-        chain: chain || "Arc_Testnet",
+        chain: chain || "Arc",
         recipientAddress,
       },
       config: {
@@ -144,12 +144,12 @@ async function executeBridgeTransfer({ fromChain, toChain, amount, token, recipi
     const result = await k.bridge({
       from: {
         adapter,
-        chain: fromChain || "Ethereum_Sepolia",
+        chain: fromChain || "Ethereum",
         address: source,
       },
       to: {
         adapter,
-        chain: toChain || "Arc_Testnet",
+        chain: toChain || "Arc",
         address: recipientAddress,
         useForwarder: true
       },
@@ -176,28 +176,8 @@ async function estimateBridgeTransfer({ fromChain, toChain, amount, token = "USD
     assertBridgeRoute(fromChain, toChain);
 
     const k = getKit();
-    let adapter = null;
-    try {
-      adapter = getCircleAdapter();
-    } catch (e) {
-      adapter = null;
-    }
-
-    const from = adapter
-      ? {
-          adapter,
-          chain: fromChain,
-          address: process.env.CIRCLE_EVM_WALLET || undefined
-        }
-      : { chain: fromChain };
-
-    const to = adapter
-      ? {
-          adapter,
-          chain: toChain,
-          address: process.env.CIRCLE_EVM_WALLET || undefined
-        }
-      : { chain: toChain };
+    const from = { chain: fromChain };
+    const to = { chain: toChain };
 
     const estimate = await k.estimateBridge({
       from,
@@ -224,14 +204,9 @@ async function estimateBridgeTransfer({ fromChain, toChain, amount, token = "USD
 async function estimateSwapTokens({ adapter, chain, tokenIn, tokenOut, amountIn }) {
   try {
     const k = getKit();
-    const adapter = getCircleAdapter();
-    const source = process.env.CIRCLE_EVM_WALLET;
-
     const estimate = await k.estimateSwap({
       from: {
-        adapter,
-        chain: chain || "Arc_Testnet",
-        address: source
+        chain: chain || "Arc"
       },
       tokenIn: tokenIn || "USDC",
       tokenOut: tokenOut || "EURC",
@@ -286,7 +261,5 @@ module.exports = {
   getKit,
   estimateBridgeTransfer,
   estimateSwapTokens,
-  getSupportedChains,
-  executeSwapTokens,
-  executeBridgeTransfer
+  getSupportedChains
 };

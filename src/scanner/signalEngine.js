@@ -10,6 +10,7 @@ const CLUSTER_MIN_WALLETS = Number(process.env.SIGNAL_CLUSTER_WALLETS || 2);
 const CLUSTER_MIN_SCORE = Number(process.env.SIGNAL_MIN_SCORE || 0.25);
 const ROTATION_ASSETS = new Set(["USDC", "EURC"]);
 const SIGNAL_MIN_AMOUNT = Number(process.env.SIGNAL_MIN_AMOUNT || process.env.WHALE_THRESHOLD || 100000);
+const ALLOWED_ASSETS = new Set(["USDC", "EURC"]);
 
 function confidenceOf({ walletCount, totalAmount, highScoreCount }) {
   if (walletCount >= 3 || totalAmount >= 1000000 || highScoreCount >= 2) return "high";
@@ -33,6 +34,7 @@ async function emit(signal) {
 }
 
 async function evaluateSignals({ txHash, from, to, symbol, amount, fromStats, toStats }) {
+  if (!ALLOWED_ASSETS.has(String(symbol || "").toUpperCase())) return [];
   const asset = String(symbol || "UNKNOWN").toUpperCase();
   const created = [];
 

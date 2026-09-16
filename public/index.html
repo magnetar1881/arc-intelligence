@@ -246,7 +246,6 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
   <div class="stats">
     <div class="stat"><div class="stat-label">USDC (24h)</div><div class="stat-value" id="s-usdc">0</div></div>
     <div class="stat"><div class="stat-label">EURC (24h)</div><div class="stat-value" id="s-eurc">0</div></div>
-    <div class="stat"><div class="stat-label">cirBTC (24h)</div><div class="stat-value" id="s-cirbtc">0</div></div>
     <div class="stat"><div class="stat-label">Tracked Wallets</div><div class="stat-value" id="s-wallets">0</div></div>
     <div class="stat"><div class="stat-label">Last indexed</div><div class="stat-value" id="s-last" style="font-size:16px">—</div></div>
   </div>
@@ -368,7 +367,6 @@ async function loadStats(){
     document.getElementById('s-wallets').textContent=(d.total_wallets||0).toLocaleString();
     document.getElementById('s-usdc').textContent=fmt(s.usdc_vol)+' · '+(s.usdc_txs||0);
     document.getElementById('s-eurc').textContent=fmt(s.eurc_vol)+' · '+(s.eurc_txs||0);
-    document.getElementById('s-cirbtc').textContent=fmt(s.cirbtc_vol)+' · '+(s.cirbtc_txs||0);
     document.getElementById('s-last').textContent=s.last_seen?timeAgo(s.last_seen):'—';
   }catch(e){}
 }
@@ -600,12 +598,11 @@ function showActionButton(text){
   const result=document.getElementById('ask-result');
   ['action-btn','wallet-track-btn'].forEach(id=>{const el=document.getElementById(id);if(el)el.remove()});
   const t=text.toLowerCase();
-  const isBridgeSwap=t.includes('bridge')||t.includes('swap')||t.includes('köprü')||t.includes('layerzero')||t.includes('axelar')||t.includes('across')||t.includes('curve')||t.includes('hibachi')||t.includes('fluid')||t.includes('faucet');
+  const isBridgeSwap=t.includes('bridge')||t.includes('swap')||t.includes('köprü')||t.includes('layerzero')||t.includes('axelar')||t.includes('across')||t.includes('curve')||t.includes('hibachi')||t.includes('fluid');
   if(isBridgeSwap){
     let label=null,url=null;
     if(t.includes('bridge')||t.includes('köprü')||t.includes('layerzero')||t.includes('axelar')||t.includes('across')){label='🌉 Bridge to Arc';url='https://across.to'}
     else if(t.includes('swap')||t.includes('curve')||t.includes('hibachi')||t.includes('fluid')){label='🔄 Swap on Arc';url='https://hibachi.xyz/trade'}
-    else if(t.includes('faucet')){label='🚰 Get Testnet USDC';url='https://faucet.circle.com'}
     if(label){
       const btn=document.createElement('a');
       btn.id='action-btn';btn.href=url;btn.target='_blank';btn.rel='noopener';btn.textContent=label;

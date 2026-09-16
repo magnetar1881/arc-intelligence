@@ -23,27 +23,23 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 // ERC-20 USDC: 6 decimal — aynı hareketin ikinci log'u, ATLANIR
 const ARC_USDC_SYSTEM = "0xfffffffffffffffffffffffffffffffffffffffe";
 const ARC_USDC_ERC20  = "0x3600000000000000000000000000000000000000";
+const ARC_EURC_MAINNET = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
 
+const ALERT_ASSETS = new Set(["USDC", "EURC"]);
 
-// Whale eşiği — decimal'e göre düzeltilmiş (insan-okunabilir) birim
-// Ham value ile ASLA karşılaştırılmaz, sadece formatUnits sonrası amount ile kullanılır
 const WHALE_THRESHOLD = Number(process.env.WHALE_THRESHOLD || 100000);
-
-// Sadece etiketleme amaçlı boyut eşiği
-// NOT: gerçek DEX likidite/TVL/slippage analizi değil — size-based heuristic
 const LARGE_TRANSFER_THRESHOLD = Number(process.env.LARGE_TRANSFER_THRESHOLD || 250000);
-
-// Aynı cüzdandan ardışık işlemler arası bekleme (ms)
 const COOLDOWN_MS = Number(process.env.COOLDOWN_MS || 5000);
-
 const SCAN_EVERY_N_BLOCKS = Number(process.env.SCAN_EVERY_N_BLOCKS || 15);
 let rpcBackoffUntil = 0;
-
-// seenTx / walletCooldown bellek temizlik aralığı (ms)
 const MEMORY_TTL_MS = Number(process.env.MEMORY_TTL_MS || 10 * 60 * 1000);
 
-// Opsiyonel token whitelist — boş bırakılırsa tüm ERC20 transferleri dinlenir
-const TOKEN_WHITELIST = (process.env.TOKEN_WHITELIST || "")
+const DEFAULT_WHITELIST = [
+  ARC_USDC_SYSTEM,
+  ARC_EURC_MAINNET
+];
+
+const TOKEN_WHITELIST = (process.env.TOKEN_WHITELIST || DEFAULT_WHITELIST.join(","))
   .split(",")
   .map((a) => a.trim().toLowerCase())
   .filter(Boolean);
@@ -70,6 +66,10 @@ setInterval(() => {
     if (now - ts > MEMORY_TTL_MS) walletCooldown.delete(key);
   }
 }, MEMORY_TTL_MS);
+
+tokenInfoCache.set(ARC_USDC_SYSTEM.toLowerCase(), { symbol: "USDC", decimals: 18 });
+tokenInfoCache.set(ARC_USDC_ERC20.toLowerCase(), { symbol: "USDC", decimals: 6 });
+tokenInfoCache.set(ARC_EURC_MAINNET.toLowerCase(), { symbol: "EURC", decimals: 6 });
 
 // ========================
 // TOKEN BİLGİSİ — cache'li
@@ -144,6 +144,7 @@ async function startScanner() {
         const logs = await p.getLogs({
           fromBlock: blockNumber,
           toBlock: blockNumber,
+          address: TOKEN_WHITELIST,
           topics: [TRANSFER_TOPIC]
         });
 
@@ -191,11 +192,17 @@ async function startScanner() {
               token = ARC_USDC_ERC20;
               symbol = "USDC";
               decimals = 18;
+            } else if (emitter === ARC_EURC_MAINNET.toLowerCase()) {
+              token = ARC_EURC_MAINNET;
+              symbol = "EURC";
+              decimals = 6;
             } else {
               const info = await getTokenInfo(token);
               symbol = info.symbol;
               decimals = info.decimals;
             }
+
+            if (!ALERT_ASSETS.has(String(symbol).toUpperCase())) continue;
 
             const amount = Number(ethers.formatUnits(value, decimals));
 
