@@ -9,3 +9,4 @@ data/whale.db-wal
 *.save.*
 .DS_Store
 recovery/
+data/*.db.bak*
