@@ -3,7 +3,6 @@
 On-chain radar for Arc mainnet: whale moves, stablecoin signals, Telegram strategies, free signals API.
 
 **Live:** https://lensora.xyz
-**Telegram:** https://t.me/+fSxMt-IJaWQ3ZGJk
 **Repo:** magnetar1881/arc-intelligence
 
 Lensora does not spend its own USDC. Swap and bridge are signed in the user's MetaMask. Server `POST /api/swap/execute` and `POST /api/bridge/execute` return 403.
@@ -56,7 +55,7 @@ node src/app.js
 - Whale signal context ✓
 
 #### Ecosystem
-- Swap & Bridge execution on mainnet
+- Swap & Bridge execution on mainnet ✓
 - DEX liquidity monitoring ✓
 - Stablecoin flow analysis (USDC / EURC) ✓
 

@@ -20,8 +20,27 @@ const {
   getRecentSignalsSinceHours
 } = require("../database/db");
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const { describeWallet } = require("../database/labels");
+
+const TELEGRAM_ON = process.env.TELEGRAM_ENABLED !== "false";
+
+function noopBot() {
+  const n = function () {};
+  return {
+    on: n,
+    onText: n,
+    sendMessage: async function () {},
+    answerCallbackQuery: async function () {}
+  };
+}
+
+const bot = TELEGRAM_ON
+  ? new TelegramBot(process.env.BOT_TOKEN, { polling: true })
+  : noopBot();
+
+if (!TELEGRAM_ON) {
+  console.log("Telegram kapalı");
+}
 
 const ALLOWED_ASSETS = new Set(["USDC", "EURC"]);
 

@@ -18,9 +18,12 @@ if (missing.length) {
 process.on("uncaughtException", (err) => console.error("Uncaught:", err));
 process.on("unhandledRejection", (err) => console.error("Rejection:", err));
 
-// Telegram botu her zaman çalışsın
 require("./telegram/bot");
-console.log("✅ Telegram bot aktif.");
+if (process.env.TELEGRAM_ENABLED !== "false") {
+  console.log("✅ Telegram bot aktif.");
+} else {
+  console.log("Telegram kapalı");
+}
 
 // Scanner sadece SCANNER_ENABLED=true ise başlasın
 if (process.env.SCANNER_ENABLED === "true") {

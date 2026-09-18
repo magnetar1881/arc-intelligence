@@ -222,6 +222,15 @@ app.get("/api/stats", (req, res) => {
     .catch((err) => res.status(500).json({ error: err.message }));
 });
 
+app.get("/api/intel", (_req, res) => {
+  const p = path.join(__dirname, "../../data/intel.json");
+  try {
+    res.json(JSON.parse(fs.readFileSync(p, "utf8")));
+  } catch (_) {
+    res.json({ text: "Waiting for next 100k+ USDC/EURC transfer." });
+  }
+});
+
 app.get("/api/stable-hero", (req, res) => {
   db.get(`SELECT MAX(timestamp) as last_seen FROM whales`, [], (e1, last) => {
     db.all(

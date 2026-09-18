@@ -329,6 +329,20 @@ Tx:
 
               if (analysis.success && analysis.answer) {
                 const agentMessage = `🤖 <b>AI Analysis</b>\n\n${analysis.answer}`;
+                try {
+                  const fs = require("fs");
+                  const path = require("path");
+                  fs.writeFileSync(
+                    path.join(__dirname, "../../data/intel.json"),
+                    JSON.stringify({
+                      text: analysis.answer,
+                      at: new Date().toISOString()
+                    }),
+                    "utf8"
+                  );
+                } catch (e) {
+                  console.log("intel.json yazılamadı", e.message);
+                }
                 await sendAlert(agentMessage, token, [from, to]);
               }
             } catch (e) {
