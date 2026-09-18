@@ -8,9 +8,10 @@ const appKit = new AppKit({ developerFee: null });
 export async function estimateSwap({ tokenIn, tokenOut, amountIn }) {
   const adapter = await createViemAdapterFromProvider({
     provider: window.ethereum,
+    rpcUrl: "https://lensora.xyz/arc-rpc",
   });
 
-  return await kit.estimate({
+  const payload = {
     from: {
       adapter,
       chain: "Arc",
@@ -20,13 +21,17 @@ export async function estimateSwap({ tokenIn, tokenOut, amountIn }) {
     amountIn,
     config: {
       kitKey: window.CIRCLE_KIT_KEY,
+      allowanceStrategy: "approve",
     },
-  });
+  };
+
+  return await kit.estimate(payload);
 }
 
 export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
   const adapter = await createViemAdapterFromProvider({
     provider: window.ethereum,
+    rpcUrl: "https://lensora.xyz/arc-rpc",
   });
 
   console.log("=== BEFORE SWAP ===");
@@ -57,33 +62,19 @@ export async function executeCircleSwap({ tokenIn, tokenOut, amountIn }) {
     amountIn,
     config: {
       kitKey: window.CIRCLE_KIT_KEY,
+      allowanceStrategy: "approve",
     },
   };
 
-  console.log("PAYLOAD");
-  console.dir(payload);
-
-  console.log("TOKEN IN FULL", tokenIn);
-  console.log("TOKEN OUT FULL", tokenOut);
-  console.log("ADAPTER FULL", adapter);
-
   try {
     const result = await kit.swap(payload);
-
     console.log("SWAP RESULT:", result);
     return result;
   } catch (e) {
     console.error("SWAP ERROR:", e);
     console.error("STACK:", e?.stack);
-
     console.log("CAUSE:");
     console.dir(e?.cause);
-
-    if (e?.cause?.trace) {
-      console.log("TRACE:");
-      console.dir(e.cause.trace);
-    }
-
     throw e;
   }
 }
@@ -101,6 +92,7 @@ export async function executeCircleBridge({
 
   const adapter = await createViemAdapterFromProvider({
     provider: window.ethereum,
+    rpcUrl: "https://lensora.xyz/arc-rpc",
   });
 
   const result = await appKit.bridge({

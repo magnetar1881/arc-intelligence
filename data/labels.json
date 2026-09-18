@@ -1,5 +1,66 @@
 {
-  "0xfffffffffffffffffffffffffffffffffffffffe": { "label": "USDC (native emitter)", "kind": "circle" },
-  "0x3600000000000000000000000000000000000000": { "label": "USDC (ERC-20 interface)", "kind": "circle" },
-  "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1": { "label": "EURC", "kind": "circle" }
+  "0xfffffffffffffffffffffffffffffffffffffffe": {
+    "label": "USDC (native emitter)",
+    "kind": "circle"
+  },
+  "0x3600000000000000000000000000000000000000": {
+    "label": "USDC (ERC-20 interface)",
+    "kind": "circle"
+  },
+  "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1": {
+    "label": "EURC",
+    "kind": "circle"
+  },
+  "0xee7ae85f2fe2239e27d9c1e23fffe168d63b4055": {
+    "label": "Circle MSCA / StrategyExecutor",
+    "kind": "smart_wallet"
+  },
+  "0xa12cd81d0f9988e3d60c4b6a0d52d368ef3c788d": {
+    "label": "ARC token (genesis)",
+    "kind": "circle"
+  },
+  "0xfc856c14bb9425cbfae88592cf3d14310d1b9663": {
+    "label": "ARC alloc 15%",
+    "kind": "circle"
+  },
+  "0xd94a35b51ff932910df4f540a66f362e6831be31": {
+    "label": "ARC alloc 15%",
+    "kind": "circle"
+  },
+  "0xcffa03bd3157f99b279bda6563b15a965fd8e9bf": {
+    "label": "ARC alloc 13.65%",
+    "kind": "circle"
+  },
+  "0xee06048796bb7214477217779a129b0737d00805": {
+    "label": "ARC alloc 9.9%",
+    "kind": "circle"
+  },
+  "0x67e2a7ad4e9c2cfe63a265a053f87fb675ac1269": {
+    "label": "ARC alloc 8.1%",
+    "kind": "circle"
+  },
+  "0xc3ce1dbd236b053068f0089022644219ddbe5090": {
+    "label": "ARC alloc 7.65%",
+    "kind": "circle"
+  },
+  "0x9c8c14192ab5ab35d260c579ad836631a0713d8f": {
+    "label": "ARC alloc 7.65%",
+    "kind": "circle"
+  },
+  "0x85c51dafd217bd1b9f2aa3f6f737a49c62f997cd": {
+    "label": "ARC alloc 7.65%",
+    "kind": "circle"
+  },
+  "0x6a4a5068f2461338188c9d7393548a24b2e4af91": {
+    "label": "ARC alloc 7.65%",
+    "kind": "circle"
+  },
+  "0x127d46e439c405d0e3ec871d0c370b3411c8845b": {
+    "label": "ARC alloc 7.65%",
+    "kind": "circle"
+  },
+  "0x4d71a563d84ba52dc7755945cbaa28539f476aad": {
+    "label": "ARC alloc 0.1%",
+    "kind": "circle"
+  }
 }

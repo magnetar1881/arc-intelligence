@@ -203,11 +203,13 @@ async function getEstimate() {
   const toEl = document.getElementById("to-chain");
   const amountEl = document.getElementById("bridge-amount");
   const box = document.getElementById("estimate-box");
+
   if (!fromEl || !toEl || !amountEl) return;
 
   const from = fromEl.value;
   const to = toEl.value;
   const amount = amountEl.value;
+
   if (!amount || Number(amount) <= 0) {
     if (box) box.style.display = "none";
     return;
@@ -217,26 +219,27 @@ async function getEstimate() {
     const r = await fetch(
       `/api/bridge/estimate?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${encodeURIComponent(amount)}&token=USDC`
     );
-    const text = await r.text();
-    let d;
-    try {
-      d = JSON.parse(text);
-    } catch (e) {
-      showStatus("Estimate failed: server did not return JSON", "error");
+
+    const d = await r.json();
+
+    if (!d || d.success === false) {
+      if (box) box.style.display = "none";
       return;
     }
-    if (!d.success) {
-      showStatus(d.error || "Estimate failed", "error");
-      return;
-    }
-    const fee = Number(d.fee || 0);
-    const receive = Number(amount) - fee;
-    document.getElementById("est-fee").textContent = fee > 0 ? fee.toFixed(4) + " USDC" : "Free";
-    document.getElementById("est-receive").textContent = receive.toFixed(4) + " USDC";
-    document.getElementById("est-time").textContent = currentSpeed === "FAST" ? "~2 minutes" : "~15 minutes";
+
     if (box) box.style.display = "block";
+
+    document.getElementById("est-fee").textContent =
+      d.fee || "—";
+
+    document.getElementById("est-receive").textContent =
+      d.receive || amount + " USDC";
+
+    document.getElementById("est-time").textContent =
+      d.time || "—";
+
   } catch (e) {
-    showStatus(e.message || "Estimate failed", "error");
+    if (box) box.style.display = "none";
   }
 }
 

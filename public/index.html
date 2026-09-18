@@ -465,7 +465,19 @@ async function loadTokens(){
 }
 
 // ── ECOSYSTEM ──
-const ECO_LABELS={dex:'DEX',bridges:'Bridges',borrow_lend:'Borrow / Lend',wallets:'Wallets',rpc_providers:'RPC',explorers:'Explorers',faucets:'Faucets',analytics:'Analytics',oracles:'Oracles',stablecoin_issuers:'Stablecoins'};
+const ECO_LABELS={
+  official:'Official',
+  dex:'DEX',
+  bridges:'Bridges',
+  borrow_lend:'Borrow / Lend',
+  wallets:'Wallets',
+  rpc_providers:'RPC',
+  explorers:'Explorers',
+  analytics:'Analytics',
+  oracles:'Oracles',
+  stablecoin_issuers:'Stablecoins',
+  contracts:'Contracts'
+};
 let ecoData=null;
 function renderEcoTab(key){
   document.querySelectorAll('.eco-tab').forEach(t=>t.classList.remove('active'));
@@ -480,14 +492,27 @@ function renderEcoTab(key){
     </a>`).join('');
 }
 async function loadEcosystem(){
+  const grid=document.getElementById('eco-grid');
+  const tabs=document.getElementById('eco-tabs');
   try{
-    ecoData=await fetch('/api/ecosystem').then(r=>r.json());
-    const keys=Object.keys(ECO_LABELS).filter(k=>ecoData[k]?.length);
-    document.getElementById('eco-tabs').innerHTML=keys.map(k=>
+    const r=await fetch('/api/ecosystem');
+    if(!r.ok) throw new Error('http '+r.status);
+    ecoData=await r.json();
+    const keys=Object.keys(ECO_LABELS).filter(k=>Array.isArray(ecoData[k])&&ecoData[k].length);
+    if(!keys.length){
+      if(tabs) tabs.innerHTML='';
+      grid.innerHTML='<div class="empty">No ecosystem entries.</div>';
+      return;
+    }
+    tabs.innerHTML=keys.map(k=>
       `<div class="eco-tab" data-key="${k}" onclick="renderEcoTab('${k}')">${ECO_LABELS[k]}</div>`
     ).join('');
-    if(keys.length)renderEcoTab(keys[0]);
-  }catch(e){}
+    renderEcoTab(keys[0]);
+  }catch(e){
+    console.error('ecosystem', e);
+    if(tabs) tabs.innerHTML='';
+    grid.innerHTML='<div class="empty">Failed to load ecosystem.</div>';
+  }
 }
 
 // ── CHART (küçük boyut) ──

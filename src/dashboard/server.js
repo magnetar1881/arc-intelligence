@@ -192,7 +192,7 @@ app.get("/api/stats", (req, res) => {
     }),
     new Promise((resolve, reject) => {
       db.get(
-        `SELECT COUNT(*) as total FROM whales
+        `SELECT COUNT(DISTINCT txHash) as total FROM whales
          WHERE timestamp >= datetime('now', '-24 hours')`,
         (err, row) => {
           if (err) reject(err);
@@ -202,8 +202,12 @@ app.get("/api/stats", (req, res) => {
     }),
     new Promise((resolve, reject) => {
       db.get(
-        `SELECT SUM(amount) as total FROM whales
-         WHERE timestamp >= datetime('now', '-24 hours')`,
+        `SELECT COALESCE(SUM(amt), 0) as total FROM (
+           SELECT MAX(amount) as amt
+           FROM whales
+           WHERE timestamp >= datetime('now', '-24 hours')
+           GROUP BY txHash
+         )`,
         (err, row) => {
           if (err) reject(err);
           else resolve({ volume_24h: row.total || 0 });
@@ -211,6 +215,7 @@ app.get("/api/stats", (req, res) => {
       );
     })
   ];
+
 
   Promise.all(queries)
     .then((results) => res.json(Object.assign({}, ...results)))
@@ -220,26 +225,30 @@ app.get("/api/stats", (req, res) => {
 app.get("/api/stable-hero", (req, res) => {
   db.get(`SELECT MAX(timestamp) as last_seen FROM whales`, [], (e1, last) => {
     db.all(
-      `SELECT upper(token) as token,
+      `SELECT token,
               COUNT(*) as txs,
-              SUM(amount) as volume
-       FROM whales
-       WHERE upper(token) IN ('USDC','EURC','CIRBTC')
-         AND timestamp >= datetime('now','-24 hours')
-       GROUP BY upper(token)`,
+              SUM(amt) as volume
+       FROM (
+         SELECT upper(token) as token, txHash, MAX(amount) as amt
+         FROM whales
+         WHERE upper(token) IN ('USDC','EURC')
+           AND timestamp >= datetime('now', '-24 hours')
+         GROUP BY upper(token), txHash
+       )
+       GROUP BY token`,
       [],
       (e2, rows) => {
-        if (e1 || e2) return res.status(500).json({ error: (e1||e2).message });
-        const map = {};
-        (rows || []).forEach(r => { map[r.token] = r; });
+        if (e1 || e2) {
+          return res.status(500).json({ error: (e1 || e2).message });
+        }
+        const by = {};
+        for (const r of rows || []) by[r.token] = r;
         res.json({
-          last_seen: last?.last_seen || null,
-          usdc_txs: map.USDC?.txs || 0,
-          usdc_vol: map.USDC?.volume || 0,
-          eurc_txs: map.EURC?.txs || 0,
-          eurc_vol: map.EURC?.volume || 0,
-          cirbtc_txs: map.CIRBTC?.txs || 0,
-          cirbtc_vol: map.CIRBTC?.volume || 0
+          last_seen: last && last.last_seen ? last.last_seen : null,
+          usdc_txs: (by.USDC && by.USDC.txs) || 0,
+          usdc_vol: (by.USDC && by.USDC.volume) || 0,
+          eurc_txs: (by.EURC && by.EURC.txs) || 0,
+          eurc_vol: (by.EURC && by.EURC.volume) || 0
         });
       }
     );

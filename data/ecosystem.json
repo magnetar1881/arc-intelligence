@@ -228,9 +228,7 @@
       "status": "active",
       "source": "docs.arc.io",
       "added": "2026-09-16"
-    }
-  ],
-
+    },
     {
       "name": "Blockscout",
       "description": "Open-source block explorer for EVM-based chains.",

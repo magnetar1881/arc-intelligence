@@ -4,6 +4,10 @@ node_modules/
 data/whale.db
 data/whale.db-shm
 data/whale.db-wal
+data/*.db
+data/*.db-*
+data/*.bak
+data/*.bak-*
 *.log
 *.save
 *.save.*

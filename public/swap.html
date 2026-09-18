@@ -81,15 +81,17 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
       <div class="token-box">
         <div class="token-label">You pay</div>
         <div class="token-row">
-          <select class="token-select" id="token-in" onchange="onInputChange()">
+          <select class="token-select" id="token-in" onchange="onInputChange();refreshBal();">
             <option value="USDC">USDC</option>
             <option value="EURC">EURC</option>
             <option value="cirBTC">cirBTC</option>
           </select>
+
           <input class="token-input" id="amount-in" type="number" placeholder="0.00" oninput="onInputChange()"/>
         </div>
-        <div class="token-balance" id="balance-in">Balance: —</div>
-      </div>
+
+          <p>Balance: <span id="bal-in">—</span></p>
+        </div>
 
       <div class="swap-arrow" onclick="swapTokens()">⇅</div>
 
@@ -158,7 +160,56 @@ function swapTokens() {
   inEl.value = outEl.value;
   outEl.value = tmp;
   onInputChange();
+  refreshBal();
 }
+
+  const TOKEN = {
+    USDC: {
+      address: "0x3600000000000000000000000000000000000000",
+      decimals: 6
+    },
+    EURC: {
+      address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+      decimals: 6
+    }
+  };
+
+  let lastBal = 0;
+
+  function balOfData(owner) {
+    const addr = owner.slice(2).toLowerCase().padStart(64, "0");
+    return "0x70a08231" + addr;
+  }
+
+  async function readBal(symbol) {
+    const t = TOKEN[symbol];
+    if (!t || !window.ethereum) return 0;
+    const accs = await window.ethereum.request({ method: "eth_accounts" });
+    const owner = (window.connectedWallet || (accs && accs[0]) || "").toLowerCase();
+    if (!owner) return 0;
+    const data = "0x70a08231" + owner.slice(2).padStart(64, "0");
+    const raw = await window.ethereum.request({
+      method: "eth_call",
+      params: [{ to: t.address, data: data }, "latest"]
+    });
+    if (!raw || raw === "0x") return 0;
+    return Number(BigInt(raw)) / Math.pow(10, t.decimals);
+  }
+
+  async function refreshBal() {
+    const el = document.getElementById("bal-in");
+    const sel = document.getElementById("token-in");
+    const symbol = sel ? sel.value : "USDC";
+    if (!el) return;
+    try {
+      lastBal = await readBal(symbol);
+      el.textContent = lastBal.toFixed(4) + " " + symbol;
+    } catch (e) {
+      console.error("BAL ERR", e);
+      el.textContent = "—";
+      lastBal = 0;
+    }
+  }
 
 function onInputChange() {
   clearTimeout(estimateTimer);
@@ -171,33 +222,56 @@ function onInputChange() {
   estimateTimer = setTimeout(getEstimate, 600);
 }
 
-async function getEstimate() {
-  const tokenIn = document.getElementById('token-in').value;
-  const tokenOut = document.getElementById('token-out').value;
-  const amountIn = document.getElementById('amount-in').value;
+async function getEstimate() { 
+  const tokenIn = document.getElementById('token-in').value; 
+  const tokenOut = document.getElementById('token-out').value; 
+  const amountIn = document.getElementById('amount-in').value; 
 
   if (tokenIn === tokenOut) return;
 
+  if (!amountIn || Number(amountIn) <= 0) {
+    document.getElementById('amount-out').value = '';
+    return;
+  }
+
+  if (!window.estimateCircleSwap) {
+    console.error('estimateCircleSwap missing');
+    return;
+  }
+
   try {
-    const r = await fetch(`/api/swap/estimate?chain=Arc&tokenIn=${tokenIn}&tokenOut=${tokenOut}&amountIn=${amountIn}`);
-    const d = await r.json();
+    const d = await window.estimateCircleSwap({
+      tokenIn,
+      tokenOut,
+      amountIn,
+    });
 
-    if (d.success) {
-      const outAmt = d.estimatedOutput?.amount ?? d.estimatedOutput;
-      const minAmt = d.stopLimit?.amount ?? d.stopLimit;
+    console.log('ESTIMATE RAW', d);
 
-      document.getElementById('amount-out').value = Number(outAmt).toFixed(4);
-      document.getElementById('est-output').textContent = Number(outAmt).toFixed(4) + ' ' + tokenOut;
-      document.getElementById('est-min').textContent = Number(minAmt).toFixed(4) + ' ' + tokenOut;
-      document.getElementById('est-impact').textContent = '< 0.1%';
-      document.getElementById('estimate-box').style.display = 'block';
-    }
-  } catch(e) {}
+    const outAmt =
+      (d && d.estimatedOutput && d.estimatedOutput.amount) ||
+      (d && d.estimatedOutput) ||
+      (d && d.amountOut) ||
+      (d && d.estimatedAmountOut) ||
+      (d && d.toAmount) ||
+      0;
+
+    document.getElementById('amount-out').value =
+      Number(outAmt).toFixed(4);
+
+    document.getElementById('est-output').textContent =
+      Number(outAmt).toFixed(4) + ' ' + tokenOut;
+
+  } catch (e) {
+    console.error('ESTIMATE ERR', e);
+    document.getElementById('amount-out').value = '';
+  }
 }
 
 async function executeSwap() {
   if (!window.connectedWallet && typeof connectWallet === "function") {
     await connectWallet();
+    refreshBal();
   }
   if (!window.ethereum || !window.connectedWallet) {
     showStatus("Connect MetaMask first.", "error");
@@ -264,6 +338,16 @@ window.updateWalletUI = function(address) {
 
 document.addEventListener("DOMContentLoaded", updateSwapUI);
 setInterval(updateSwapUI, 800);
+
+  if (window.ethereum) {
+    window.ethereum.request({ method: "eth_accounts" }).then(function (accs) {
+      if (accs && accs[0]) refreshBal();
+    });
+    window.ethereum.on("accountsChanged", function () {
+      refreshBal();
+    });
+  }
+
 </script>
 <!-- Swap Bundle -->
 <script src="/swap-bundle.js"></script>

@@ -45,6 +45,7 @@ async function connectWallet() {
     });
 
     connectedWallet = accounts[0];
+    if (typeof refreshBal === "function") refreshBal();
     window.connectedWallet = connectedWallet;
     updateWalletUI(connectedWallet);
 
@@ -53,6 +54,10 @@ async function connectWallet() {
       connectedWallet = accounts[0] || null;
       window.connectedWallet = connectedWallet;
       updateWalletUI(connectedWallet);
+
+      if (typeof refreshBal === "function") {
+        refreshBal();
+      }
     });
     window.ethereum.on("chainChanged", () => {
       ensureArcMainnet().catch(() => {});
