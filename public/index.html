@@ -153,6 +153,12 @@ header{
 .eco-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:3px}
 .eco-desc{font-size:10px;color:var(--text3);line-height:1.5}
 
+/* ── INTEL CARD ── */
+#intel-card{background:#141413 !important;border:1px solid #2A2926 !important;border-radius:12px !important;padding:16px 18px !important}
+#intel-meta a{text-decoration:none;transition:color .12s}
+#intel-meta a:hover{color:#F5F4F0}
+#intel-copy-btn:hover,#intel-share-btn:hover{border-color:#A3A29C !important;color:#F5F4F0 !important}
+
 /* SKELETON */
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -268,15 +274,25 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
       </div>
     </div>
     <div class="card" id="intel-card">
-      <div class="card-head">
-        <span class="card-title">Intel</span>
-        <button id="intel-copy-btn" title="Copy tx hash"
-          style="display:none;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--blue3);padding:2px 8px;border-radius:4px;cursor:pointer;font-family:var(--sans)">Copy tx</button>
+      <!-- title row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:13px;color:#A3A29C;font-family:var(--sans)">Intel</span>
+        <div id="intel-actions" style="display:none;gap:6px;align-items:center">
+          <button id="intel-copy-btn"
+            style="font-size:11px;background:transparent;border:1px solid #2A2926;color:#A3A29C;padding:2px 8px;border-radius:5px;cursor:pointer;font-family:var(--sans)">Copy tx</button>
+          <a id="intel-share-btn" href="#" target="_blank" rel="noopener noreferrer"
+            style="font-size:11px;background:transparent;border:1px solid #2A2926;color:#A3A29C;padding:2px 8px;border-radius:5px;cursor:pointer;font-family:var(--sans);text-decoration:none">Share on X</a>
+        </div>
       </div>
-      <div id="intel-meta" style="display:none;padding:10px 20px 0;border-bottom:1px solid var(--border)">
+      <!-- subject block -->
+      <div id="intel-meta" style="display:none">
         <div id="intel-meta-inner"></div>
+        <div style="height:1px;background:#2A2926;margin:12px 0"></div>
       </div>
-      <p id="intel-text" style="margin:0;padding:12px 20px;font-size:13px;line-height:1.6;color:var(--muted)">Waiting for next 100k+ USDC/EURC transfer.</p>
+      <!-- model note label -->
+      <div id="intel-note-label" style="display:none;font-size:11px;color:#6E6D67;margin-bottom:4px;font-family:var(--sans)">Model note</div>
+      <!-- AI paragraph -->
+      <p id="intel-text" style="margin:0;font-size:14px;line-height:1.55;color:#F5F4F0;font-family:var(--sans)">Waiting for next 100k+ USDC/EURC transfer.</p>
     </div>
     <div class="card">
       <div class="card-head">
@@ -368,95 +384,115 @@ function timeAgo(ts){
 
 // ── INTEL META ──
 function renderIntelMeta(d) {
-  const meta = document.getElementById('intel-meta');
-  const inner = document.getElementById('intel-meta-inner');
-  const copyBtn = document.getElementById('intel-copy-btn');
+  var meta     = document.getElementById('intel-meta');
+  var inner    = document.getElementById('intel-meta-inner');
+  var actions  = document.getElementById('intel-actions');
+  var copyBtn  = document.getElementById('intel-copy-btn');
+  var shareBtn = document.getElementById('intel-share-btn');
   if (!meta || !inner) return;
 
-  // Old format or missing fields — hide meta block
-  if (!d || !d.txHash) { meta.style.display = 'none'; if (copyBtn) copyBtn.style.display = 'none'; return; }
+  // Old payload or missing subject fields — hide meta + actions + note label
+  var noteLabel = document.getElementById('intel-note-label');
+  if (!d || !d.txHash || !d.from || !d.to) {
+    meta.style.display = 'none';
+    if (actions) actions.style.display = 'none';
+    if (noteLabel) noteLabel.style.display = 'none';
+    return;
+  }
+  if (noteLabel) noteLabel.style.display = 'block';
 
-  const sh = function(a) { return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; };
-  const fmtScore = function(v) { return (v === null || v === undefined) ? '—' : Number(v).toFixed(2); };
-  const EXPLORER = 'https://explorer.arc.io';
+  var sh = function(a) { return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; };
+  var EXPLORER = 'https://explorer.arc.io';
 
-  // Amount display
-  const amtDisplay = fmt(d.amount);
-  const tierColor = d.tier === 'LARGE' ? 'var(--amber)' : 'var(--blue3)';
-
-  // Build subject line using DOM (never innerHTML for API strings)
   inner.textContent = '';
 
-  // Row 1: token · amount · tier
-  const r1 = document.createElement('div');
-  r1.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px';
-  const tokenSpan = document.createElement('span');
-  tokenSpan.style.cssText = 'font-family:var(--mono);font-weight:700;color:var(--blue3)';
-  tokenSpan.textContent = d.token || '—';
-  const amtSpan = document.createElement('span');
-  amtSpan.style.cssText = 'font-family:var(--mono);color:var(--green);font-weight:600';
-  amtSpan.textContent = amtDisplay;
-  const tierSpan = document.createElement('span');
-  tierSpan.style.cssText = `font-size:9px;font-family:var(--mono);padding:2px 5px;border-radius:3px;color:${tierColor};border:1px solid ${tierColor};opacity:.85`;
-  tierSpan.textContent = d.tier || 'STANDARD';
-  r1.appendChild(tokenSpan); r1.appendChild(amtSpan); r1.appendChild(tierSpan);
-  inner.appendChild(r1);
+  // Line A: token · amount · tier
+  var lineA = document.createElement('div');
+  lineA.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px';
+  var tokEl = document.createElement('span');
+  tokEl.style.cssText = 'font-size:15px;color:#F5F4F0;font-family:var(--mono)';
+  tokEl.textContent = d.token || '—';
+  var dotEl = document.createElement('span');
+  dotEl.style.cssText = 'font-size:15px;color:#6E6D67';
+  dotEl.textContent = '·';
+  var amtEl = document.createElement('span');
+  amtEl.style.cssText = 'font-size:15px;color:#F5F4F0;font-family:var(--mono)';
+  amtEl.textContent = fmt(d.amount);
+  var dot2 = document.createElement('span');
+  dot2.style.cssText = 'font-size:15px;color:#6E6D67';
+  dot2.textContent = '·';
+  var tierEl = document.createElement('span');
+  tierEl.style.cssText = 'font-size:13px;font-family:var(--mono);color:' + (d.tier === 'LARGE' ? '#C4A36A' : '#6E6D67');
+  tierEl.textContent = d.tier || 'STANDARD';
+  lineA.appendChild(tokEl); lineA.appendChild(dotEl); lineA.appendChild(amtEl);
+  lineA.appendChild(dot2); lineA.appendChild(tierEl);
+  inner.appendChild(lineA);
 
-  // Rows for from/to/tx
-  function addrRow(label, addr, score, behavior, lbl) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--mono)';
-    const lbEl = document.createElement('span');
-    lbEl.style.cssText = 'color:var(--dim);min-width:36px';
-    lbEl.textContent = label;
-    const aEl = document.createElement('a');
-    aEl.href = '/wallets/' + addr;
-    aEl.style.cssText = 'color:var(--blue3);text-decoration:none';
-    aEl.title = addr;
-    aEl.textContent = sh(addr);
-    const expEl = document.createElement('a');
-    expEl.href = EXPLORER + '/address/' + addr;
-    expEl.target = '_blank'; expEl.rel = 'noopener noreferrer';
-    expEl.style.cssText = 'color:var(--dim);font-size:9px;text-decoration:none';
-    expEl.textContent = '↗';
-    expEl.title = 'View on explorer';
-    const scoreEl = document.createElement('span');
-    scoreEl.style.color = 'var(--muted)';
-    scoreEl.textContent = 'score ' + fmtScore(score);
-    row.appendChild(lbEl); row.appendChild(aEl); row.appendChild(expEl);
-    if (lbl) { const lblEl = document.createElement('span'); lblEl.style.cssText = 'color:var(--text3);font-size:10px'; lblEl.textContent = lbl; row.appendChild(lblEl); }
-    row.appendChild(scoreEl);
-    if (behavior) { const bEl = document.createElement('span'); bEl.style.cssText = 'color:var(--muted);font-size:10px'; bEl.textContent = '· ' + behavior; row.appendChild(bEl); }
+  // Lines B + C: From / To
+  function addrRow(labelText, addr, lbl) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px';
+    var lb = document.createElement('span');
+    lb.style.cssText = 'font-size:12px;color:#6E6D67;font-family:var(--sans);min-width:32px';
+    lb.textContent = labelText;
+    var addrLink = document.createElement('a');
+    addrLink.href = '/wallets/' + addr;
+    addrLink.style.cssText = 'font-size:13px;color:#E8E4DC;font-family:ui-monospace,monospace;text-decoration:none';
+    addrLink.title = addr;
+    addrLink.textContent = sh(addr);
+    row.appendChild(lb);
+    row.appendChild(addrLink);
+    if (lbl) {
+      var lblEl = document.createElement('span');
+      lblEl.style.cssText = 'font-size:11px;color:#6E6D67;font-family:var(--sans)';
+      lblEl.textContent = lbl;
+      row.appendChild(lblEl);
+    }
     return row;
   }
+  inner.appendChild(addrRow('From', d.from, d.fromLabel));
+  inner.appendChild(addrRow('To',   d.to,   d.toLabel));
 
-  inner.appendChild(addrRow('From', d.from, d.fromScore, d.fromBehavior, d.fromLabel));
-  inner.appendChild(addrRow('To',   d.to,   d.toScore,   d.toBehavior,   d.toLabel));
-
-  // Tx row
-  const txRow = document.createElement('div');
-  txRow.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;font-family:var(--mono);color:var(--text3);margin-bottom:8px';
-  const txLbl = document.createElement('span');
-  txLbl.style.cssText = 'color:var(--dim);min-width:36px'; txLbl.textContent = 'Tx';
-  const txLink = document.createElement('a');
+  // Line D: Tx hash
+  var txRow = document.createElement('div');
+  txRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:4px';
+  var txLb = document.createElement('span');
+  txLb.style.cssText = 'font-size:12px;color:#6E6D67;font-family:var(--sans);min-width:32px';
+  txLb.textContent = 'Tx';
+  var txLink = document.createElement('a');
   txLink.href = EXPLORER + '/tx/' + d.txHash;
   txLink.target = '_blank'; txLink.rel = 'noopener noreferrer';
-  txLink.style.cssText = 'color:var(--blue3);text-decoration:none';
+  txLink.style.cssText = 'font-size:13px;color:#E8E4DC;font-family:ui-monospace,monospace;text-decoration:none';
   txLink.title = d.txHash;
   txLink.textContent = sh(d.txHash);
-  const txExp = document.createElement('span');
-  txExp.style.cssText = 'color:var(--dim);font-size:10px'; txExp.textContent = 'View on explorer →';
-  txRow.appendChild(txLbl); txRow.appendChild(txLink); txRow.appendChild(txExp);
+  txRow.appendChild(txLb);
+  txRow.appendChild(txLink);
   inner.appendChild(txRow);
 
   meta.style.display = 'block';
 
-  // Copy tx button
+  // Show actions row
+  if (actions) { actions.style.display = 'flex'; actions.style.gap = '6px'; actions.style.alignItems = 'center'; }
+
+  // Copy button
   if (copyBtn) {
-    copyBtn.style.display = 'inline-block';
     copyBtn.onclick = function() {
       navigator.clipboard.writeText(d.txHash).catch(function(){});
     };
+  }
+
+  // Share on X
+  if (shareBtn) {
+    var shortFrom = sh(d.from);
+    var shortTo   = sh(d.to);
+    var tweetText = fmt(d.amount) + ' ' + (d.token || '') + ' on Arc
+' +
+      'From ' + shortFrom + ' → ' + shortTo + '
+' +
+      EXPLORER + '/tx/' + d.txHash + '
+' +
+      'via lensora.xyz';
+    shareBtn.href = 'https://x.com/intent/tweet?text=' + encodeURIComponent(tweetText);
   }
 }
 
@@ -483,26 +519,25 @@ async function loadFeed(){
 
     if(!rows.length){
       el.innerHTML='<div class="empty">No whale transactions yet.</div>';
-      return;
-    }
-
-    el.innerHTML=rows.map(w=>{
-      const large=Number(w.amount)>=250000;
-      return`<div class="w-item">
-        <div>
-          <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
-          <div class="w-addr">
-            ${escHtml(shortAddr(w.wallet))}
-            <a href="https://t.me/MagNetar1881_bot?start=subscribe_${escHtml(w.wallet)}" target="_blank" rel="noopener"
-               style="font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px">Alert</a>
+    } else {
+      el.innerHTML=rows.map(w=>{
+        const large=Number(w.amount)>=250000;
+        return`<div class="w-item">
+          <div>
+            <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
+            <div class="w-addr">
+              ${escHtml(shortAddr(w.wallet))}
+              <a href="https://t.me/MagNetar1881_bot?start=subscribe_${escHtml(w.wallet)}" target="_blank" rel="noopener"
+                 style="font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px">Alert</a>
+            </div>
           </div>
-        </div>
-        <div>
-          <div class="w-amt">${escHtml(fmt(w.amount))}</div>
-          <div class="w-time">${escHtml(timeAgo(w.timestamp))}</div>
-        </div>
-      </div>`;
-    }).join('');
+          <div>
+            <div class="w-amt">${escHtml(fmt(w.amount))}</div>
+            <div class="w-time">${escHtml(timeAgo(w.timestamp))}</div>
+          </div>
+        </div>`;
+      }).join('');
+    }
 
     fetch("/api/intel")
       .then(function (r) { return r.json(); })
