@@ -13,6 +13,7 @@ const { ethers } = require("ethers");
 const { askArc } = require("../appkit/askArc");
 const { sendAlert } = require("../telegram/bot");
 const { evaluateSignals } = require("./signalEngine");
+const { lookupLabel } = require("../database/labels");
 
 // ========================
 // CONFIG
@@ -332,11 +333,25 @@ Tx:
                 try {
                   const fs = require("fs");
                   const path = require("path");
+                  const fromLbl = lookupLabel(from);
+                  const toLbl   = lookupLabel(to);
                   fs.writeFileSync(
                     path.join(__dirname, "../../data/intel.json"),
                     JSON.stringify({
-                      text: analysis.answer,
-                      at: new Date().toISOString()
+                      text:         analysis.answer,
+                      at:           new Date().toISOString(),
+                      txHash:       txHash,
+                      from:         from.toLowerCase(),
+                      to:           to.toLowerCase(),
+                      token:        symbol,
+                      amount:       amount,
+                      tier:         sizeTier === "LARGE" ? "LARGE" : "STANDARD",
+                      fromScore:    fromStats?.whale_score ?? null,
+                      toScore:      toStats?.whale_score   ?? null,
+                      fromBehavior: fromStats?.behavior    ?? null,
+                      toBehavior:   toStats?.behavior      ?? null,
+                      fromLabel:    fromLbl ? fromLbl.label : null,
+                      toLabel:      toLbl   ? toLbl.label   : null
                     }),
                     "utf8"
                   );

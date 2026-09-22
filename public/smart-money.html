@@ -41,11 +41,11 @@ async function init(){
   document.getElementById('list').innerHTML=rows.map((w,i)=>`
     <div class="row">
       <div class="mono">${i+1}</div>
-      <div><a href="/wallets/${w.wallet}">${short(w.wallet)}</a></div>
+      <div><a href="/wallets/${escHtml(w.wallet)}">${escHtml(short(w.wallet))}</a></div>
       <div class="mono" style="color:var(--blue3)">${Number(w.whale_score||0).toFixed(2)}</div>
-      <div class="mono">${fmt(w.total_volume)}</div>
+      <div class="mono">${escHtml(fmt(w.total_volume))}</div>
       <div class="mono">${(w.transfer_count||0).toLocaleString()}</div>
-      <div class="badge">${(w.behavior||'—').toUpperCase()}</div>
+      <div class="badge">${escHtml((w.behavior||'—').toUpperCase())}</div>
     </div>`).join('');
 }
 init();

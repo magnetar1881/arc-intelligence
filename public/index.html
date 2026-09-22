@@ -79,7 +79,7 @@ header{
 .ask-result{margin-top:14px;display:none;background:rgba(12,19,34,.9);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text2);line-height:1.8;white-space:pre-wrap;position:relative}
 
 /* STATS */
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
 .stat{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;transition:border-color .2s,transform .2s;position:relative;overflow:hidden}
 .stat::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--blue2),var(--purple));opacity:0;transition:opacity .2s}
 .stat:hover{border-color:var(--border3);transform:translateY(-2px)}
@@ -247,7 +247,8 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
   <div class="stats">
     <div class="stat"><div class="stat-label">USDC (24h)</div><div class="stat-value" id="s-usdc">0</div></div>
     <div class="stat"><div class="stat-label">EURC (24h)</div><div class="stat-value" id="s-eurc">0</div></div>
-    <div class="stat"><div class="stat-label">Tracked Wallets</div><div class="stat-value" id="s-wallets">0</div></div>
+    <div class="stat"><div class="stat-label">Seen addresses</div><div class="stat-value" id="s-wallets">0</div></div>
+    <div class="stat"><div class="stat-label">Whale wallets</div><div class="stat-value" id="s-whale-wallets">0</div></div>
     <div class="stat"><div class="stat-label">Last indexed</div><div class="stat-value" id="s-last" style="font-size:16px">—</div></div>
   </div>
 
@@ -269,8 +270,13 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
     <div class="card" id="intel-card">
       <div class="card-head">
         <span class="card-title">Intel</span>
+        <button id="intel-copy-btn" title="Copy tx hash"
+          style="display:none;font-size:10px;background:transparent;border:1px solid var(--border2);color:var(--blue3);padding:2px 8px;border-radius:4px;cursor:pointer;font-family:var(--sans)">Copy tx</button>
       </div>
-      <p id="intel-text" style="margin:0;font-size:13px;line-height:1.45;color:var(--muted)">Waiting for next 100k+ USDC/EURC transfer.</p>
+      <div id="intel-meta" style="display:none;padding:10px 20px 0;border-bottom:1px solid var(--border)">
+        <div id="intel-meta-inner"></div>
+      </div>
+      <p id="intel-text" style="margin:0;padding:12px 20px;font-size:13px;line-height:1.6;color:var(--muted)">Waiting for next 100k+ USDC/EURC transfer.</p>
     </div>
     <div class="card">
       <div class="card-head">
@@ -360,6 +366,100 @@ function timeAgo(ts){
   return Math.floor(diff/86400)+'d ago';
 }
 
+// ── INTEL META ──
+function renderIntelMeta(d) {
+  const meta = document.getElementById('intel-meta');
+  const inner = document.getElementById('intel-meta-inner');
+  const copyBtn = document.getElementById('intel-copy-btn');
+  if (!meta || !inner) return;
+
+  // Old format or missing fields — hide meta block
+  if (!d || !d.txHash) { meta.style.display = 'none'; if (copyBtn) copyBtn.style.display = 'none'; return; }
+
+  const sh = function(a) { return a ? a.slice(0,6) + '…' + a.slice(-4) : '—'; };
+  const fmtScore = function(v) { return (v === null || v === undefined) ? '—' : Number(v).toFixed(2); };
+  const EXPLORER = 'https://explorer.arc.io';
+
+  // Amount display
+  const amtDisplay = fmt(d.amount);
+  const tierColor = d.tier === 'LARGE' ? 'var(--amber)' : 'var(--blue3)';
+
+  // Build subject line using DOM (never innerHTML for API strings)
+  inner.textContent = '';
+
+  // Row 1: token · amount · tier
+  const r1 = document.createElement('div');
+  r1.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px';
+  const tokenSpan = document.createElement('span');
+  tokenSpan.style.cssText = 'font-family:var(--mono);font-weight:700;color:var(--blue3)';
+  tokenSpan.textContent = d.token || '—';
+  const amtSpan = document.createElement('span');
+  amtSpan.style.cssText = 'font-family:var(--mono);color:var(--green);font-weight:600';
+  amtSpan.textContent = amtDisplay;
+  const tierSpan = document.createElement('span');
+  tierSpan.style.cssText = `font-size:9px;font-family:var(--mono);padding:2px 5px;border-radius:3px;color:${tierColor};border:1px solid ${tierColor};opacity:.85`;
+  tierSpan.textContent = d.tier || 'STANDARD';
+  r1.appendChild(tokenSpan); r1.appendChild(amtSpan); r1.appendChild(tierSpan);
+  inner.appendChild(r1);
+
+  // Rows for from/to/tx
+  function addrRow(label, addr, score, behavior, lbl) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--mono)';
+    const lbEl = document.createElement('span');
+    lbEl.style.cssText = 'color:var(--dim);min-width:36px';
+    lbEl.textContent = label;
+    const aEl = document.createElement('a');
+    aEl.href = '/wallets/' + addr;
+    aEl.style.cssText = 'color:var(--blue3);text-decoration:none';
+    aEl.title = addr;
+    aEl.textContent = sh(addr);
+    const expEl = document.createElement('a');
+    expEl.href = EXPLORER + '/address/' + addr;
+    expEl.target = '_blank'; expEl.rel = 'noopener noreferrer';
+    expEl.style.cssText = 'color:var(--dim);font-size:9px;text-decoration:none';
+    expEl.textContent = '↗';
+    expEl.title = 'View on explorer';
+    const scoreEl = document.createElement('span');
+    scoreEl.style.color = 'var(--muted)';
+    scoreEl.textContent = 'score ' + fmtScore(score);
+    row.appendChild(lbEl); row.appendChild(aEl); row.appendChild(expEl);
+    if (lbl) { const lblEl = document.createElement('span'); lblEl.style.cssText = 'color:var(--text3);font-size:10px'; lblEl.textContent = lbl; row.appendChild(lblEl); }
+    row.appendChild(scoreEl);
+    if (behavior) { const bEl = document.createElement('span'); bEl.style.cssText = 'color:var(--muted);font-size:10px'; bEl.textContent = '· ' + behavior; row.appendChild(bEl); }
+    return row;
+  }
+
+  inner.appendChild(addrRow('From', d.from, d.fromScore, d.fromBehavior, d.fromLabel));
+  inner.appendChild(addrRow('To',   d.to,   d.toScore,   d.toBehavior,   d.toLabel));
+
+  // Tx row
+  const txRow = document.createElement('div');
+  txRow.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;font-family:var(--mono);color:var(--text3);margin-bottom:8px';
+  const txLbl = document.createElement('span');
+  txLbl.style.cssText = 'color:var(--dim);min-width:36px'; txLbl.textContent = 'Tx';
+  const txLink = document.createElement('a');
+  txLink.href = EXPLORER + '/tx/' + d.txHash;
+  txLink.target = '_blank'; txLink.rel = 'noopener noreferrer';
+  txLink.style.cssText = 'color:var(--blue3);text-decoration:none';
+  txLink.title = d.txHash;
+  txLink.textContent = sh(d.txHash);
+  const txExp = document.createElement('span');
+  txExp.style.cssText = 'color:var(--dim);font-size:10px'; txExp.textContent = 'View on explorer →';
+  txRow.appendChild(txLbl); txRow.appendChild(txLink); txRow.appendChild(txExp);
+  inner.appendChild(txRow);
+
+  meta.style.display = 'block';
+
+  // Copy tx button
+  if (copyBtn) {
+    copyBtn.style.display = 'inline-block';
+    copyBtn.onclick = function() {
+      navigator.clipboard.writeText(d.txHash).catch(function(){});
+    };
+  }
+}
+
 // ── STATS ──
 async function loadStats(){
   try{
@@ -368,6 +468,7 @@ async function loadStats(){
       fetch('/api/stable-hero').then(r=>r.json())
     ]);
     document.getElementById('s-wallets').textContent=(d.total_wallets||0).toLocaleString();
+    document.getElementById('s-whale-wallets').textContent=(d.whale_wallets||0).toLocaleString();
     document.getElementById('s-usdc').textContent=fmt(s.usdc_vol)+' · '+(s.usdc_txs||0);
     document.getElementById('s-eurc').textContent=fmt(s.eurc_vol)+' · '+(s.eurc_txs||0);
     document.getElementById('s-last').textContent=s.last_seen?timeAgo(s.last_seen):'—';
@@ -406,8 +507,9 @@ async function loadFeed(){
     fetch("/api/intel")
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        const intel = document.getElementById("intel-text");
-        if (intel && d && d.text) intel.textContent = d.text;
+        const intelText = document.getElementById("intel-text");
+        if (intelText && d && d.text) intelText.textContent = d.text;
+        renderIntelMeta(d);
       })
       .catch(function () {});
 

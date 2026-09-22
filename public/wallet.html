@@ -117,6 +117,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 </div>
 
 <script>
+function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function fmt(n){
   const v=Number(n);
   if(!isFinite(v)||v>1e18)return'—';
@@ -214,7 +215,7 @@ async function init(){
       document.getElementById('tx-list').innerHTML = txs.map(t => `
         <div class="tx-row">
           <div class="mono">
-            <a href="https://testnet.arcscan.app/tx/${t.txHash}" target="_blank" rel="noopener"
+            <a href="https://explorer.arc.io/tx/${t.txHash}" target="_blank" rel="noopener noreferrer"
                style="color:var(--blue3);text-decoration:none" title="${t.txHash}">
               ${shortHash(t.txHash)}
             </a>
@@ -223,9 +224,9 @@ async function init(){
               Explain
             </button>
           </div>
-          <div class="mono" style="color:var(--blue3)">${t.token || '—'}</div>
-          <div class="mono" style="color:var(--green);text-align:right;font-weight:600">${fmt(t.amount)}</div>
-          <div class="mono" style="color:var(--muted)">${t.type || 'WHALE'}</div>
+          <div class="mono" style="color:var(--blue3)">${escHtml(t.token || '—')}</div>
+          <div class="mono" style="color:var(--green);text-align:right;font-weight:600">${escHtml(fmt(t.amount))}</div>
+          <div class="mono" style="color:var(--muted)">${escHtml(t.type || 'WHALE')}</div>
           <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.timestamp)}</div>
         </div>
       `).join('');
@@ -237,7 +238,7 @@ async function init(){
     } else {
       document.getElementById('token-list').innerHTML = tokens.map(t => `
         <div class="token-row">
-          <div class="mono" style="color:var(--blue3);font-weight:600">${t.token || '—'}</div>
+          <div class="mono" style="color:var(--blue3);font-weight:600">${escHtml(t.token || '—')}</div>
           <div class="mono" style="text-align:right;color:var(--text2)">${t.transfer_count}</div>
           <div class="mono" style="text-align:right;color:var(--green)">${fmt(t.volume)}</div>
           <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.last_seen)}</div>

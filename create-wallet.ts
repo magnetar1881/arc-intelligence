@@ -1,3 +1,4 @@
+// TESTNET ONLY — do not run in production.
 import { initiateDeveloperControlledWalletsClient } from "@circle-fin/developer-controlled-wallets";
 
 const client = initiateDeveloperControlledWalletsClient({
