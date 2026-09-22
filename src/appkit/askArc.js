@@ -261,7 +261,8 @@ DO NOT add any explanation text. ONLY output the raw JSON.
 - For top tokens chart use "title":"Top Tokens by Activity" and values as transfer counts.
 - If asked about recent activity, trending tokens, or what happened in the last hour/day: use the TRENDING data above.
 - For all other questions, respond normally in text.
-- All on-chain data is from Arc Testnet.`;
+- All on-chain data is from Arc mainnet (chainId 5042, RPC https://rpc.mainnet.arc.io).
+- Never refer to Arc Testnet. This platform indexes Arc mainnet only.`;
 }
 
 const rateLimitMap = new Map();
@@ -305,7 +306,7 @@ async function askArc(question, ip = "unknown") {
 
     if (detectSwapIntent(question)) {
       const { tokenIn, tokenOut, amountIn } = extractSwapTokens(question);
-      swapEstimate = await estimateSwapTokens({ chain: "Arc_Testnet", tokenIn, tokenOut, amountIn });
+      swapEstimate = await estimateSwapTokens({ chain: "Arc", tokenIn, tokenOut, amountIn });
     }
 
     const systemPrompt = buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate);

@@ -31,9 +31,19 @@ app.use(express.json());
 // ========================
 app.get("/api/whales", (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+  // One row per txHash: pick the wallet/type from the row with MAX(amount)
+  // to avoid double-counting IN + OUT legs of the same transfer.
   db.all(
-    `SELECT txHash, wallet, token, amount, type, timestamp
-     FROM whales ORDER BY timestamp DESC LIMIT ?`,
+    `SELECT w.txHash, w.wallet, w.token, w.amount, w.type, w.timestamp
+     FROM whales w
+     INNER JOIN (
+       SELECT txHash, MAX(amount) AS max_amount
+       FROM whales
+       GROUP BY txHash
+     ) best ON w.txHash = best.txHash AND w.amount = best.max_amount
+     GROUP BY w.txHash
+     ORDER BY w.timestamp DESC
+     LIMIT ?`,
     [limit],
     (err, rows) => {
       if (err) return res.status(500).json({ error: err.message });
