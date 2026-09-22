@@ -40,10 +40,10 @@ async function init(){
   if(!rows.length){document.getElementById('list').innerHTML='<div class="empty">No anomalies in this window.</div>';return}
   document.getElementById('list').innerHTML=rows.map(a=>`
     <div class="row">
-      <div class="mono" style="color:var(--amber)">${a.anomaly_type}</div>
-      <div><a href="/wallets/${a.wallet}">${short(a.wallet)}</a></div>
-      <div class="mono">${a.token||'—'}</div>
-      <div class="mono">${fmt(a.amount)}</div>
+      <div class="mono" style="color:var(--amber)">${escHtml(a.anomaly_type)}</div>
+      <div><a href="/wallets/${escHtml(a.wallet)}">${escHtml(short(a.wallet))}</a></div>
+      <div class="mono">${escHtml(a.token||'—')}</div>
+      <div class="mono">${escHtml(fmt(a.amount))}</div>
       <div class="mono">${Number(a.whale_score||0).toFixed(2)}</div>
     </div>`).join('');
 }

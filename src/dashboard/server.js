@@ -22,6 +22,25 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) console.log("DB bağlantı hatası:", err.message);
 });
 
+// ========================
+// SECURITY HEADERS
+// ========================
+app.use((req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy",
+    [
+      "default-src 'self'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data: https://explorer.arc.io",
+      "connect-src 'self' https://lensora.xyz https://rpc.mainnet.arc.io https://explorer.arc.io",
+      "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+    ].join("; ")
+  );
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
+
 // Static dosyalar
 app.use(express.static(path.join(__dirname, "../../public")));
 app.use(express.json());
@@ -207,6 +226,17 @@ app.get("/api/stats", (req, res) => {
         (err, row) => {
           if (err) reject(err);
           else resolve({ whales_24h: row.total });
+        }
+      );
+    }),
+    new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(*) as total FROM wallets
+         WHERE total_volume >= 100000
+         AND wallet != '0x0000000000000000000000000000000000000000'`,
+        (err, row) => {
+          if (err) reject(err);
+          else resolve({ whale_wallets: row.total });
         }
       );
     }),
@@ -415,48 +445,17 @@ app.get("/", (req, res) => {
 // ========================
 // BRIDGE ESTIMATE
 // ========================
-app.get("/api/bridge/estimate", async (req, res) => {
-  const { from, to, amount, token } = req.query;
-
-  if (!from || !to || !amount) {
-    return res.status(400).json({ success: false, error: "from, to, amount required" });
-  }
-
-  try {
-    const result = await circleKit.estimateBridgeTransfer({
-      fromChain: from,
-      toChain: to,
-      amount,
-      token: token || "USDC"
-    });
-    return res.json(result);
-  } catch (err) {
-    return res.status(200).json({
-      success: false,
-      error: err.message || "estimate failed"
-    });
-  }
+// Bridge and swap estimates are client-only (MetaMask + App Kit).
+// Server returns a no-op so the frontend can fall back gracefully.
+app.get("/api/bridge/estimate", (req, res) => {
+  res.json({ success: true, estimatedOut: "0", note: "client-only quote" });
 });
 
 // ========================
-// SWAP ESTIMATE (adapter gerektirmez — sadece fiyat tahmini)
+// SWAP ESTIMATE — client-only, no-op
 // ========================
-app.get("/api/swap/estimate", async (req, res) => {
-  const { chain, tokenIn, tokenOut, amountIn } = req.query;
-
-  if (!chain || !tokenIn || !tokenOut || !amountIn) {
-    return res.status(400).json({ error: "chain, tokenIn, tokenOut, amountIn zorunlu" });
-  }
-
-  const result = await circleKit.estimateSwapTokens({
-    adapter: null,
-    chain,
-    tokenIn,
-    tokenOut,
-    amountIn
-  });
-
-  res.json(result);
+app.get("/api/swap/estimate", (req, res) => {
+  res.json({ success: true, estimatedOut: "0", note: "client-only quote" });
 });
 
 // ========================

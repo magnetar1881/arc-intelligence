@@ -86,13 +86,14 @@ async function init(){
       document.getElementById('list').innerHTML = '<div class="empty">No USDC/EURC whale flow in this window.</div>';
       return;
     }
+    function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
     document.getElementById('list').innerHTML = rows.map(t=>`
       <div class="row">
-        <div class="mono" style="color:var(--blue3);font-weight:700">${t.token}</div>
-        <div class="mono">${fmt(t.volume)}</div>
-        <div class="mono" style="color:var(--green)">${fmt(t.inflow)}</div>
-        <div class="mono" style="color:var(--amber)">${fmt(t.outflow)}</div>
-        <div class="mono">${t.tx_count}</div>
+        <div class="mono" style="color:var(--blue3);font-weight:700">${escHtml(t.token)}</div>
+        <div class="mono">${escHtml(fmt(t.volume))}</div>
+        <div class="mono" style="color:var(--green)">${escHtml(fmt(t.inflow))}</div>
+        <div class="mono" style="color:var(--amber)">${escHtml(fmt(t.outflow))}</div>
+        <div class="mono">${Number(t.tx_count||0).toLocaleString()}</div>
       </div>
     `).join('');
   }catch(e){

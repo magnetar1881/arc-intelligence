@@ -31,8 +31,11 @@ Whale threshold: **100,000** human units (USDC ≈ USD).
 ```bash
 npm install
 cp .env.example .env
-# fill RPC_URL, BOT_TOKEN, GROQ_API_KEY, CIRCLE_KIT_KEY
-# SCANNER_ENABLED=true
+# Required: RPC_URL, GROQ_API_KEY
+# Optional: BOT_TOKEN, CHAT_ID (only required when TELEGRAM_ENABLED=true)
+# TELEGRAM_ENABLED=false  — bot is disabled; BOT_TOKEN/CHAT_ID not needed
+# SCANNER_ENABLED=false   — scanner is disabled by default
+# SCANNER_ENABLED=true    — enable live block scanning
 node src/app.js
 
 ---

@@ -31,12 +31,13 @@ header{padding:12px 28px;display:flex;justify-content:space-between;border-botto
 async function init(){
   const data=await fetch('/api/dex-liquidity').then(r=>r.json());
   const rows=data.tokens||[];
+  function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   document.getElementById('list').innerHTML = rows.map(t=>`
     <div class="row">
-      <div class="mono">${t.symbol||t.token}</div>
-      <div class="mono">${t.transfer_count||0}</div>
-      <div class="mono">${t.mint_count||0}</div>
-      <div class="mono">${t.unique_wallets||0}</div>
+      <div class="mono">${escHtml(t.symbol||t.token)}</div>
+      <div class="mono">${Number(t.transfer_count||0).toLocaleString()}</div>
+      <div class="mono">${Number(t.mint_count||0).toLocaleString()}</div>
+      <div class="mono">${Number(t.unique_wallets||0).toLocaleString()}</div>
       <div class="mono">${Number(t.trust_score||0).toFixed(2)}</div>
     </div>`).join('') || 'No token stats yet.';
 }

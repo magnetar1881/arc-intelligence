@@ -2,7 +2,7 @@ const Groq = require("groq-sdk");
 const path = require("path");
 const fs = require("fs");
 const sqlite3 = require("sqlite3").verbose();
-const { estimateBridgeTransfer, estimateSwapTokens } = require("./circleKit");
+// Estimates are client-only; do not import server-side estimate functions here.
 
 const DB_PATH = path.join(__dirname, "../../data/whale.db");
 const db = new sqlite3.Database(DB_PATH, sqlite3.OPEN_READONLY);
@@ -109,7 +109,7 @@ function extractChainAndAmount(question) {
     if (q.includes(`from ${key}`) || q.includes(key)) { fromChain = value; break; }
   }
   const amountMatch = q.match(/(\d+(?:\.\d+)?)\s*usdc/);
-  return { fromChain, toChain: "Arc_Testnet", amount: amountMatch ? amountMatch[1] : "10" };
+  return { fromChain, toChain: "Arc", amount: amountMatch ? amountMatch[1] : "10" };
 }
 
 function extractSwapTokens(question) {
@@ -123,7 +123,7 @@ function extractSwapTokens(question) {
   };
 }
 
-function buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate) {
+function buildSystemPrompt(contextData, ecosystemData) {
   const { topWallets, recentWhales, topTokens, stats, trending1h, trending24h } = contextData;
 
   const ecosystemSummary = Object.entries(ecosystemData)
@@ -135,24 +135,6 @@ function buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstim
     })
     .filter(Boolean)
     .join("\n");
-
-  const bridgeSection = bridgeEstimate?.success
-    ? `\nBRIDGE ESTIMATE (live data):
-- From: ${bridgeEstimate.fromChain} → To: ${bridgeEstimate.toChain}
-- Amount: ${bridgeEstimate.amount} ${bridgeEstimate.token}
-- Fee: ${bridgeEstimate.fee} ${bridgeEstimate.feeToken || "USDC"}
-- Speed: ${bridgeEstimate.transferSpeed}
-Use this data when answering bridge-related questions.`
-    : "";
-
-  const swapSection = swapEstimate?.success
-    ? `\nSWAP ESTIMATE (live data):
-- Token In: ${swapEstimate.tokenIn} (${swapEstimate.amountIn})
-- Token Out: ${swapEstimate.tokenOut}
-- Estimated Output: ${swapEstimate.estimatedOutput}
-- Minimum Output: ${swapEstimate.stopLimit}
-Use this data when answering swap-related questions.`
-    : "";
 
   const arcWhitepaperContext = `
 ARC TOKEN WHITEPAPER SUMMARY (Source: arc.io/arc-token-whitepaper, May 2026):
@@ -241,8 +223,6 @@ ${(trending24h||[]).length ? trending24h.map((t,i) =>
 
 ARC ECOSYSTEM (official sources only):
 ${ecosystemSummary}
-${bridgeSection}
-${swapSection}
 ${arcWhitepaperContext}
 
 RULES:
@@ -296,20 +276,8 @@ async function askArc(question, ip = "unknown") {
       Promise.resolve(getEcosystemData())
     ]);
 
-    let bridgeEstimate = null;
-    let swapEstimate = null;
-
-    if (detectBridgeIntent(question)) {
-      const { fromChain, toChain, amount } = extractChainAndAmount(question);
-      bridgeEstimate = await estimateBridgeTransfer({ fromChain, toChain, amount });
-    }
-
-    if (detectSwapIntent(question)) {
-      const { tokenIn, tokenOut, amountIn } = extractSwapTokens(question);
-      swapEstimate = await estimateSwapTokens({ chain: "Arc", tokenIn, tokenOut, amountIn });
-    }
-
-    const systemPrompt = buildSystemPrompt(contextData, ecosystemData, bridgeEstimate, swapEstimate);
+    // Estimates are client-only; no server-side quote calls here.
+    const systemPrompt = buildSystemPrompt(contextData, ecosystemData);
 
     const completion = await getGroq().chat.completions.create({
       model: process.env.GROQ_MODEL || "openai/gpt-oss-20b",

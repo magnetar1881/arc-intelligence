@@ -44,7 +44,7 @@ async function load(){
     : 'No wallet stats yet. Token activity below if any.';
   const tokens=data.tokens||[];
   document.getElementById('list').innerHTML = tokens.length
-    ? tokens.map(t=>`<div class="row"><div class="mono">${t.token}</div><div class="mono">${t.txs}</div><div class="mono">${fmt(t.volume)}</div></div>`).join('')
+    ? tokens.map(t=>`<div class="row"><div class="mono">${escHtml(t.token)}</div><div class="mono">${Number(t.txs||0).toLocaleString()}</div><div class="mono">${escHtml(fmt(t.volume))}</div></div>`).join('')
     : '<div style="color:#4a6080;padding:20px">No indexed token activity.</div>';
 }
 const q=new URLSearchParams(location.search).get('address');

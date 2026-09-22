@@ -71,14 +71,15 @@ async function init(){
     container.innerHTML=keys.map(k=>{
       const items=data[k].filter(i=>i.status==='active');
       if(!items.length)return'';
+      function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
       return`<div class="section">
         <div class="section-title">${LABELS[k]}</div>
         <div class="eco-grid">
           ${items.map(i=>`
-            <a class="eco-card" href="${i.url}" target="_blank" rel="noopener">
-              <div class="eco-name">${i.name}</div>
-              <div class="eco-url">${i.url.replace('https://','')}</div>
-              <div class="eco-desc">${i.description}</div>
+            <a class="eco-card" href="${escHtml(i.url)}" target="_blank" rel="noopener noreferrer">
+              <div class="eco-name">${escHtml(i.name)}</div>
+              <div class="eco-url">${escHtml(i.url.replace('https://',''))}</div>
+              <div class="eco-desc">${escHtml(i.description)}</div>
               <div class="eco-source">${i.source==='arc.io/ecosystem'?'Official Arc listing':'Community'}</div>
             </a>`).join('')}
         </div>
