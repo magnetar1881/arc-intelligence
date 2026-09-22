@@ -1,9 +1,10 @@
 require("dotenv").config();
 
+const TELEGRAM_ON = process.env.TELEGRAM_ENABLED !== "false";
+
 const REQUIRED_ENV_VARS = [
   "RPC_URL",
-  "BOT_TOKEN",
-  "CHAT_ID",
+  ...(TELEGRAM_ON ? ["BOT_TOKEN", "CHAT_ID"] : []),
   "GROQ_API_KEY"
 ];
 

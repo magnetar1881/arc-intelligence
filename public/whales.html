@@ -89,6 +89,7 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 </a>
 <script>
 function fmt(n){const v=Number(n);if(!isFinite(v)||v>1e18)return'—';if(v>=1e12)return(v/1e12).toFixed(2)+'T';if(v>=1e9)return(v/1e9).toFixed(2)+'B';if(v>=1e6)return(v/1e6).toFixed(2)+'M';if(v>=1e3)return(v/1e3).toFixed(1)+'K';return v.toFixed(2)}
+function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function shortAddr(a){if(!a)return'—';return a.slice(0,6)+'...'+a.slice(-4)}
 function timeAgo(ts){
   if(!ts)return'—';
@@ -122,12 +123,12 @@ function renderFeed(){
     const large=Number(w.amount)>=250000;
     return`<div class="w-item">
       <div>
-        <div class="w-token">${w.token}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
-        <div class="w-addr">${shortAddr(w.wallet)}</div>
+        <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
+        <div class="w-addr">${escHtml(shortAddr(w.wallet))}</div>
       </div>
       <div>
-        <div class="w-amt">${fmt(w.amount)}</div>
-        <div class="w-time">${timeAgo(w.timestamp)}</div>
+        <div class="w-amt">${escHtml(fmt(w.amount))}</div>
+        <div class="w-time">${escHtml(timeAgo(w.timestamp))}</div>
       </div>
     </div>`;
   }).join('');

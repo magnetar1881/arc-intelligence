@@ -338,6 +338,7 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
 
 <script>
 // ── UTILS ──
+function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function fmt(n){
   const v=Number(n);
   if(!isFinite(v)||v<=0)return'—';
@@ -386,20 +387,18 @@ async function loadFeed(){
 
     el.innerHTML=rows.map(w=>{
       const large=Number(w.amount)>=250000;
-
-
       return`<div class="w-item">
         <div>
-          <div class="w-token">${w.token}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
+          <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
           <div class="w-addr">
-            ${shortAddr(w.wallet)}
-            <a href="https://t.me/MagNetar1881_bot?start=subscribe_${w.wallet}" target="_blank" rel="noopener"
+            ${escHtml(shortAddr(w.wallet))}
+            <a href="https://t.me/MagNetar1881_bot?start=subscribe_${escHtml(w.wallet)}" target="_blank" rel="noopener"
                style="font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px">Alert</a>
           </div>
         </div>
         <div>
-          <div class="w-amt">${fmt(w.amount)}</div>
-          <div class="w-time">${timeAgo(w.timestamp)}</div>
+          <div class="w-amt">${escHtml(fmt(w.amount))}</div>
+          <div class="w-time">${escHtml(timeAgo(w.timestamp))}</div>
         </div>
       </div>`;
     }).join('');
@@ -426,11 +425,11 @@ async function loadWallets(){
       <div class="wallet-row">
         <div class="w-rank">${i+1}</div>
         <div class="w-info">
-          <div class="w-addr2">${shortAddr(w.wallet)}</div>
-          <div class="w-meta">${w.transfer_count} txs · ${timeAgo(w.last_seen)}</div>
+          <div class="w-addr2">${escHtml(shortAddr(w.wallet))}</div>
+          <div class="w-meta">${escHtml(String(w.transfer_count))} txs · ${escHtml(timeAgo(w.last_seen))}</div>
         </div>
         <div class="score-bar"><div class="score-fill" style="width:${(w.whale_score||0)*100}%"></div></div>
-        <div class="w-vol">${fmt(w.total_volume)}</div>
+        <div class="w-vol">${escHtml(fmt(w.total_volume))}</div>
       </div>`).join('');
   }catch(e){}
 }
@@ -497,9 +496,9 @@ function renderEcoTab(key){
   const grid=document.getElementById('eco-grid');
   if(!items.length){grid.innerHTML='<div class="empty">No entries.</div>';return}
   grid.innerHTML=items.map(i=>`
-    <a class="eco-card" href="${i.url}" target="_blank" rel="noopener">
-      <div class="eco-name">${i.name}</div>
-      <div class="eco-desc">${i.description}</div>
+    <a class="eco-card" href="${escHtml(i.url)}" target="_blank" rel="noopener">
+      <div class="eco-name">${escHtml(i.name)}</div>
+      <div class="eco-desc">${escHtml(i.description)}</div>
     </a>`).join('');
 }
 async function loadEcosystem(){
