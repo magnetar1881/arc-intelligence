@@ -485,12 +485,9 @@ function renderIntelMeta(d) {
   if (shareBtn) {
     var shortFrom = sh(d.from);
     var shortTo   = sh(d.to);
-    var tweetText = fmt(d.amount) + ' ' + (d.token || '') + ' on Arc
-' +
-      'From ' + shortFrom + ' → ' + shortTo + '
-' +
-      EXPLORER + '/tx/' + d.txHash + '
-' +
+    var tweetText = fmt(d.amount) + ' ' + (d.token || '') + ' on Arc\n' +
+      'From ' + shortFrom + ' \u2192 ' + shortTo + '\n' +
+      EXPLORER + '/tx/' + d.txHash + '\n' +
       'via lensora.xyz';
     shareBtn.href = 'https://x.com/intent/tweet?text=' + encodeURIComponent(tweetText);
   }
