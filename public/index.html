@@ -154,10 +154,8 @@ header{
 .eco-desc{font-size:10px;color:var(--text3);line-height:1.5}
 
 /* ── INTEL CARD ── */
-#intel-card{background:#141413 !important;border:1px solid #2A2926 !important;border-radius:12px !important;padding:16px 18px !important}
-#intel-meta a{text-decoration:none;transition:color .12s}
-#intel-meta a:hover{color:#F5F4F0}
-#intel-copy-btn:hover,#intel-share-btn:hover{border-color:#A3A29C !important;color:#F5F4F0 !important}
+#intel-meta a{color:var(--blue3);text-decoration:none;transition:color .15s}
+#intel-meta a:hover{color:var(--blue4)}
 
 /* SKELETON */
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px}
@@ -274,25 +272,25 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
       </div>
     </div>
     <div class="card" id="intel-card">
-      <!-- title row -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <span style="font-size:13px;color:#A3A29C;font-family:var(--sans)">Intel</span>
+      <div class="card-head">
+        <span class="card-title">Intel</span>
         <div id="intel-actions" style="display:none;gap:6px;align-items:center">
-          <button id="intel-copy-btn"
-            style="font-size:11px;background:transparent;border:1px solid #2A2926;color:#A3A29C;padding:2px 8px;border-radius:5px;cursor:pointer;font-family:var(--sans)">Copy tx</button>
-          <a id="intel-share-btn" href="#" target="_blank" rel="noopener noreferrer"
-            style="font-size:11px;background:transparent;border:1px solid #2A2926;color:#A3A29C;padding:2px 8px;border-radius:5px;cursor:pointer;font-family:var(--sans);text-decoration:none">Share on X</a>
+          <button id="intel-copy-btn" class="card-link"
+            style="background:transparent;border:none;cursor:pointer;font-family:var(--sans)">Copy tx</button>
+          <a id="intel-share-btn" href="#" class="card-link" target="_blank" rel="noopener noreferrer">Share on X</a>
         </div>
       </div>
-      <!-- subject block -->
-      <div id="intel-meta" style="display:none">
-        <div id="intel-meta-inner"></div>
-        <div style="height:1px;background:#2A2926;margin:12px 0"></div>
+      <div style="padding:14px 20px">
+        <!-- subject block -->
+        <div id="intel-meta" style="display:none">
+          <div id="intel-meta-inner"></div>
+          <div style="height:1px;background:var(--border);margin:12px 0"></div>
+        </div>
+        <!-- model note label -->
+        <div id="intel-note-label" style="display:none;font-size:11px;color:var(--muted);margin-bottom:4px">Model note</div>
+        <!-- AI paragraph -->
+        <p id="intel-text" style="margin:0;font-size:13px;line-height:1.6;color:var(--text3)">Waiting for next 100k+ USDC/EURC transfer.</p>
       </div>
-      <!-- model note label -->
-      <div id="intel-note-label" style="display:none;font-size:11px;color:#6E6D67;margin-bottom:4px;font-family:var(--sans)">Model note</div>
-      <!-- AI paragraph -->
-      <p id="intel-text" style="margin:0;font-size:14px;line-height:1.55;color:#F5F4F0;font-family:var(--sans)">Waiting for next 100k+ USDC/EURC transfer.</p>
     </div>
     <div class="card">
       <div class="card-head">
@@ -410,19 +408,19 @@ function renderIntelMeta(d) {
   var lineA = document.createElement('div');
   lineA.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px';
   var tokEl = document.createElement('span');
-  tokEl.style.cssText = 'font-size:15px;color:#F5F4F0;font-family:var(--mono)';
+  tokEl.style.cssText = 'font-size:13px;color:var(--text);font-family:var(--mono);font-weight:600';
   tokEl.textContent = d.token || '—';
   var dotEl = document.createElement('span');
-  dotEl.style.cssText = 'font-size:15px;color:#6E6D67';
+  dotEl.style.cssText = 'font-size:13px;color:var(--muted)';
   dotEl.textContent = '·';
   var amtEl = document.createElement('span');
-  amtEl.style.cssText = 'font-size:15px;color:#F5F4F0;font-family:var(--mono)';
+  amtEl.style.cssText = 'font-size:13px;color:var(--text);font-family:var(--mono)';
   amtEl.textContent = fmt(d.amount);
   var dot2 = document.createElement('span');
-  dot2.style.cssText = 'font-size:15px;color:#6E6D67';
+  dot2.style.cssText = 'font-size:13px;color:var(--muted)';
   dot2.textContent = '·';
   var tierEl = document.createElement('span');
-  tierEl.style.cssText = 'font-size:13px;font-family:var(--mono);color:' + (d.tier === 'LARGE' ? '#C4A36A' : '#6E6D67');
+  tierEl.style.cssText = 'font-size:11px;font-family:var(--mono);color:' + (d.tier === 'LARGE' ? 'var(--amber)' : 'var(--muted)');
   tierEl.textContent = d.tier || 'STANDARD';
   lineA.appendChild(tokEl); lineA.appendChild(dotEl); lineA.appendChild(amtEl);
   lineA.appendChild(dot2); lineA.appendChild(tierEl);
@@ -433,18 +431,18 @@ function renderIntelMeta(d) {
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px';
     var lb = document.createElement('span');
-    lb.style.cssText = 'font-size:12px;color:#6E6D67;font-family:var(--sans);min-width:32px';
+    lb.style.cssText = 'font-size:11px;color:var(--muted);min-width:32px';
     lb.textContent = labelText;
     var addrLink = document.createElement('a');
     addrLink.href = '/wallets/' + addr;
-    addrLink.style.cssText = 'font-size:13px;color:#E8E4DC;font-family:ui-monospace,monospace;text-decoration:none';
+    addrLink.style.cssText = 'font-size:12px;color:var(--text3);font-family:var(--mono);text-decoration:none';
     addrLink.title = addr;
     addrLink.textContent = sh(addr);
     row.appendChild(lb);
     row.appendChild(addrLink);
     if (lbl) {
       var lblEl = document.createElement('span');
-      lblEl.style.cssText = 'font-size:11px;color:#6E6D67;font-family:var(--sans)';
+      lblEl.style.cssText = 'font-size:10px;color:var(--muted)';
       lblEl.textContent = lbl;
       row.appendChild(lblEl);
     }
@@ -457,12 +455,12 @@ function renderIntelMeta(d) {
   var txRow = document.createElement('div');
   txRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:4px';
   var txLb = document.createElement('span');
-  txLb.style.cssText = 'font-size:12px;color:#6E6D67;font-family:var(--sans);min-width:32px';
+  txLb.style.cssText = 'font-size:11px;color:var(--muted);min-width:32px';
   txLb.textContent = 'Tx';
   var txLink = document.createElement('a');
   txLink.href = EXPLORER + '/tx/' + d.txHash;
   txLink.target = '_blank'; txLink.rel = 'noopener noreferrer';
-  txLink.style.cssText = 'font-size:13px;color:#E8E4DC;font-family:ui-monospace,monospace;text-decoration:none';
+  txLink.style.cssText = 'font-size:12px;color:var(--text3);font-family:var(--mono);text-decoration:none';
   txLink.title = d.txHash;
   txLink.textContent = sh(d.txHash);
   txRow.appendChild(txLb);
