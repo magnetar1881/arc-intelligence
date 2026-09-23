@@ -437,6 +437,10 @@ app.get("/dex", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/dex.html"));
 });
 
+app.get("/send", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/send.html"));
+});
+
 // Ana sayfa
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/index.html"));

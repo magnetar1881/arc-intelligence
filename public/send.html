@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Send — Arc Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080d1a;--bg2:#0c1322;--bg3:#111b30;--bg4:#162040;
+  --border:#1a2a45;--border2:#233660;--border3:#2d4278;
+  --blue:#3b82f6;--blue2:#2563eb;--blue3:#60a5fa;
+  --purple:#8b5cf6;--green:#10b981;--amber:#f59e0b;--red:#ef4444;
+  --text:#f1f5f9;--text2:#cbd5e1;--text3:#94a3b8;--muted:#64748b;--dim:#4a6080;
+  --sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,13,26,0.85);backdrop-filter:blur(20px);border-bottom:1px solid rgba(59,130,246,0.12)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;text-decoration:none;color:var(--text)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--purple));box-shadow:0 0 10px var(--blue);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.h-right{display:flex;align-items:center;gap:10px}
+.nav-back{font-size:12px;color:var(--blue3);text-decoration:none;font-weight:600;transition:color .15s}
+.nav-back:hover{color:var(--text)}
+
+/* PAGE */
+.page{max-width:460px;margin:48px auto;padding:0 20px}
+
+/* CARD */
+.send-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px 24px;position:relative;overflow:hidden}
+.send-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(59,130,246,.5),transparent)}
+
+.send-title{font-size:18px;font-weight:700;margin-bottom:4px}
+.send-sub{font-size:12px;color:var(--text3);margin-bottom:28px;line-height:1.6}
+
+/* TOKEN PICKER */
+.token-row{display:flex;gap:8px;margin-bottom:20px}
+.token-pill{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--border2);background:var(--bg3);cursor:pointer;transition:all .2s;font-size:13px;font-weight:600;color:var(--text3)}
+.token-pill.active{background:rgba(59,130,246,.12);border-color:var(--blue2);color:var(--blue3)}
+.token-pill:hover{border-color:var(--border3);color:var(--text2)}
+.token-dot{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+.dot-usdc{background:rgba(39,117,202,.25);color:#60a5fa}
+.dot-eurc{background:rgba(250,204,21,.15);color:#fbbf24}
+
+/* AMOUNT */
+.field-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600;margin-bottom:6px}
+.amount-box{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;margin-bottom:6px;display:flex;align-items:center;gap:10px;transition:border-color .2s}
+.amount-box:focus-within{border-color:var(--blue2)}
+.amount-input{flex:1;background:transparent;border:none;color:var(--text);font-size:24px;font-weight:700;font-family:var(--mono);outline:none;min-width:0}
+.amount-input::placeholder{color:var(--dim)}
+.amount-token{font-size:13px;font-weight:700;color:var(--blue3);font-family:var(--mono);white-space:nowrap}
+.balance-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.balance-hint{font-size:11px;color:var(--dim)}
+.max-btn{font-size:10px;font-weight:700;color:var(--blue3);background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:4px;padding:2px 8px;cursor:pointer;font-family:var(--sans);transition:all .2s}
+.max-btn:hover{background:rgba(59,130,246,.2)}
+
+/* RECIPIENT */
+.to-box{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;margin-bottom:6px;transition:border-color .2s}
+.to-box:focus-within{border-color:var(--blue2)}
+.to-input{width:100%;background:transparent;border:none;color:var(--text);font-size:13px;font-family:var(--mono);outline:none}
+.to-input::placeholder{color:var(--dim)}
+.addr-hint{font-size:10px;color:var(--dim);margin-bottom:20px}
+
+/* SUMMARY */
+.summary{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.12);border-radius:8px;padding:12px 16px;margin-bottom:20px;display:none}
+.summary-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px}
+.summary-row:last-child{margin-bottom:0}
+.summary-label{color:var(--muted)}
+.summary-value{color:var(--text2);font-family:var(--mono);font-weight:600}
+
+/* BUTTON */
+.send-btn{width:100%;padding:15px;background:linear-gradient(135deg,var(--blue2),var(--purple));color:white;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:opacity .2s,transform .1s;letter-spacing:.2px}
+.send-btn:hover:not(:disabled){opacity:.9;transform:translateY(-1px)}
+.send-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* CONNECT PROMPT */
+.connect-prompt{text-align:center;padding:16px 0}
+.connect-prompt p{font-size:13px;color:var(--text3);margin-bottom:14px}
+.connect-btn-large{padding:12px 28px;background:linear-gradient(135deg,var(--blue2),var(--purple));color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);transition:opacity .2s}
+.connect-btn-large:hover{opacity:.9}
+
+/* STATUS */
+.status-msg{margin-top:14px;padding:12px 16px;border-radius:8px;font-size:12px;line-height:1.6;display:none}
+.status-success{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);color:var(--green)}
+.status-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--red)}
+.status-loading{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);color:var(--blue3)}
+
+/* TX LINK */
+.tx-link{display:inline-block;margin-top:6px;color:var(--blue3);font-size:11px;font-family:var(--mono);text-decoration:none}
+.tx-link:hover{text-decoration:underline}
+
+/* DISCLAIMER */
+.disclaimer{font-size:10px;color:var(--dim);text-align:center;margin-top:16px;line-height:1.6}
+
+@media(max-width:480px){.page{padding:0 12px;margin-top:24px}}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="/"><div class="logo-dot"></div>Arc Intelligence</a>
+  <div class="h-right">
+    <a class="nav-back" href="/">← Back</a>
+    <button id="wallet-btn" style="font-size:12px;font-weight:600;font-family:var(--sans);background:transparent;color:var(--blue3);border:1px solid rgba(59,130,246,.3);padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .2s;" onclick="connectWallet()">Connect Wallet</button>
+  </div>
+</header>
+
+<div class="page">
+  <div class="send-card">
+
+    <div class="send-title">Send</div>
+    <div class="send-sub">Transfer USDC or EURC to any address on Arc mainnet. You sign with your own wallet — Lensora never holds funds.</div>
+
+    <!-- TOKEN PICKER -->
+    <div class="token-row">
+      <div class="token-pill active" id="pill-usdc" onclick="selectToken('USDC')">
+        <span class="token-dot dot-usdc">U</span>USDC
+      </div>
+      <div class="token-pill" id="pill-eurc" onclick="selectToken('EURC')">
+        <span class="token-dot dot-eurc">E</span>EURC
+      </div>
+    </div>
+
+    <!-- CONNECT PROMPT (cüzdan bağlı değilse) -->
+    <div id="connect-prompt" class="connect-prompt">
+      <p>Connect your wallet to send tokens on Arc mainnet.</p>
+      <button class="connect-btn-large" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+
+    <!-- FORM (cüzdan bağlıysa) -->
+    <div id="send-form" style="display:none">
+
+      <!-- AMOUNT -->
+      <div class="field-label">Amount</div>
+      <div class="amount-box">
+        <input id="amount-input" class="amount-input" type="number" min="0" step="0.01" placeholder="0.00" oninput="onAmountChange()"/>
+        <span id="amount-token" class="amount-token">USDC</span>
+      </div>
+      <div class="balance-row">
+        <span id="balance-hint" class="balance-hint">Balance: —</span>
+        <button class="max-btn" onclick="setMax()">MAX</button>
+      </div>
+
+      <!-- RECIPIENT -->
+      <div class="field-label">Recipient address</div>
+      <div class="to-box">
+        <input id="to-input" class="to-input" type="text" placeholder="0x..." oninput="onToChange()"/>
+      </div>
+      <div class="addr-hint" id="addr-hint">Enter a valid Arc mainnet address (0x…)</div>
+
+      <!-- SUMMARY -->
+      <div class="summary" id="summary">
+        <div class="summary-row">
+          <span class="summary-label">You send</span>
+          <span class="summary-value" id="sum-amount">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Recipient</span>
+          <span class="summary-value" id="sum-to">—</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Network fee</span>
+          <span class="summary-value">~0.00 USDC (Arc gas)</span>
+        </div>
+      </div>
+
+      <!-- SEND BUTTON -->
+      <button id="send-btn" class="send-btn" disabled onclick="doSend()">Send</button>
+
+      <!-- STATUS -->
+      <div id="status-msg" class="status-msg">
+        <span id="status-text"></span>
+        <br/>
+        <a id="tx-link" class="tx-link" href="#" target="_blank" rel="noopener" style="display:none"></a>
+      </div>
+    </div>
+
+    <div class="disclaimer">Transactions are irreversible. Always verify the recipient address before sending. Lensora does not custody funds or recover lost transfers.</div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──
+const TOKENS = {
+  USDC: {
+    address: '0x3600000000000000000000000000000000000000',
+    decimals: 6,
+    symbol: 'USDC'
+  },
+  EURC: {
+    address: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+    decimals: 6,
+    symbol: 'EURC'
+  }
+};
+const EXPLORER = 'https://explorer.arc.io';
+
+// ERC-20 minimal ABI
+const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address owner) view returns (uint256)',
+  'function decimals() view returns (uint8)'
+];
+
+let selectedToken = 'USDC';
+let walletBalance = null;
+
+// ── TOKEN SELECTION ──
+function selectToken(sym) {
+  selectedToken = sym;
+  document.getElementById('pill-usdc').classList.toggle('active', sym === 'USDC');
+  document.getElementById('pill-eurc').classList.toggle('active', sym === 'EURC');
+  document.getElementById('amount-token').textContent = sym;
+  document.getElementById('amount-input').value = '';
+  walletBalance = null;
+  document.getElementById('balance-hint').textContent = 'Balance: —';
+  validate();
+  if (window.connectedWallet) refreshBalance();
+}
+
+// ── BALANCE ──
+async function refreshBalance() {
+  const addr = window.connectedWallet;
+  if (!addr || typeof window.ethereum === 'undefined') return;
+  try {
+    const tok = TOKENS[selectedToken];
+    // eth_call balanceOf
+    const data = '0x70a08231' + addr.slice(2).padStart(64, '0');
+    const raw = await window.ethereum.request({
+      method: 'eth_call',
+      params: [{ to: tok.address, data }, 'latest']
+    });
+    const bal = parseInt(raw, 16) / Math.pow(10, tok.decimals);
+    walletBalance = bal;
+    document.getElementById('balance-hint').textContent =
+      'Balance: ' + bal.toLocaleString(undefined, { maximumFractionDigits: 4 }) + ' ' + selectedToken;
+  } catch (e) {
+    document.getElementById('balance-hint').textContent = 'Balance: —';
+  }
+}
+
+function setMax() {
+  if (walletBalance === null) return;
+  document.getElementById('amount-input').value = walletBalance.toFixed(6);
+  onAmountChange();
+}
+
+// ── VALIDATION ──
+function isValidAddress(a) {
+  return /^0x[0-9a-fA-F]{40}$/.test(a);
+}
+
+function validate() {
+  const amount = parseFloat(document.getElementById('amount-input').value);
+  const to     = document.getElementById('to-input').value.trim();
+  const valid  = isFinite(amount) && amount > 0 && isValidAddress(to);
+  document.getElementById('send-btn').disabled = !valid;
+
+  // address hint colour
+  const hint = document.getElementById('addr-hint');
+  if (to.length > 0) {
+    if (isValidAddress(to)) {
+      hint.textContent = 'Valid address';
+      hint.style.color = 'var(--green)';
+    } else {
+      hint.textContent = 'Invalid address format';
+      hint.style.color = 'var(--red)';
+    }
+  } else {
+    hint.textContent = 'Enter a valid Arc mainnet address (0x…)';
+    hint.style.color = 'var(--dim)';
+  }
+
+  // summary
+  const summary = document.getElementById('summary');
+  if (valid) {
+    summary.style.display = 'block';
+    document.getElementById('sum-amount').textContent =
+      amount.toLocaleString(undefined, { maximumFractionDigits: 6 }) + ' ' + selectedToken;
+    document.getElementById('sum-to').textContent =
+      to.slice(0, 6) + '…' + to.slice(-4);
+  } else {
+    summary.style.display = 'none';
+  }
+}
+
+function onAmountChange() { validate(); }
+function onToChange()     { validate(); }
+
+// ── SEND ──
+async function doSend() {
+  const amount = parseFloat(document.getElementById('amount-input').value);
+  const to     = document.getElementById('to-input').value.trim();
+  const from   = window.connectedWallet;
+
+  if (!from || !isValidAddress(to) || !(amount > 0)) return;
+
+  const btn = document.getElementById('send-btn');
+  const statusEl  = document.getElementById('status-msg');
+  const statusTxt = document.getElementById('status-text');
+  const txLinkEl  = document.getElementById('tx-link');
+
+  function setStatus(type, msg) {
+    statusEl.className = 'status-msg status-' + type;
+    statusEl.style.display = 'block';
+    statusTxt.textContent = msg;
+  }
+
+  try {
+    btn.disabled = true;
+    txLinkEl.style.display = 'none';
+    setStatus('loading', 'Waiting for wallet confirmation…');
+
+    const tok = TOKENS[selectedToken];
+
+    // Ensure Arc mainnet
+    await ensureArcMainnet();
+
+    // Encode transfer(address,uint256)
+    const amountWei = BigInt(Math.round(amount * Math.pow(10, tok.decimals)));
+    const paddedTo  = to.slice(2).padStart(64, '0');
+    const paddedAmt = amountWei.toString(16).padStart(64, '0');
+    const data = '0xa9059cbb' + paddedTo + paddedAmt;
+
+    const txHash = await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [{
+        from,
+        to: tok.address,
+        data,
+        chainId: '0x13B2' // 5042
+      }]
+    });
+
+    setStatus('loading', 'Transaction submitted. Waiting for confirmation…');
+    txLinkEl.href = EXPLORER + '/tx/' + txHash;
+    txLinkEl.textContent = txHash.slice(0, 10) + '…' + txHash.slice(-6) + ' ↗';
+    txLinkEl.style.display = 'inline';
+
+    // Poll for receipt
+    await waitForReceipt(txHash);
+
+    setStatus('success', 'Transfer confirmed.');
+    txLinkEl.href = EXPLORER + '/tx/' + txHash;
+    txLinkEl.textContent = 'View on Explorer ↗';
+    txLinkEl.style.display = 'inline';
+
+    // Reset form
+    document.getElementById('amount-input').value = '';
+    document.getElementById('to-input').value = '';
+    document.getElementById('summary').style.display = 'none';
+    document.getElementById('addr-hint').textContent = 'Enter a valid Arc mainnet address (0x…)';
+    document.getElementById('addr-hint').style.color = 'var(--dim)';
+    await refreshBalance();
+
+  } catch (e) {
+    if (e.code === 4001 || String(e.message || '').includes('rejected')) {
+      setStatus('error', 'Transaction rejected by wallet.');
+    } else {
+      setStatus('error', 'Error: ' + (e.message || 'Unknown error'));
+    }
+  } finally {
+    btn.disabled = false;
+    validate();
+  }
+}
+
+// ── WAIT FOR RECEIPT ──
+async function waitForReceipt(txHash, attempts) {
+  attempts = attempts || 0;
+  if (attempts > 60) throw new Error('Timeout waiting for receipt');
+  const raw = await window.ethereum.request({
+    method: 'eth_getTransactionReceipt',
+    params: [txHash]
+  });
+  if (raw && raw.status) {
+    if (raw.status === '0x0') throw new Error('Transaction reverted');
+    return raw;
+  }
+  await new Promise(r => setTimeout(r, 2000));
+  return waitForReceipt(txHash, attempts + 1);
+}
+
+// ── WALLET STATE ──
+function onWalletConnected(address) {
+  document.getElementById('connect-prompt').style.display = 'none';
+  document.getElementById('send-form').style.display = 'block';
+  refreshBalance();
+}
+
+function onWalletDisconnected() {
+  document.getElementById('connect-prompt').style.display = 'block';
+  document.getElementById('send-form').style.display = 'none';
+  walletBalance = null;
+  document.getElementById('balance-hint').textContent = 'Balance: —';
+}
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.connectedWallet) {
+    onWalletConnected(window.connectedWallet);
+  }
+});
+
+// wallet.js'deki updateWalletUI'yi override et
+const _origUpdate = window.updateWalletUI;
+window.updateWalletUI = function(address) {
+  if (_origUpdate) _origUpdate(address);
+  if (address) onWalletConnected(address);
+  else          onWalletDisconnected();
+};
+</script>
+<script src="/wallet.js"></script>
+<script>
+// wallet.js yüklendikten sonra mevcut bağlantıyı kontrol et
+if (typeof connectedWallet === 'string' && connectedWallet) {
+  onWalletConnected(connectedWallet);
+}
+</script>
+</body>
+</html>

@@ -318,13 +318,29 @@ Tx:
             // WHALE AGENT — AI analizi (context'li)
             // ========================
             try {
+              const fromBehav = fmtBehavior(fromStats?.behavior);
+              const toBehav   = fmtBehavior(toStats?.behavior);
+              const fromScoreVal = fromStats?.whale_score ?? null;
+              const toScoreVal   = toStats?.whale_score   ?? null;
+
               const agentQuestion =
-                `A large transfer just happened on Arc. ` +
-                `Wallet ${from} (score ${fmtScore(fromStats?.whale_score)}, behavior ${fmtBehavior(fromStats?.behavior)}) ` +
-                `sent ${amount.toLocaleString()} ${symbol} ` +
-                `to ${to} (score ${fmtScore(toStats?.whale_score)}, behavior ${fmtBehavior(toStats?.behavior)}). ` +
-                `Token trust_score=${fmtScore(trust)} (risk ${riskLabel}). ` +
-                `Give a short whale signal context: what this likely means, who looks like smart money vs noise, and any caution.`;
+                `Write intel commentary for a whale transfer on Arc mainnet (chainId 5042). ` +
+                `Rules you must follow exactly:\n` +
+                `- Plain sentences only. No markdown: no asterisks, no hashes, no bullet points, no backticks, no bold or italic markers.\n` +
+                `- 2 to 4 short sentences.\n` +
+                `- Do NOT repeat the token address, wallet addresses, tx hash, or raw score numbers — those are already shown in the UI.\n` +
+                `- Do NOT mention testnet. This is Arc mainnet.\n` +
+                `- Cover: size in human terms (e.g. "a mid-sized transfer", "a very large move"), which side looks stronger and briefly why, one caution.\n` +
+                `- If a wallet behavior is UNKNOWN, say that once. Do not invent intent or label.\n` +
+                `\n` +
+                `Transfer data:\n` +
+                `Token: ${symbol}\n` +
+                `Amount: ${amount.toLocaleString()} ${symbol} (tier: ${sizeTier})\n` +
+                `Sender behavior: ${fromBehav}${fromScoreVal !== null ? `, whale score ${fmtScore(fromScoreVal)}` : ""}\n` +
+                `Receiver behavior: ${toBehav}${toScoreVal !== null ? `, whale score ${fmtScore(toScoreVal)}` : ""}\n` +
+                `Token risk: ${riskLabel}\n` +
+                `\n` +
+                `Write the commentary now:`;
 
               const analysis = await askArc(agentQuestion, "whale-agent");
 
