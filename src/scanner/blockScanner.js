@@ -342,6 +342,7 @@ Tx:
                 `\n` +
                 `Write the commentary now:`;
 
+
               const analysis = await askArc(agentQuestion, "whale-agent");
 
               if (analysis.success && analysis.answer) {
@@ -354,21 +355,19 @@ Tx:
                   fs.writeFileSync(
                     path.join(__dirname, "../../data/intel.json"),
                     JSON.stringify({
-                      text:         analysis.answer,
-                      at:           new Date().toISOString(),
-                      txHash:       txHash,
-                      from:         from.toLowerCase(),
-                      to:           to.toLowerCase(),
-                      token:        symbol,
-                      amount:       amount,
-                      tier:         sizeTier === "LARGE" ? "LARGE" : "STANDARD",
-                      fromScore:    fromStats?.whale_score ?? null,
-                      toScore:      toStats?.whale_score   ?? null,
-                      fromBehavior: fromStats?.behavior    ?? null,
-                      toBehavior:   toStats?.behavior      ?? null,
-                      fromLabel:    fromLbl ? fromLbl.label : null,
-                      toLabel:      toLbl   ? toLbl.label   : null
-                    }),
+                      text: analysis.answer,
+  		      at: new Date().toISOString(),
+  		      txHash: txHash,
+  		      from: String(from).toLowerCase(),
+  		      to: String(to).toLowerCase(),
+  		      token: symbol,
+  		      amount: amount,
+  		      tier: sizeTier,
+  		      fromScore: fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
+  		      toScore: toStats && toStats.whale_score != null ? toStats.whale_score : null,
+  		      fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
+  		      toBehavior: toStats && toStats.behavior ? toStats.behavior : null
+		    }),
                     "utf8"
                   );
                 } catch (e) {

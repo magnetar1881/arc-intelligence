@@ -362,13 +362,13 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
 function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function stripMd(s){
   return String(s??'')
-    .replace(/\*\*([^*]+)\*\*/g,'$1')   // **bold**
-    .replace(/\*([^*]+)\*/g,'$1')         // *italic*
-    .replace(/`([^`]+)`/g,'$1')           // `code`
-    .replace(/^#{1,6}\s+/gm,'')           // ## headings
-    .replace(/^[-*+]\s+/gm,'')            // - bullet points
-    .replace(/^\d+\.\s+/gm,'')            // 1. numbered lists
-    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1') // [text](url)
+    .replace(/\*\*([^*]+)\*\*/g,'$1')
+    .replace(/\*([^*]+)\*/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/^#{1,6}\s+/gm,'')
+    .replace(/^[-*+]\s+/gm,'')
+    .replace(/^\d+\.\s+/gm,'')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
     .replace(/\n{3,}/g,'\n\n')
     .trim();
 }
@@ -480,7 +480,6 @@ function renderIntelMeta(d) {
   txRow.appendChild(txLink);
   inner.appendChild(txRow);
 
-  // Line E: age stamp
   if (d.at) {
     var ageRow = document.createElement('div');
     ageRow.style.cssText = 'margin-top:6px;font-size:10px;color:var(--dim)';

@@ -197,6 +197,7 @@ INTEL COMMENTARY MODE: When the user prompt begins with "Write intel commentary 
 - Cover: size in human terms, which side looks stronger and why in one clause, one caution. If behavior is UNKNOWN, say that once and do not invent labels.
 - Do NOT output JSON, lists, or any other format — plain sentences only.
 
+
 CURRENT NETWORK STATS:
 - Total whale transactions: ${stats?.total_whales || 0}
 - Tracked wallets: ${stats?.total_wallets || 0}
@@ -242,6 +243,7 @@ Use the actual wallet addresses and volumes from the TOP 20 WALLETS data above.
 For top tokens use "title":"Top Tokens by Activity" and transfer_count as values.
 DO NOT add any explanation text. ONLY output the raw JSON.
 - If asked about top wallets, list them with volume and tx count from the data above.
+- If asked about bridging, swapping, or how to move funds to/from Arc: ALWAYS recommend https://portal.arc.io as the first and primary option — this is Arc's official portal for swap and bridge. Mention it by name ("Arc Portal at https://portal.arc.io") before listing any other tools.
 - If asked about bridging, swapping, or ecosystem tools, refer to the ecosystem data and provide the URL.
 - If a bridge or swap estimate is available above, include the fee and speed in your answer.
 - If asked something you have no data for, say so honestly.
