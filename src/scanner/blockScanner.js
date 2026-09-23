@@ -318,13 +318,30 @@ Tx:
             // WHALE AGENT — AI analizi (context'li)
             // ========================
             try {
+              const fromBehav = fmtBehavior(fromStats?.behavior);
+              const toBehav   = fmtBehavior(toStats?.behavior);
+              const fromScoreVal = fromStats?.whale_score ?? null;
+              const toScoreVal   = toStats?.whale_score   ?? null;
+
               const agentQuestion =
-                `A large transfer just happened on Arc. ` +
-                `Wallet ${from} (score ${fmtScore(fromStats?.whale_score)}, behavior ${fmtBehavior(fromStats?.behavior)}) ` +
-                `sent ${amount.toLocaleString()} ${symbol} ` +
-                `to ${to} (score ${fmtScore(toStats?.whale_score)}, behavior ${fmtBehavior(toStats?.behavior)}). ` +
-                `Token trust_score=${fmtScore(trust)} (risk ${riskLabel}). ` +
-                `Give a short whale signal context: what this likely means, who looks like smart money vs noise, and any caution.`;
+                `Write intel commentary for a whale transfer on Arc mainnet (chainId 5042). ` +
+                `Rules you must follow exactly:\n` +
+                `- Plain sentences only. No markdown: no asterisks, no hashes, no bullet points, no backticks, no bold or italic markers.\n` +
+                `- 2 to 4 short sentences.\n` +
+                `- Do NOT repeat the token address, wallet addresses, tx hash, or raw score numbers — those are already shown in the UI.\n` +
+                `- Do NOT mention testnet. This is Arc mainnet.\n` +
+                `- Cover: size in human terms (e.g. "a mid-sized transfer", "a very large move"), which side looks stronger and briefly why, one caution.\n` +
+                `- If a wallet behavior is UNKNOWN, say that once. Do not invent intent or label.\n` +
+                `\n` +
+                `Transfer data:\n` +
+                `Token: ${symbol}\n` +
+                `Amount: ${amount.toLocaleString()} ${symbol} (tier: ${sizeTier})\n` +
+                `Sender behavior: ${fromBehav}${fromScoreVal !== null ? `, whale score ${fmtScore(fromScoreVal)}` : ""}\n` +
+                `Receiver behavior: ${toBehav}${toScoreVal !== null ? `, whale score ${fmtScore(toScoreVal)}` : ""}\n` +
+                `Token risk: ${riskLabel}\n` +
+                `\n` +
+                `Write the commentary now:`;
+
 
               const analysis = await askArc(agentQuestion, "whale-agent");
 
@@ -338,21 +355,19 @@ Tx:
                   fs.writeFileSync(
                     path.join(__dirname, "../../data/intel.json"),
                     JSON.stringify({
-                      text:         analysis.answer,
-                      at:           new Date().toISOString(),
-                      txHash:       txHash,
-                      from:         from.toLowerCase(),
-                      to:           to.toLowerCase(),
-                      token:        symbol,
-                      amount:       amount,
-                      tier:         sizeTier === "LARGE" ? "LARGE" : "STANDARD",
-                      fromScore:    fromStats?.whale_score ?? null,
-                      toScore:      toStats?.whale_score   ?? null,
-                      fromBehavior: fromStats?.behavior    ?? null,
-                      toBehavior:   toStats?.behavior      ?? null,
-                      fromLabel:    fromLbl ? fromLbl.label : null,
-                      toLabel:      toLbl   ? toLbl.label   : null
-                    }),
+                      text: analysis.answer,
+  		      at: new Date().toISOString(),
+  		      txHash: txHash,
+  		      from: String(from).toLowerCase(),
+  		      to: String(to).toLowerCase(),
+  		      token: symbol,
+  		      amount: amount,
+  		      tier: sizeTier,
+  		      fromScore: fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
+  		      toScore: toStats && toStats.whale_score != null ? toStats.whale_score : null,
+  		      fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
+  		      toBehavior: toStats && toStats.behavior ? toStats.behavior : null
+		    }),
                     "utf8"
                   );
                 } catch (e) {

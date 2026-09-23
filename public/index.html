@@ -359,6 +359,18 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
 <script>
 // ── UTILS ──
 function escHtml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function stripMd(s){
+  return String(s??'')
+    .replace(/\*\*([^*]+)\*\*/g,'$1')
+    .replace(/\*([^*]+)\*/g,'$1')
+    .replace(/`([^`]+)`/g,'$1')
+    .replace(/^#{1,6}\s+/gm,'')
+    .replace(/^[-*+]\s+/gm,'')
+    .replace(/^\d+\.\s+/gm,'')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
 function fmt(n){
   const v=Number(n);
   if(!isFinite(v)||v<=0)return'—';
@@ -467,6 +479,13 @@ function renderIntelMeta(d) {
   txRow.appendChild(txLink);
   inner.appendChild(txRow);
 
+  if (d.at) {
+    var ageRow = document.createElement('div');
+    ageRow.style.cssText = 'margin-top:6px;font-size:10px;color:var(--dim)';
+    ageRow.textContent = timeAgo(d.at);
+    inner.appendChild(ageRow);
+  }
+
   meta.style.display = 'block';
 
   // Show actions row
@@ -538,7 +557,7 @@ async function loadFeed(){
       .then(function (r) { return r.json(); })
       .then(function (d) {
         const intelText = document.getElementById("intel-text");
-        if (intelText && d && d.text) intelText.textContent = d.text;
+        if (intelText && d && d.text) intelText.textContent = stripMd(d.text);
         renderIntelMeta(d);
       })
       .catch(function () {});
