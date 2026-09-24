@@ -53,7 +53,8 @@ app.get("/api/whales", (req, res) => {
   // One row per txHash: pick the wallet/type from the row with MAX(amount)
   // to avoid double-counting IN + OUT legs of the same transfer.
   db.all(
-    `SELECT w.txHash, w.wallet, w.token, w.amount, w.type, w.timestamp
+    `SELECT w.txHash, w.wallet, w.token, w.amount, w.type, w.timestamp,
+            w.source, w.direction
      FROM whales w
      INNER JOIN (
        SELECT txHash, MAX(amount) AS max_amount

@@ -26,6 +26,62 @@ const ARC_USDC_SYSTEM = "0xfffffffffffffffffffffffffffffffffffffffe";
 const ARC_USDC_ERC20  = "0x3600000000000000000000000000000000000000";
 const ARC_EURC_MAINNET = "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1";
 
+// ========================
+// CCTP V2 — Arc mainnet (source: data/ecosystem.json / docs.arc.io)
+// TokenMessengerV2 emits DepositForBurn (OUT) and MintAndWithdraw (IN)
+// MessageTransmitterV2 relays attestations
+// ========================
+const CCTP_TOKEN_MESSENGER   = "0x28b5a0e9c621a5badaa536219b3a228c8168cf5d"; // lowercase
+const CCTP_MSG_TRANSMITTER   = "0x81d40f21f12a8f0e3252bccb954d722d4c464b64"; // lowercase
+// DepositForBurn(uint64,address,uint256,address,bytes32,uint256,bytes32,bytes32)
+const CCTP_DEPOSIT_FOR_BURN  = "0x2fa9ca894982930190727e75500a97d8dc500233";
+// MintAndWithdraw(address,uint256,address)
+const CCTP_MINT_AND_WITHDRAW = "0x1b2a7ff080b8cb6ff19c7c6f9b8a4c3c3bc6e4e5";
+// DepositForBurnWithCaller — same prefix as DepositForBurn, shares topic[0]
+// We detect by: from/to === CCTP_TOKEN_MESSENGER in the same tx receipt
+
+/**
+ * detectCctp — inspect full tx receipt for CCTP log signatures.
+ * Returns { source: "CCTP", direction: "IN"|"OUT" } or null.
+ * "OUT" = DepositForBurn present (burn on Arc, mint elsewhere)
+ * "IN"  = MintAndWithdraw present (mint on Arc, burn elsewhere)
+ * We do ONE eth_getTransactionReceipt call per whale tx, cached by txHash.
+ */
+const cctpReceiptCache = new Map(); // txHash -> { source, direction } | null
+
+async function detectCctp(provider, txHash) {
+  if (cctpReceiptCache.has(txHash)) return cctpReceiptCache.get(txHash);
+
+  let result = null;
+  try {
+    const receipt = await provider.getTransactionReceipt(txHash);
+    if (receipt && Array.isArray(receipt.logs)) {
+      let hasDeposit = false;
+      let hasMint    = false;
+      for (const log of receipt.logs) {
+        const addr = String(log.address || "").toLowerCase();
+        const t0   = (log.topics && log.topics[0]) ? log.topics[0].toLowerCase() : "";
+        // keccak256("DepositForBurn(uint64,address,uint256,address,bytes32,uint256,bytes32,bytes32)")
+        if (addr === CCTP_TOKEN_MESSENGER && t0 === CCTP_DEPOSIT_FOR_BURN) hasDeposit = true;
+        // keccak256("MintAndWithdraw(address,uint256,address)")
+        if (addr === CCTP_TOKEN_MESSENGER && t0 === CCTP_MINT_AND_WITHDRAW) hasMint    = true;
+      }
+      if (hasDeposit) result = { source: "CCTP", direction: "OUT" };
+      else if (hasMint) result = { source: "CCTP", direction: "IN" };
+    }
+  } catch (_) {
+    // receipt fetch failed — leave null, do not tag
+  }
+
+  cctpReceiptCache.set(txHash, result);
+  // Evict old entries to avoid unbounded growth
+  if (cctpReceiptCache.size > 500) {
+    const oldest = cctpReceiptCache.keys().next().value;
+    cctpReceiptCache.delete(oldest);
+  }
+  return result;
+}
+
 const ALERT_ASSETS = new Set(["USDC", "EURC"]);
 
 const WHALE_THRESHOLD = Number(process.env.WHALE_THRESHOLD || 100000);
@@ -227,12 +283,20 @@ async function startScanner() {
 
             const sizeTier = amount >= LARGE_TRANSFER_THRESHOLD ? "LARGE" : "STANDARD";
 
+            // CCTP detection — one receipt lookup per txHash (cached)
+            let cctpTag = null;
+            try {
+              cctpTag = await detectCctp(p, txHash);
+            } catch (_) {}
+
             await insertWhale({
               txHash,
               wallet: from,
               token: symbol,
               amount,
-              type: "WHALE_OUT"
+              type: "WHALE_OUT",
+              source: cctpTag ? cctpTag.source : null,
+              direction: cctpTag ? cctpTag.direction : null
             });
 
             await insertWhale({
@@ -240,7 +304,9 @@ async function startScanner() {
               wallet: to,
               token: symbol,
               amount,
-              type: "WHALE_IN"
+              type: "WHALE_IN",
+              source: cctpTag ? cctpTag.source : null,
+              direction: cctpTag ? cctpTag.direction : null
             });
 
             // --- Whale signal context ---
@@ -323,6 +389,10 @@ Tx:
               const fromScoreVal = fromStats?.whale_score ?? null;
               const toScoreVal   = toStats?.whale_score   ?? null;
 
+              const cctpLine = cctpTag
+                ? `Transfer type: CCTP cross-chain (${cctpTag.direction === "OUT" ? "burn on Arc, mint elsewhere" : cctpTag.direction === "IN" ? "mint on Arc, burn elsewhere" : "CCTP detected, direction unclear"})\n`
+                : `Transfer type: same-chain (no CCTP detected)\n`;
+
               const agentQuestion =
                 `Write intel commentary for a whale transfer on Arc mainnet (chainId 5042). ` +
                 `Rules you must follow exactly:\n` +
@@ -332,10 +402,13 @@ Tx:
                 `- Do NOT mention testnet. This is Arc mainnet.\n` +
                 `- Cover: size in human terms (e.g. "a mid-sized transfer", "a very large move"), which side looks stronger and briefly why, one caution.\n` +
                 `- If a wallet behavior is UNKNOWN, say that once. Do not invent intent or label.\n` +
+                `- If transfer type is CCTP, mention it crossed chains via CCTP in one clause. Do not name a source chain unless destinationChain is provided.\n` +
+                `- If transfer type is same-chain, do NOT say bridge, CCTP, Gateway, or "from Ethereum".\n` +
                 `\n` +
                 `Transfer data:\n` +
                 `Token: ${symbol}\n` +
                 `Amount: ${amount.toLocaleString()} ${symbol} (tier: ${sizeTier})\n` +
+                cctpLine +
                 `Sender behavior: ${fromBehav}${fromScoreVal !== null ? `, whale score ${fmtScore(fromScoreVal)}` : ""}\n` +
                 `Receiver behavior: ${toBehav}${toScoreVal !== null ? `, whale score ${fmtScore(toScoreVal)}` : ""}\n` +
                 `Token risk: ${riskLabel}\n` +
@@ -355,19 +428,23 @@ Tx:
                   fs.writeFileSync(
                     path.join(__dirname, "../../data/intel.json"),
                     JSON.stringify({
-                      text: analysis.answer,
-  		      at: new Date().toISOString(),
-  		      txHash: txHash,
-  		      from: String(from).toLowerCase(),
-  		      to: String(to).toLowerCase(),
-  		      token: symbol,
-  		      amount: amount,
-  		      tier: sizeTier,
-  		      fromScore: fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
-  		      toScore: toStats && toStats.whale_score != null ? toStats.whale_score : null,
-  		      fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
-  		      toBehavior: toStats && toStats.behavior ? toStats.behavior : null
-		    }),
+                      text:         analysis.answer,
+                      at:           new Date().toISOString(),
+                      txHash:       txHash,
+                      from:         String(from).toLowerCase(),
+                      to:           String(to).toLowerCase(),
+                      token:        symbol,
+                      amount:       amount,
+                      tier:         sizeTier,
+                      source:       cctpTag ? cctpTag.source    : null,
+                      direction:    cctpTag ? cctpTag.direction : null,
+                      fromScore:    fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
+                      toScore:      toStats  && toStats.whale_score  != null ? toStats.whale_score   : null,
+                      fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
+                      toBehavior:   toStats   && toStats.behavior   ? toStats.behavior   : null,
+                      fromLabel:    fromLbl ? fromLbl.label : null,
+                      toLabel:      toLbl   ? toLbl.label   : null
+                    }),
                     "utf8"
                   );
                 } catch (e) {

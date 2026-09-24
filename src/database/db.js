@@ -20,10 +20,16 @@ db.serialize(() => {
       token TEXT,
       amount REAL,
       type TEXT,
+      source TEXT DEFAULT NULL,
+      direction TEXT DEFAULT NULL,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(txHash, wallet)
     )
   `);
+
+  // Migration: add source/direction to existing databases that predate this column
+  db.run(`ALTER TABLE whales ADD COLUMN source TEXT DEFAULT NULL`, () => {});
+  db.run(`ALTER TABLE whales ADD COLUMN direction TEXT DEFAULT NULL`, () => {});
 
 db.run(`
     CREATE TABLE IF NOT EXISTS wallets (
@@ -105,9 +111,17 @@ function insertWhale(data) {
   return new Promise((resolve, reject) => {
     db.run(
       `INSERT OR IGNORE INTO whales
-       (txHash, wallet, token, amount, type)
-       VALUES (?, ?, ?, ?, ?)`,
-      [data.txHash, data.wallet, data.token, data.amount, data.type],
+       (txHash, wallet, token, amount, type, source, direction)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        data.txHash,
+        data.wallet,
+        data.token,
+        data.amount,
+        data.type,
+        data.source || null,
+        data.direction || null
+      ],
       function (err) {
         if (err) reject(err);
         else resolve(this?.changes);

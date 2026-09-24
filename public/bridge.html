@@ -76,6 +76,15 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
     <div class="bridge-title">Bridge</div>
     <div class="bridge-sub">USDC · Ethereum / Base / Arbitrum ↔ Arc</div>
 
+    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;margin-bottom:20px;font-size:11px;line-height:1.7;color:var(--text3)">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:6px">Interop on Arc (Circle)</div>
+      <div><span style="color:var(--text2);font-weight:600">USDC</span> — native CCTP on supported routes.</div>
+      <div><span style="color:var(--text2);font-weight:600">EURC</span> — CCTP on Arc, Avalanche, Base, Ethereum, World Chain. Standard transfers free; Fast Transfer priced like USDC.</div>
+      <div><span style="color:var(--text2);font-weight:600">cirBTC</span> — CCTP + Gateway on Arc and Ethereum only. Not shown in the whale feed.</div>
+      <div><span style="color:var(--text2);font-weight:600">Gateway</span> — unified balance on supported routes. EURC: coming soon.</div>
+      <div style="margin-top:6px">You sign in MetaMask. Lensora does not custody funds. Official portal: <a href="https://portal.arc.io" target="_blank" rel="noopener" style="color:var(--blue3);text-decoration:none">portal.arc.io</a></div>
+    </div>
+
     <div class="field">
       <div class="field-label">From</div>
       <select class="field-select" id="from-chain" onchange="onFromChange()">

@@ -537,20 +537,44 @@ async function loadFeed(){
     } else {
       el.innerHTML=rows.map(w=>{
         const large=Number(w.amount)>=250000;
-        return`<div class="w-item">
-          <div>
-            <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
-            <div class="w-addr">
-              ${escHtml(shortAddr(w.wallet))}
-              <a href="https://t.me/MagNetar1881_bot?start=subscribe_${escHtml(w.wallet)}" target="_blank" rel="noopener"
-                 style="font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px">Alert</a>
-            </div>
-          </div>
-          <div>
-            <div class="w-amt">${escHtml(fmt(w.amount))}</div>
-            <div class="w-time">${escHtml(timeAgo(w.timestamp))}</div>
-          </div>
-        </div>`;
+        const isCctp=w.source==='CCTP';
+        const row=document.createElement('div');
+        row.className='w-item';
+        const left=document.createElement('div');
+        const tokenLine=document.createElement('div');
+        tokenLine.className='w-token';
+        const tokSym=document.createElement('span');
+        tokSym.textContent=w.token||'';
+        const tierBadge=document.createElement('span');
+        tierBadge.className='tier '+(large?'tier-L':'tier-S');
+        tierBadge.textContent=large?'LARGE':'STD';
+        tokenLine.appendChild(tokSym);
+        tokenLine.appendChild(tierBadge);
+        if(isCctp){
+          const cctpBadge=document.createElement('span');
+          cctpBadge.className='tier';
+          cctpBadge.style.cssText='background:rgba(16,185,129,.08);color:var(--green);border:1px solid rgba(16,185,129,.2)';
+          cctpBadge.textContent='CCTP';
+          tokenLine.appendChild(cctpBadge);
+        }
+        const addrLine=document.createElement('div');
+        addrLine.className='w-addr';
+        addrLine.textContent=shortAddr(w.wallet);
+        const alertLink=document.createElement('a');
+        alertLink.href='https://t.me/MagNetar1881_bot?start=subscribe_'+w.wallet;
+        alertLink.target='_blank';alertLink.rel='noopener';
+        alertLink.style.cssText='font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px';
+        alertLink.textContent='Alert';
+        addrLine.appendChild(alertLink);
+        left.appendChild(tokenLine);left.appendChild(addrLine);
+        const right=document.createElement('div');
+        const amtEl=document.createElement('div');
+        amtEl.className='w-amt';amtEl.textContent=fmt(w.amount);
+        const timeEl=document.createElement('div');
+        timeEl.className='w-time';timeEl.textContent=timeAgo(w.timestamp);
+        right.appendChild(amtEl);right.appendChild(timeEl);
+        row.appendChild(left);row.appendChild(right);
+        return row.outerHTML;
       }).join('');
     }
 
