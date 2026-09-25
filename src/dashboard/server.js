@@ -442,6 +442,207 @@ app.get("/send", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/send.html"));
 });
 
+// ========================
+// API: Daily Report
+// ========================
+// timestamp column is stored as "YYYY-MM-DD HH:MM:SS" (SQLite CURRENT_TIMESTAMP, UTC).
+// date(timestamp) works directly — no T/Z stripping needed.
+// Volume uses MAX(amount) GROUP BY txHash to avoid double-counting IN+OUT legs.
+app.get("/api/daily", (req, res) => {
+  const rawDate = String(req.query.date || "").trim();
+  // Default to today UTC
+  const dateStr = rawDate || new Date().toISOString().slice(0, 10);
+  // Validate YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return res.status(400).json({ error: "invalid date" });
+  }
+  // Validate real calendar date
+  const parsed = new Date(dateStr + "T00:00:00Z");
+  if (isNaN(parsed.getTime())) {
+    return res.status(400).json({ error: "invalid date" });
+  }
+
+  // Helper: compact number formatter (matches front-end fmt())
+  function fmtNum(n) {
+    if (!n || isNaN(n)) return "0";
+    if (n >= 1e9) return (n / 1e9).toFixed(2).replace(/\.?0+$/, "") + "B";
+    if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.?0+$/, "") + "K";
+    return String(Math.round(n));
+  }
+
+  // All queries are Promise-wrapped; each uses date(timestamp) = dateStr
+  const TOKEN_LIST = "('USDC','EURC')";
+
+  // Q1: per-token volume + txs (MAX(amount) GROUP BY txHash)
+  const qTokenVol = new Promise((resolve, reject) => {
+    db.all(
+      `SELECT upper(token) as token,
+              SUM(mx) as volume,
+              COUNT(*) as txs
+       FROM (
+         SELECT upper(token) as token, txHash, MAX(amount) as mx
+         FROM whales
+         WHERE upper(token) IN ${TOKEN_LIST}
+           AND date(timestamp) = ?
+         GROUP BY upper(token), txHash
+       )
+       GROUP BY token`,
+      [dateStr],
+      (err, rows) => { if (err) reject(err); else resolve(rows || []); }
+    );
+  });
+
+  // Q2: top 5 flows — one row per txHash, MAX(amount), pick WHALE_OUT wallet as display
+  // Pair from (WHALE_OUT wallet) and to (WHALE_IN wallet) per txHash when both exist
+  const qFlows = new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         t.txHash,
+         t.token,
+         t.mx     AS amount,
+         t.ts     AS timestamp,
+         t.src    AS source,
+         MIN(CASE WHEN w2.type = 'WHALE_OUT' THEN w2.wallet END) AS fromAddr,
+         MIN(CASE WHEN w2.type = 'WHALE_IN'  THEN w2.wallet END) AS toAddr
+       FROM (
+         SELECT txHash,
+                upper(token) AS token,
+                MAX(amount)  AS mx,
+                MAX(timestamp) AS ts,
+                MAX(source)    AS src
+         FROM whales
+         WHERE upper(token) IN ${TOKEN_LIST}
+           AND date(timestamp) = ?
+         GROUP BY txHash
+       ) t
+       JOIN whales w2 ON w2.txHash = t.txHash
+       GROUP BY t.txHash
+       ORDER BY t.mx DESC
+       LIMIT 5`,
+      [dateStr],
+      (err, rows) => { if (err) reject(err); else resolve(rows || []); }
+    );
+  });
+
+  // Q3: most active wallets — SUM(amount) per wallet for that day (IN or OUT each counts)
+  const qWallets = new Promise((resolve, reject) => {
+    db.all(
+      `SELECT wallet, SUM(amount) AS volume, COUNT(*) AS txs
+       FROM whales
+       WHERE upper(token) IN ${TOKEN_LIST}
+         AND date(timestamp) = ?
+       GROUP BY lower(wallet)
+       ORDER BY volume DESC
+       LIMIT 5`,
+      [dateStr],
+      (err, rows) => { if (err) reject(err); else resolve(rows || []); }
+    );
+  });
+
+  // Q4: new wallets (first appearance in whales table is on this date)
+  // "first time this wallet appeared in whales" = MIN(date(timestamp)) = dateStr
+  const qNewWallets = new Promise((resolve, reject) => {
+    db.all(
+      `SELECT wallet, MAX(amount) as top_amount
+       FROM whales
+       WHERE upper(token) IN ${TOKEN_LIST}
+         AND date(timestamp) = ?
+         AND wallet IN (
+           SELECT wallet FROM whales
+           GROUP BY wallet
+           HAVING MIN(date(timestamp)) = ?
+         )
+       GROUP BY wallet
+       ORDER BY top_amount DESC
+       LIMIT 10`,
+      [dateStr, dateStr],
+      (err, rows) => { if (err) reject(err); else resolve(rows || []); }
+    );
+  });
+
+  Promise.all([qTokenVol, qFlows, qWallets, qNewWallets])
+    .then(([tokenVol, flows, wallets, newWalletRows]) => {
+      // Token stats
+      const byToken = {};
+      for (const r of tokenVol) byToken[r.token] = r;
+      const usdc = { volume: (byToken.USDC && byToken.USDC.volume) || 0, txs: (byToken.USDC && byToken.USDC.txs) || 0 };
+      const eurc = { volume: (byToken.EURC && byToken.EURC.volume) || 0, txs: (byToken.EURC && byToken.EURC.txs) || 0 };
+
+      // Flows: map to clean shape
+      const flowsOut = flows.map((r) => ({
+        txHash:    r.txHash,
+        token:     r.token,
+        amount:    r.amount,
+        from:      r.fromAddr || null,
+        to:        r.toAddr   || null,
+        timestamp: r.timestamp,
+        source:    r.source   || null
+      }));
+
+      // Wallets
+      const walletsOut = wallets.map((r) => ({
+        wallet: r.wallet,
+        volume: r.volume,
+        txs:    r.txs
+      }));
+
+      // New wallets
+      const newAddresses = newWalletRows.map((r) => r.wallet);
+      const newWallets = { count100k: newAddresses.length, addresses: newAddresses };
+
+      // Headline — no LLM, template string
+      const totalTxs = usdc.txs + eurc.txs;
+      let largest = null;
+      let largestTok = null;
+      if (flows.length) { largest = flows[0].amount; largestTok = flows[0].token; }
+
+      const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const [yr, mo, dy] = dateStr.split("-").map(Number);
+      const humanDate = `${monthNames[mo - 1]} ${dy}`;
+
+      let headline = `${humanDate}: `;
+      const parts = [];
+      if (usdc.txs > 0) parts.push(`${usdc.txs} USDC tx${usdc.txs > 1 ? "s" : ""} (${fmtNum(usdc.volume)})`);
+      if (eurc.txs > 0) parts.push(`${eurc.txs} EURC tx${eurc.txs > 1 ? "s" : ""} (${fmtNum(eurc.volume)})`);
+      if (parts.length === 0) {
+        headline += "No 100k+ transfers indexed.";
+      } else {
+        headline += parts.join(", ") + ".";
+        if (largest && largestTok) headline += ` Largest: ${fmtNum(largest)} ${largestTok}.`;
+      }
+
+      res.json({
+        date:        dateStr,
+        generatedAt: new Date().toISOString(),
+        usdc,
+        eurc,
+        flows:      flowsOut,
+        wallets:    walletsOut,
+        newWallets,
+        headline
+      });
+    })
+    .catch((err) => {
+      console.error("daily error:", err.message);
+      res.status(500).json({ error: err.message });
+    });
+});
+
+// ========================
+// PAGE: Daily Report
+// ========================
+app.get("/daily", (req, res) => {
+  res.sendFile(path.join(__dirname, "../../public/daily.html"));
+});
+
+app.get("/daily/:date", (req, res) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) {
+    return res.status(404).sendFile(path.join(__dirname, "../../public/daily.html"));
+  }
+  res.sendFile(path.join(__dirname, "../../public/daily.html"));
+});
+
 // Ana sayfa
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../../public/index.html"));
