@@ -88,8 +88,15 @@ header{
 .stat-value{font-family:var(--mono);font-size:22px;font-weight:600;color:var(--blue3)}
 
 /* GRID */
-.main-grid{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:14px;margin-bottom:14px;align-items:start}
+.main-grid{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:14px;margin-bottom:14px;align-items:stretch}
 #whale-feed{max-height:280px;overflow-y:auto}
+#intel-card{display:flex;flex-direction:column}
+#intel-card>.card-head{flex-shrink:0}
+#intel-card>div:last-of-type{flex:1;display:flex;flex-direction:column;min-height:0}
+#intel-text{max-height:200px;overflow-y:auto;padding-right:6px;scrollbar-width:thin;scrollbar-color:var(--border3) transparent}
+#intel-text::-webkit-scrollbar{width:3px}
+#intel-text::-webkit-scrollbar-track{background:transparent}
+#intel-text::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
 .bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
 /* CARD */
