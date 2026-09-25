@@ -101,6 +101,7 @@ const TOKEN_WHITELIST = (process.env.TOKEN_WHITELIST || DEFAULT_WHITELIST.join("
   .map((a) => a.trim().toLowerCase())
   .filter(Boolean);
 
+// Prefer RPC_URL=https://lensora.xyz/arc-rpc if public rpc.mainnet.arc.io ECONNRESETs.
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
 // ERC20 Transfer(address,address,uint256)
@@ -381,11 +382,36 @@ Tx:
             await sendAlert(message, token, [from, to]);
 
             // ========================
-            // WHALE AGENT — AI analizi (context'li)
+            // WHALE AGENT — AI analizi + intel.json (always written)
             // ========================
-            try {
-              const fromBehav = fmtBehavior(fromStats?.behavior);
-              const toBehav   = fmtBehavior(toStats?.behavior);
+            {
+              const fs   = require("fs");
+              const path = require("path");
+              const fromLbl = lookupLabel(from);
+              const toLbl   = lookupLabel(to);
+
+              // Base payload — always populated regardless of AI outcome
+              const intelBase = {
+                at:           new Date().toISOString(),
+                txHash:       txHash,
+                from:         String(from).toLowerCase(),
+                to:           String(to).toLowerCase(),
+                token:        symbol,
+                amount:       amount,
+                tier:         sizeTier,
+                source:       cctpTag ? cctpTag.source    : null,
+                direction:    cctpTag ? cctpTag.direction : null,
+                fromScore:    fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
+                toScore:      toStats  && toStats.whale_score  != null ? toStats.whale_score   : null,
+                fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
+                toBehavior:   toStats   && toStats.behavior   ? toStats.behavior   : null,
+                fromLabel:    fromLbl ? fromLbl.label : null,
+                toLabel:      toLbl   ? toLbl.label   : null,
+                text:         null  // filled below
+              };
+
+              const fromBehav    = fmtBehavior(fromStats?.behavior);
+              const toBehav      = fmtBehavior(toStats?.behavior);
               const fromScoreVal = fromStats?.whale_score ?? null;
               const toScoreVal   = toStats?.whale_score   ?? null;
 
@@ -422,45 +448,48 @@ Tx:
                 `\n` +
                 `Write the 2-4 sentence commentary now. No addresses. No scores. No markdown:`;
 
-
-              const analysis = await askArc(agentQuestion, "whale-agent");
-
-              if (analysis.success && analysis.answer) {
-                const agentMessage = `🤖 <b>AI Analysis</b>\n\n${analysis.answer}`;
-                try {
-                  const fs = require("fs");
-                  const path = require("path");
-                  const fromLbl = lookupLabel(from);
-                  const toLbl   = lookupLabel(to);
-                  fs.writeFileSync(
-                    path.join(__dirname, "../../data/intel.json"),
-                    JSON.stringify({
-                      text:         analysis.answer,
-                      at:           new Date().toISOString(),
-                      txHash:       txHash,
-                      from:         String(from).toLowerCase(),
-                      to:           String(to).toLowerCase(),
-                      token:        symbol,
-                      amount:       amount,
-                      tier:         sizeTier,
-                      source:       cctpTag ? cctpTag.source    : null,
-                      direction:    cctpTag ? cctpTag.direction : null,
-                      fromScore:    fromStats && fromStats.whale_score != null ? fromStats.whale_score : null,
-                      toScore:      toStats  && toStats.whale_score  != null ? toStats.whale_score   : null,
-                      fromBehavior: fromStats && fromStats.behavior ? fromStats.behavior : null,
-                      toBehavior:   toStats   && toStats.behavior   ? toStats.behavior   : null,
-                      fromLabel:    fromLbl ? fromLbl.label : null,
-                      toLabel:      toLbl   ? toLbl.label   : null
-                    }),
-                    "utf8"
-                  );
-                } catch (e) {
-                  console.log("intel.json yazılamadı", e.message);
+              // ── 1. askArc (isolated — Telegram failure must not erase good text) ──
+              let analysisText = null;
+              try {
+                const analysis = await askArc(agentQuestion, "whale-agent");
+                if (analysis && analysis.success && analysis.answer && analysis.answer.trim()) {
+                  analysisText = analysis.answer.trim();
                 }
-                await sendAlert(agentMessage, token, [from, to]);
+              } catch (err) {
+                console.error("intel skip", txHash, err && err.message);
               }
-            } catch (e) {
-              console.log("agent analysis skip:", e.message);
+
+              // ── 2. Fallback when AI unavailable or returned empty ──
+              if (!analysisText) {
+                const fmtAmt = amount >= 1e6
+                  ? (amount / 1e6).toFixed(2) + "M"
+                  : amount >= 1e3
+                    ? (amount / 1e3).toFixed(1) + "K"
+                    : String(amount);
+                analysisText = `${fmtAmt} ${symbol} transfer recorded. Model note unavailable.`;
+              }
+
+              // ── 3. Telegram alert (isolated — never blocks intel.json write) ──
+              if (analysisText) {
+                try {
+                  await sendAlert(`🤖 <b>AI Analysis</b>\n\n${analysisText}`, token, [from, to]);
+                } catch (e) {
+                  console.error("alert skip", txHash, e && e.message);
+                }
+              }
+
+              intelBase.text = analysisText;
+
+              // Always write intel.json for this whale event
+              try {
+                fs.writeFileSync(
+                  path.join(__dirname, "../../data/intel.json"),
+                  JSON.stringify(intelBase),
+                  "utf8"
+                );
+              } catch (e) {
+                console.log("intel.json yazılamadı", e.message);
+              }
             }
 
           } catch (e) {
