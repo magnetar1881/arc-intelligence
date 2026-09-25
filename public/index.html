@@ -580,8 +580,25 @@ function renderIntelMeta(d) {
   if (shareBtn) {
     var shortFrom = sh(d.from);
     var shortTo   = sh(d.to);
+    // CCTP line
+    var cctpLine = d.source === 'CCTP' ? 'via CCTP\n' : '';
+    // Intel snippet: first 1-2 sentences, max 140 chars, strip 0x addresses
+    var intelSnippet = '';
+    if (d.text) {
+      var cleaned = stripMd(d.text).replace(/0x[a-fA-F0-9]{6,}/g, '').replace(/\s{2,}/g, ' ').trim();
+      // take up to 140 chars, stop at last period within that window
+      if (cleaned.length > 0) {
+        var chunk = cleaned.length > 140 ? cleaned.slice(0, 140) : cleaned;
+        var lastPeriod = chunk.lastIndexOf('.');
+        if (lastPeriod > 20) chunk = chunk.slice(0, lastPeriod + 1);
+        // only include if result looks like a real sentence (>20 chars)
+        if (chunk.trim().length > 20) intelSnippet = chunk.trim() + '\n';
+      }
+    }
     var tweetText = fmt(d.amount) + ' ' + (d.token || '') + ' on Arc\n' +
       'From ' + shortFrom + ' \u2192 ' + shortTo + '\n' +
+      cctpLine +
+      intelSnippet +
       EXPLORER + '/tx/' + d.txHash + '\n' +
       'via lensora.xyz';
     shareBtn.href = 'https://x.com/intent/tweet?text=' + encodeURIComponent(tweetText);
