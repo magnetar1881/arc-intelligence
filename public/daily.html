@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Lensora — Daily</title>
+  <style>
+    :root{--bg:#0d0f14;--bg2:#13161d;--bg3:#1a1d26;--border:#232635;--border3:#2e3145;--text:#e8eaf2;--text2:#b0b4c8;--text3:#7a7f99;--dim:#4a4f69;--blue3:#3b82f6;--green:#22c55e;--muted:#555a7a}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;overflow-x:hidden}
+    a{color:var(--blue3);text-decoration:none}
+    a:hover{text-decoration:underline}
+
+    /* HEADER */
+    header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:100}
+    .h-logo{font-weight:700;font-size:16px;color:var(--text);letter-spacing:.5px}
+    .h-logo span{color:var(--blue3)}
+    .h-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .h-link{color:var(--text2);font-size:13px;padding:4px 8px;border-radius:6px;transition:background .15s}
+    .h-link:hover{background:var(--bg3);color:var(--text);text-decoration:none}
+    .h-link.active{color:var(--blue3)}
+    .live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite;margin-right:4px}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+    /* MAIN */
+    .page{max-width:860px;margin:0 auto;padding:24px 16px}
+    .page-title{font-size:22px;font-weight:700;margin-bottom:4px}
+    .page-sub{color:var(--text3);font-size:13px;margin-bottom:24px}
+
+    /* DATE NAV */
+    .date-nav{display:flex;align-items:center;gap:12px;margin-bottom:24px;flex-wrap:wrap}
+    .date-nav a,.date-nav button{background:var(--bg2);border:1px solid var(--border);color:var(--text2);padding:6px 14px;border-radius:7px;font-size:13px;cursor:pointer;transition:background .15s}
+    .date-nav a:hover,.date-nav button:hover{background:var(--bg3);text-decoration:none;color:var(--text)}
+    .date-nav .current-date{font-weight:600;color:var(--text);font-size:15px}
+    input[type="date"]{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:7px;font-size:13px;cursor:pointer}
+    input[type="date"]:focus{outline:none;border-color:var(--blue3)}
+
+    /* STAT TILES */
+    .stat-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+    .stat-tile{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 18px}
+    .stat-tile-label{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:6px}
+    .stat-tile-val{font-size:22px;font-weight:700;color:var(--text);margin-bottom:2px}
+    .stat-tile-sub{font-size:12px;color:var(--text3)}
+
+    /* SECTION */
+    .section{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:16px}
+    .section-title{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px}
+
+    /* FLOWS TABLE */
+    .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    table{width:100%;border-collapse:collapse;min-width:520px}
+    th{font-size:11px;font-weight:600;color:var(--text3);text-align:left;padding:6px 8px;border-bottom:1px solid var(--border)}
+    td{font-size:13px;color:var(--text2);padding:8px;border-bottom:1px solid var(--border3);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    .amt{font-weight:600;color:var(--text)}
+    .token-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;background:var(--bg3);color:var(--blue3);margin-right:4px}
+    .cctp-badge{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:var(--bg3);border:1px solid var(--border3);color:var(--green);margin-left:6px;vertical-align:middle}
+
+    /* WALLET ROWS */
+    .w-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border3)}
+    .w-row:last-child{border-bottom:none}
+    .w-addr{font-family:monospace;font-size:13px;color:var(--text)}
+    .w-stats{font-size:12px;color:var(--text3)}
+    .w-vol{font-weight:600;color:var(--text);font-size:13px}
+
+    /* NEW WALLETS */
+    .new-addrs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .new-addr-chip{font-family:monospace;font-size:12px;background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:3px 8px;color:var(--text2)}
+
+    /* EMPTY */
+    .empty{text-align:center;padding:40px 20px;color:var(--dim);font-size:14px}
+
+    /* DISCLAIMER + SHARE */
+    .footer-note{font-size:12px;color:var(--text3);margin-top:8px;padding:14px 0 0;border-top:1px solid var(--border3)}
+    .share-row{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap}
+    .share-btn{display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text2);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;text-decoration:none;transition:background .15s}
+    .share-btn:hover{background:var(--bg3);color:var(--text);text-decoration:none}
+    .ask-link{color:var(--blue3);font-size:13px}
+
+    /* FOOTER */
+    .site-footer{border-top:1px solid var(--border);background:var(--bg2);margin-top:40px;padding:32px 24px 20px}
+    .sf-cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px;max-width:860px;margin:0 auto}
+    .sf-wordmark{font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px}
+    .sf-desc{font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.6}
+    .sf-col-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text3);margin-bottom:10px}
+    .sf-link{display:block;font-size:13px;color:var(--text2);padding:3px 0;transition:color .15s}
+    .sf-link:hover{color:var(--text);text-decoration:none}
+    .sf-legal{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);border-top:1px solid var(--border3);margin-top:24px;padding-top:14px;max-width:860px;margin-left:auto;margin-right:auto}
+
+    /* MOBILE */
+    @media(max-width:768px){
+      header{padding:10px 12px}
+      .stat-row{grid-template-columns:1fr}
+      .sf-cols{grid-template-columns:1fr;gap:20px}
+      .sf-legal{flex-direction:column;gap:4px}
+      .page{padding:14px 12px}
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="h-logo"><span>L</span>ensora</div>
+  <div class="h-right">
+    <a class="h-link" href="/">Home</a>
+    <a class="h-link" href="/send">Send</a>
+    <a class="h-link" href="/swap">Swap</a>
+    <a class="h-link" href="/bridge">Bridge</a>
+    <a class="h-link active" href="/daily">Daily</a>
+  </div>
+</header>
+
+<div class="page" id="main">
+  <div class="page-title">Arc Intelligence — Daily</div>
+  <div class="page-sub" id="page-sub-date">Loading...</div>
+
+  <div class="date-nav">
+    <a id="prev-link" href="#">← Prev</a>
+    <span class="current-date" id="cur-date-label">—</span>
+    <a id="next-link" href="#">Next →</a>
+    <input type="date" id="date-picker" title="Jump to date"/>
+  </div>
+
+  <div id="report-body">
+    <div class="empty" id="loading-msg">Loading report...</div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  <div class="sf-cols">
+    <div class="sf-col sf-brand">
+      <div class="sf-wordmark">Lensora</div>
+      <p class="sf-desc">On-chain radar for Arc mainnet. 100k+ USDC/EURC. You sign swap, bridge, and send.</p>
+      <a class="sf-icon-link" href="https://github.com/magnetar1881/arc-intelligence" target="_blank" rel="noopener" title="GitHub">
+        <img src="/github.png" alt="GitHub" style="width:18px;height:18px;opacity:.7;vertical-align:middle"/>
+      </a>
+    </div>
+    <div class="sf-col">
+      <div class="sf-col-title">Quick Links</div>
+      <a class="sf-link" href="/">Home</a>
+      <a class="sf-link" href="/send">Send</a>
+      <a class="sf-link" href="/swap">Swap</a>
+      <a class="sf-link" href="/bridge">Bridge</a>
+      <a class="sf-link" href="/whales">Whale Feed</a>
+      <a class="sf-link" href="/wallets">Wallets</a>
+    </div>
+    <div class="sf-col">
+      <div class="sf-col-title">Resources</div>
+      <a class="sf-link" href="https://explorer.arc.io" target="_blank" rel="noopener">Explorer</a>
+      <a class="sf-link" href="https://docs.arc.io" target="_blank" rel="noopener">Arc Docs</a>
+      <a class="sf-link" href="https://developers.circle.com/cctp" target="_blank" rel="noopener">CCTP</a>
+      <a class="sf-link" href="https://portal.arc.io" target="_blank" rel="noopener">Arc Portal</a>
+      <a class="sf-link" href="https://github.com/magnetar1881/arc-intelligence" target="_blank" rel="noopener">Source</a>
+    </div>
+  </div>
+  <div class="sf-legal">
+    <span>© 2026 Lensora</span>
+    <span>Built on Arc mainnet</span>
+  </div>
+</footer>
+
+<script>
+// ── helpers ──
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function shortAddr(a){if(!a||a.length<10)return a||'';return a.slice(0,6)+'…'+a.slice(-4)}
+function fmt(n){
+  if(!n&&n!==0)return'—';
+  n=Number(n);
+  if(n>=1e9)return(n/1e9).toFixed(2).replace(/\.?0+$/,'')+'B';
+  if(n>=1e6)return(n/1e6).toFixed(2).replace(/\.?0+$/,'')+'M';
+  if(n>=1e3)return(n/1e3).toFixed(1).replace(/\.?0+$/,'')+'K';
+  return String(Math.round(n));
+}
+function humanDate(dateStr){
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const [y,m,d]=dateStr.split('-').map(Number);
+  return months[m-1]+' '+d+', '+y;
+}
+function prevDate(d){const dt=new Date(d+'T00:00:00Z');dt.setUTCDate(dt.getUTCDate()-1);return dt.toISOString().slice(0,10)}
+function nextDate(d){const dt=new Date(d+'T00:00:00Z');dt.setUTCDate(dt.getUTCDate()+1);return dt.toISOString().slice(0,10)}
+function todayUTC(){return new Date().toISOString().slice(0,10)}
+
+// ── read date from URL ──
+function dateFromPath(){
+  const seg=location.pathname.split('/').filter(Boolean);
+  if(seg[0]==='daily'&&seg[1]&&/^\d{4}-\d{2}-\d{2}$/.test(seg[1]))return seg[1];
+  const q=new URLSearchParams(location.search).get('date');
+  if(q&&/^\d{4}-\d{2}-\d{2}$/.test(q))return q;
+  return todayUTC();
+}
+
+// ── render ──
+function renderReport(d, dateStr){
+  const body=document.getElementById('report-body');
+  body.innerHTML='';
+
+  const empty=(d.usdc.txs===0&&d.eurc.txs===0);
+
+  if(empty){
+    const div=document.createElement('div');
+    div.className='empty';
+    div.textContent='No 100k+ transfers indexed for this date.';
+    body.appendChild(div);
+    appendFooterNote(body, d, dateStr);
+    return;
+  }
+
+  // ── stat tiles ──
+  const tileRow=document.createElement('div');
+  tileRow.className='stat-row';
+
+  function makeTile(label, vol, txs){
+    const t=document.createElement('div');
+    t.className='stat-tile';
+    const lbl=document.createElement('div'); lbl.className='stat-tile-label'; lbl.textContent=label; t.appendChild(lbl);
+    const val=document.createElement('div'); val.className='stat-tile-val'; val.textContent=fmt(vol); t.appendChild(val);
+    const sub=document.createElement('div'); sub.className='stat-tile-sub'; sub.textContent=txs+' transfer'+(txs!==1?'s':''); t.appendChild(sub);
+    return t;
+  }
+  tileRow.appendChild(makeTile('USDC Volume', d.usdc.volume, d.usdc.txs));
+  tileRow.appendChild(makeTile('EURC Volume', d.eurc.volume, d.eurc.txs));
+  body.appendChild(tileRow);
+
+  // ── biggest flows ──
+  if(d.flows&&d.flows.length){
+    const sec=document.createElement('div'); sec.className='section';
+    const title=document.createElement('div'); title.className='section-title'; title.textContent='Biggest Flows'; sec.appendChild(title);
+    const wrap=document.createElement('div'); wrap.className='tbl-wrap';
+    const tbl=document.createElement('table');
+    const thead=document.createElement('thead');
+    const hrow=document.createElement('tr');
+    for(const h of['Amount','Token','From','To','Time','Tx']){
+      const th=document.createElement('th'); th.textContent=h; hrow.appendChild(th);
+    }
+    thead.appendChild(hrow); tbl.appendChild(thead);
+    const tbody=document.createElement('tbody');
+    for(const f of d.flows){
+      const tr=document.createElement('tr');
+      // Amount
+      const amtTd=document.createElement('td'); amtTd.className='amt';
+      const amtSpan=document.createElement('span'); amtSpan.textContent=fmt(f.amount); amtTd.appendChild(amtSpan);
+      if(f.source==='CCTP'){const b=document.createElement('span');b.className='cctp-badge';b.textContent='CCTP';amtTd.appendChild(b);}
+      tr.appendChild(amtTd);
+      // Token
+      const tokTd=document.createElement('td');
+      const tokB=document.createElement('span'); tokB.className='token-badge'; tokB.textContent=f.token||''; tokTd.appendChild(tokB);
+      tr.appendChild(tokTd);
+      // From
+      const fromTd=document.createElement('td');
+      if(f.from){const a=document.createElement('a');a.href='https://explorer.arc.io/address/'+encodeURIComponent(f.from);a.target='_blank';a.rel='noopener';a.textContent=shortAddr(f.from);fromTd.appendChild(a);}
+      else{fromTd.textContent='—';}
+      tr.appendChild(fromTd);
+      // To
+      const toTd=document.createElement('td');
+      if(f.to){const a=document.createElement('a');a.href='https://explorer.arc.io/address/'+encodeURIComponent(f.to);a.target='_blank';a.rel='noopener';a.textContent=shortAddr(f.to);toTd.appendChild(a);}
+      else{toTd.textContent='—';}
+      tr.appendChild(toTd);
+      // Time
+      const timeTd=document.createElement('td');
+      timeTd.style.cssText='color:var(--text3);font-size:12px';
+      timeTd.textContent=f.timestamp?String(f.timestamp).slice(0,16).replace('T',' '):'—';
+      tr.appendChild(timeTd);
+      // Tx link
+      const txTd=document.createElement('td');
+      if(f.txHash){const a=document.createElement('a');a.href='https://explorer.arc.io/tx/'+encodeURIComponent(f.txHash);a.target='_blank';a.rel='noopener';a.textContent=shortAddr(f.txHash);txTd.appendChild(a);}
+      else{txTd.textContent='—';}
+      tr.appendChild(txTd);
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody); wrap.appendChild(tbl); sec.appendChild(wrap);
+    body.appendChild(sec);
+  }
+
+  // ── most active wallets ──
+  if(d.wallets&&d.wallets.length){
+    const sec=document.createElement('div'); sec.className='section';
+    const title=document.createElement('div'); title.className='section-title'; title.textContent='Most Active Wallets'; sec.appendChild(title);
+    for(const w of d.wallets){
+      const row=document.createElement('div'); row.className='w-row';
+      const left=document.createElement('div');
+      const a=document.createElement('a');
+      a.href='/wallets/'+encodeURIComponent(w.wallet);
+      a.className='w-addr'; a.textContent=shortAddr(w.wallet);
+      left.appendChild(a);
+      const right=document.createElement('div'); right.style.cssText='text-align:right';
+      const vol=document.createElement('div'); vol.className='w-vol'; vol.textContent=fmt(w.volume); right.appendChild(vol);
+      const txs=document.createElement('div'); txs.className='w-stats'; txs.textContent=w.txs+' row'+(w.txs!==1?'s':''); right.appendChild(txs);
+      row.appendChild(left); row.appendChild(right); sec.appendChild(row);
+    }
+    body.appendChild(sec);
+  }
+
+  // ── new to whale feed ──
+  if(d.newWallets&&d.newWallets.count100k>0){
+    const sec=document.createElement('div'); sec.className='section';
+    const title=document.createElement('div'); title.className='section-title';
+    title.textContent='New to Whale Feed — '+d.newWallets.count100k+' wallet'+(d.newWallets.count100k!==1?'s':'');
+    sec.appendChild(title);
+    if(d.newWallets.addresses&&d.newWallets.addresses.length){
+      const chips=document.createElement('div'); chips.className='new-addrs';
+      for(const addr of d.newWallets.addresses){
+        const chip=document.createElement('a');
+        chip.className='new-addr-chip';
+        chip.href='/wallets/'+encodeURIComponent(addr);
+        chip.textContent=shortAddr(addr);
+        chips.appendChild(chip);
+      }
+      sec.appendChild(chips);
+    }
+    body.appendChild(sec);
+  }
+
+  appendFooterNote(body, d, dateStr);
+}
+
+function appendFooterNote(body, d, dateStr){
+  const note=document.createElement('div'); note.className='footer-note';
+  note.textContent='Figures are 100k+ USDC/EURC transfers indexed by Lensora on Arc mainnet. Not price advice.';
+  body.appendChild(note);
+
+  const shareRow=document.createElement('div'); shareRow.className='share-row';
+
+  // Share on X
+  if(d.headline){
+    const tweetText=d.headline+' https://lensora.xyz/daily/'+dateStr;
+    const shareA=document.createElement('a');
+    shareA.className='share-btn';
+    shareA.href='https://twitter.com/intent/tweet?text='+encodeURIComponent(tweetText.slice(0,280));
+    shareA.target='_blank'; shareA.rel='noopener';
+    shareA.textContent='Share on X';
+    shareRow.appendChild(shareA);
+  }
+
+  // Ask Lensora
+  const askA=document.createElement('a');
+  askA.className='ask-link';
+  askA.href='/#ask-arc-section';
+  askA.textContent='Ask Lensora about this day →';
+  shareRow.appendChild(askA);
+
+  body.appendChild(shareRow);
+}
+
+// ── load ──
+function load(dateStr){
+  document.getElementById('loading-msg')&&(document.getElementById('loading-msg').textContent='Loading...');
+  document.getElementById('cur-date-label').textContent=humanDate(dateStr);
+  document.getElementById('page-sub-date').textContent=humanDate(dateStr)+' · UTC';
+  document.getElementById('prev-link').href='/daily/'+prevDate(dateStr);
+  const nd=nextDate(dateStr);
+  const nextEl=document.getElementById('next-link');
+  if(nd<=todayUTC()){nextEl.href='/daily/'+nd;}
+  else{nextEl.style.visibility='hidden';}
+  document.getElementById('date-picker').value=dateStr;
+
+  fetch('/api/daily?date='+encodeURIComponent(dateStr))
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(data.error){
+        const b=document.getElementById('report-body');
+        b.innerHTML='';
+        const div=document.createElement('div'); div.className='empty';
+        div.textContent='Error: '+data.error; b.appendChild(div);
+        return;
+      }
+      renderReport(data, dateStr);
+    })
+    .catch(function(e){
+      const b=document.getElementById('report-body');
+      b.innerHTML='';
+      const div=document.createElement('div'); div.className='empty';
+      div.textContent='Failed to load report.'; b.appendChild(div);
+    });
+}
+
+document.getElementById('date-picker').addEventListener('change',function(){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(this.value)){
+    history.pushState({},'','/daily/'+this.value);
+    load(this.value);
+  }
+});
+
+load(dateFromPath());
+</script>
+</body>
+</html>
