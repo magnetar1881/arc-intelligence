@@ -319,9 +319,22 @@ function appendFooterNote(body, d, dateStr){
 
   const shareRow=document.createElement('div'); shareRow.className='share-row';
 
-  // Share on X
-  if(d.headline){
-    const tweetText=d.headline+' https://lensora.xyz/daily/'+dateStr;
+  // Share on X — list format, no headline, no addresses
+  {
+    const url='https://lensora.xyz/daily/'+dateStr;
+    let tweetText;
+    if(!d.flows||d.flows.length===0){
+      tweetText='Arc \u00b7 '+humanDate(dateStr)+' (UTC)\nNo 100k+ USDC/EURC indexed.\n'+url;
+    } else {
+      const lines=['Arc \u00b7 '+humanDate(dateStr)+' (UTC)'];
+      for(const f of d.flows.slice(0,5)){
+        lines.push(fmt(f.amount)+' '+(f.token||''));
+      }
+      const hasCctp=d.flows.some(function(f){return f.source==='CCTP';});
+      if(hasCctp) lines.push('Includes CCTP.');
+      lines.push(url);
+      tweetText=lines.join('\n');
+    }
     const shareA=document.createElement('a');
     shareA.className='share-btn';
     shareA.href='https://twitter.com/intent/tweet?text='+encodeURIComponent(tweetText.slice(0,280));
