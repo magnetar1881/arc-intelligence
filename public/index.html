@@ -183,6 +183,39 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
   .page{padding:16px}
   header,footer{padding-left:16px;padding-right:16px}
 }
+
+/* ── MOBILE ── */
+body{overflow-x:hidden}
+@media(max-width:768px){
+  header{padding:10px 12px}
+  .h-right{flex-wrap:wrap;justify-content:flex-end;gap:6px}
+  .page{padding:12px}
+  .stats{grid-template-columns:1fr 1fr}
+  .stat{padding:12px}
+  .stat-value{font-size:16px;word-break:break-word}
+  .main-grid,.bottom-grid{grid-template-columns:1fr}
+  #whale-feed{max-height:360px}
+  .w-item{padding:10px 12px}
+  .ask-section{padding:16px 14px}
+  .ask-input-row{flex-direction:column;max-width:none}
+  .ask-btn{width:100%}
+  #my-wallet-card .mw-grid{grid-template-columns:repeat(2,1fr)!important}
+  #intel-meta{overflow-wrap:break-word;word-break:break-all}
+  footer{flex-direction:column;align-items:flex-start}
+  .tg-btn,.github-btn{display:none}
+  /* nav-more details */
+  .nav-more{display:inline-block}
+  .nav-more-hide{display:none!important}
+  .nav-more summary{font-size:12px;font-weight:600;color:var(--text3);padding:6px 10px;border-radius:6px;cursor:pointer;list-style:none;user-select:none}
+  .nav-more summary::-webkit-details-marker{display:none}
+  .nav-more[open] summary{color:var(--blue3)}
+  .nav-more-panel{position:absolute;top:calc(100% + 6px);right:12px;background:rgba(11,18,32,.97);border:1px solid var(--border2);border-radius:10px;padding:6px 4px;display:flex;flex-direction:column;gap:2px;z-index:200;min-width:140px;backdrop-filter:blur(16px)}
+  .nav-more-panel a{font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:7px 14px;border-radius:6px;transition:color .15s,background .15s}
+  .nav-more-panel a:hover{color:var(--blue3);background:rgba(59,130,246,.07)}
+}
+@media(max-width:480px){
+  .stats{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -194,11 +227,23 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
     <a href="/send" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Send</a>
     <a href="/swap" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Swap</a>
     <a href="/bridge" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Bridge</a>
-    <a href="/stablecoins" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s" onmouseover="this.style.color='var(--blue3)'" onmouseout="this.style.color='var(--text3)'">Stablecoins</a>
-    <a href="/smart-money" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Smart Money</a>
-    <a href="/anomalies" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Anomalies</a>    
-    <a href="/portfolio" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Portfolio</a>
-    <a href="/dex" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">DEX</a>
+    <!-- secondary links: visible on desktop, hidden on mobile (replaced by nav-more) -->
+    <a class="nav-more-hide" href="/stablecoins" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px;transition:color .15s">Stablecoins</a>
+    <a class="nav-more-hide" href="/smart-money" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Smart Money</a>
+    <a class="nav-more-hide" href="/anomalies" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Anomalies</a>
+    <a class="nav-more-hide" href="/portfolio" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">Portfolio</a>
+    <a class="nav-more-hide" href="/dex" style="font-size:12px;font-weight:600;color:var(--text3);text-decoration:none;padding:6px 10px;border-radius:6px">DEX</a>
+    <!-- mobile-only More dropdown -->
+    <details class="nav-more" style="display:none;position:relative">
+      <summary>More ▾</summary>
+      <div class="nav-more-panel">
+        <a href="/stablecoins">Stablecoins</a>
+        <a href="/smart-money">Smart Money</a>
+        <a href="/anomalies">Anomalies</a>
+        <a href="/portfolio">Portfolio</a>
+        <a href="/dex">DEX</a>
+      </div>
+    </details>
     <button id="wallet-btn" style="font-size:12px;font-weight:600;font-family:var(--sans);background:transparent;color:var(--blue3);border:1px solid rgba(59,130,246,.3);padding:6px 14px;border-radius:8px;cursor:pointer;transition:all .2s;" onclick="connectWallet()">Connect Wallet</button>
     <button class="btn-ask" onclick="document.getElementById('ask-arc-section').scrollIntoView({behavior:'smooth'})">Ask</button>
   </div>
@@ -239,7 +284,7 @@ footer{border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);f
         <a id="mw-alert" href="#" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:#94a3b8;text-decoration:none">Alert</a>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px">
+    <div class="mw-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px">
       <div><div style="font-size:10px;color:var(--muted)">Score</div><div id="mw-score" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
       <div><div style="font-size:10px;color:var(--muted)">Behavior</div><div id="mw-beh" style="font-size:16px;font-weight:700">—</div></div>
       <div><div style="font-size:10px;color:var(--muted)">Volume</div><div id="mw-vol" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>

@@ -46,12 +46,15 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .badge{font-size:9px;font-family:var(--mono);font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.5px}
 @media(max-width:768px){
-  .page{padding:16px}
+  header{padding:10px 12px}
+  .page{padding:12px}
   .stats{grid-template-columns:repeat(2,1fr)}
-  .tbl-header,.tx-row{grid-template-columns:1fr 80px 70px}
+  .card{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl-header,.tx-row{grid-template-columns:1fr 80px 70px;min-width:300px}
   .tbl-header span:nth-child(1),.tx-row > *:nth-child(1),
   .tbl-header span:nth-child(5),.tx-row > *:nth-child(5){display:none}
 }
+body{overflow-x:hidden}
 </style>
 </head>
 <body>
