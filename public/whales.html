@@ -152,15 +152,57 @@ setInterval(async()=>{
   try{allWhales=await fetch('/api/whales?limit=500').then(r=>r.json());renderFeed();document.getElementById('feed-time').textContent='Updated '+new Date().toLocaleTimeString()}catch(e){}
 },30000);
 </script>
-<footer style="border-top:1px solid var(--border);padding:14px 28px;color:var(--text3);font-size:11px;display:flex;justify-content:space-between;align-items:center;gap:16px;background:var(--bg2);margin-top:24px">
-  <div style="display:flex;align-items:center;gap:16px">
-    <span style="font-weight:600">Arc Intelligence — lensora.xyz</span>
-    <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.12);border-radius:6px">
-      <img src="/arc-logo.png" alt="Arc Network" style="height:16px;opacity:.85"/>
-      <span style="font-size:10px;color:var(--text3);font-weight:500">Built on Arc Network</span>
+<style>
+.site-footer{background:var(--bg2);border-top:1px solid var(--border);padding:36px 28px 0;margin-top:24px}
+.sf-cols{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:32px;padding-bottom:28px}
+.sf-col{display:flex;flex-direction:column;gap:8px}
+.sf-brand{gap:10px}
+.sf-wordmark{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.2px}
+.sf-desc{font-size:11px;color:var(--muted);line-height:1.65;max-width:240px;margin:0}
+.sf-icon-link{display:inline-flex;align-items:center;margin-top:2px;opacity:.7;transition:opacity .2s}
+.sf-icon-link:hover{opacity:1}
+.sf-col-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:2px}
+.sf-link{font-size:12px;color:var(--muted);text-decoration:none;transition:color .15s;line-height:1.5}
+.sf-link:hover{color:var(--text2)}
+.sf-legal{border-top:1px solid var(--border);padding:12px 0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--dim)}
+@media(max-width:768px){
+  .site-footer{padding:24px 16px 0}
+  .sf-cols{grid-template-columns:1fr;gap:24px}
+  .sf-desc{max-width:none}
+  .sf-legal{flex-direction:column;align-items:flex-start;gap:4px}
+}
+</style>
+<footer class="site-footer">
+  <div class="sf-cols">
+    <div class="sf-col sf-brand">
+      <div class="sf-wordmark">Lensora</div>
+      <p class="sf-desc">On-chain radar for Arc mainnet. 100k+ USDC/EURC. You sign swap, bridge, and send.</p>
+      <a class="sf-icon-link" href="https://github.com/magnetar1881/arc-intelligence" target="_blank" rel="noopener" title="GitHub">
+        <img src="/github.png" alt="GitHub" style="width:18px;height:18px;opacity:.7;vertical-align:middle"/>
+      </a>
+    </div>
+    <div class="sf-col">
+      <div class="sf-col-title">Quick Links</div>
+      <a class="sf-link" href="/">Home</a>
+      <a class="sf-link" href="/send">Send</a>
+      <a class="sf-link" href="/swap">Swap</a>
+      <a class="sf-link" href="/bridge">Bridge</a>
+      <a class="sf-link" href="/whales">Whale Feed</a>
+      <a class="sf-link" href="/wallets">Wallets</a>
+    </div>
+    <div class="sf-col">
+      <div class="sf-col-title">Resources</div>
+      <a class="sf-link" href="https://explorer.arc.io" target="_blank" rel="noopener">Explorer</a>
+      <a class="sf-link" href="https://docs.arc.io" target="_blank" rel="noopener">Arc Docs</a>
+      <a class="sf-link" href="https://developers.circle.com/cctp" target="_blank" rel="noopener">CCTP</a>
+      <a class="sf-link" href="https://portal.arc.io" target="_blank" rel="noopener">Arc Portal</a>
+      <a class="sf-link" href="https://github.com/magnetar1881/arc-intelligence" target="_blank" rel="noopener">Source</a>
     </div>
   </div>
-  <span style="font-size:10px;color:var(--muted);max-width:560px;line-height:1.6">For reference only — always verify before transacting.</span>
+  <div class="sf-legal">
+    <span>© 2026 Lensora</span>
+    <span>Built on Arc mainnet</span>
+  </div>
 </footer>
 </body>
 </html>
