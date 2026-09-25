@@ -395,17 +395,24 @@ Tx:
 
               const agentQuestion =
                 `Write intel commentary for a whale transfer on Arc mainnet (chainId 5042). ` +
-                `Rules you must follow exactly:\n` +
-                `- Plain sentences only. No markdown: no asterisks, no hashes, no bullet points, no backticks, no bold or italic markers.\n` +
-                `- 2 to 4 short sentences.\n` +
-                `- Do NOT repeat the token address, wallet addresses, tx hash, or raw score numbers — those are already shown in the UI.\n` +
-                `- Do NOT mention testnet. This is Arc mainnet.\n` +
-                `- Cover: size in human terms (e.g. "a mid-sized transfer", "a very large move"), which side looks stronger and briefly why, one caution.\n` +
-                `- If a wallet behavior is UNKNOWN, say that once. Do not invent intent or label.\n` +
-                `- If transfer type is CCTP, mention it crossed chains via CCTP in one clause. Do not name a source chain unless destinationChain is provided.\n` +
-                `- If transfer type is same-chain, do NOT say bridge, CCTP, Gateway, or "from Ethereum".\n` +
+                `Output ONLY 2 to 4 plain English sentences. Nothing else.\n` +
                 `\n` +
-                `Transfer data:\n` +
+                `ABSOLUTE RULES — violating any of these makes the output wrong:\n` +
+                `1. FORBIDDEN: any 0x address, any tx hash, any hex string. Say "the sender", "the receiver", "the counterparty" instead.\n` +
+                `2. FORBIDDEN: raw numeric scores. Say "high-scoring wallet" or "low-scoring wallet" instead.\n` +
+                `3. FORBIDDEN: markdown of any kind — no asterisks, no hashes, no bullets, no backticks, no bold, no italic, no lists.\n` +
+                `4. FORBIDDEN: the word "testnet". This is Arc mainnet only.\n` +
+                `5. FORBIDDEN: more than 4 sentences or any header/title line.\n` +
+                `\n` +
+                `REQUIRED content (all in plain prose, addresses already shown above UI):\n` +
+                `- Size in human terms (e.g. "a very large move", "a mid-sized transfer").\n` +
+                `- Which side looks stronger and why in one clause.\n` +
+                `- One caution.\n` +
+                `- If behavior is UNKNOWN, say it once. Do not invent labels.\n` +
+                `- If transfer type is CCTP: mention it crossed chains via CCTP in one clause. No source chain unless destinationChain is present.\n` +
+                `- If transfer type is same-chain: do NOT say bridge, CCTP, Gateway, or "from Ethereum".\n` +
+                `\n` +
+                `Transfer data (DO NOT repeat these values in your output):\n` +
                 `Token: ${symbol}\n` +
                 `Amount: ${amount.toLocaleString()} ${symbol} (tier: ${sizeTier})\n` +
                 cctpLine +
@@ -413,7 +420,7 @@ Tx:
                 `Receiver behavior: ${toBehav}${toScoreVal !== null ? `, whale score ${fmtScore(toScoreVal)}` : ""}\n` +
                 `Token risk: ${riskLabel}\n` +
                 `\n` +
-                `Write the commentary now:`;
+                `Write the 2-4 sentence commentary now. No addresses. No scores. No markdown:`;
 
 
               const analysis = await askArc(agentQuestion, "whale-agent");
