@@ -430,6 +430,13 @@ Tx:
                 `4. FORBIDDEN: the word "testnet". This is Arc mainnet only.\n` +
                 `5. FORBIDDEN: more than 4 sentences or any header/title line.\n` +
                 `\n` +
+                `STABLECOINS (USDC, EURC on Arc):\n` +
+                `- Do not say the transfer will move price, peg, or market sentiment.\n` +
+                `- Do not say it will drain or add protocol liquidity unless the to/from address was given to you as a pool or vault label.\n` +
+                `- A 100k–few million USDC/EURC move is routine treasury or rebalancing.\n` +
+                `- One clause max on size. No "caution: price impact".\n` +
+                `- If you have no pool, bridge, or CCTP label for either address, say it is a transfer between wallets.\n` +
+                `\n` +
                 `REQUIRED content (all in plain prose, addresses already shown above UI):\n` +
                 `- Size in human terms (e.g. "a very large move", "a mid-sized transfer").\n` +
                 `- Which side looks stronger and why in one clause.\n` +
