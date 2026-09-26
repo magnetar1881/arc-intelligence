@@ -382,9 +382,10 @@ Tx:
             await sendAlert(message, token, [from, to]);
 
             // ========================
-            // WHALE AGENT — AI analizi + intel.json (always written)
+            // WHALE AGENT — AI + intel.json only for LARGE (>=500k)
+            // 100k–499k: whale DB insert runs above, no intel.json overwrite
             // ========================
-            {
+            if (amount >= 500000) {
               const fs   = require("fs");
               const path = require("path");
               const fromLbl = lookupLabel(from);
@@ -476,18 +477,9 @@ Tx:
                 analysisText = `${fmtAmt} ${symbol} transfer recorded. Model note unavailable.`;
               }
 
-              // ── 3. Telegram alert (isolated — never blocks intel.json write) ──
-              if (analysisText) {
-                try {
-                  await sendAlert(`🤖 <b>AI Analysis</b>\n\n${analysisText}`, token, [from, to]);
-                } catch (e) {
-                  console.error("alert skip", txHash, e && e.message);
-                }
-              }
-
               intelBase.text = analysisText;
 
-              // Always write intel.json for this whale event
+              // Write intel.json for LARGE (>=500k) whale events only
               try {
                 fs.writeFileSync(
                   path.join(__dirname, "../../data/intel.json"),
@@ -497,7 +489,7 @@ Tx:
               } catch (e) {
                 console.log("intel.json yazılamadı", e.message);
               }
-            }
+            } // end if (amount >= 500000)
 
           } catch (e) {
             console.log("log skip:", e.message);

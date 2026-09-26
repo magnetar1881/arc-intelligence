@@ -97,6 +97,25 @@ header{
 #intel-text::-webkit-scrollbar{width:3px}
 #intel-text::-webkit-scrollbar-track{background:transparent}
 #intel-text::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
+/* ── Wallet Watch ── */
+#watch-panel{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-top:14px}
+#watch-panel .watch-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+#watch-panel .watch-title{font-size:13px;font-weight:700;color:var(--text);letter-spacing:.04em}
+.watch-add-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.watch-add-row input,.watch-add-row select{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:12px;outline:none}
+.watch-add-row input{flex:1;min-width:180px;font-family:var(--mono)}
+.watch-add-row button,.watch-notif-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;transition:background .15s}
+.watch-add-row button:hover,.watch-notif-btn:hover{background:var(--bg4,var(--bg3));color:var(--text)}
+.watch-list{display:flex;flex-direction:column;gap:6px}
+.watch-row{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--bg3);border-radius:8px;font-size:12px}
+.watch-row .wr-addr{font-family:var(--mono);color:var(--text3);flex:1}
+.watch-row .wr-meta{color:var(--muted);font-size:11px}
+.watch-row .wr-rm{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px}
+.watch-row .wr-rm:hover{color:var(--red,#ef4444)}
+.watch-empty{font-size:12px;color:var(--muted);padding:6px 0}
+/* ── Money Flow ── */
+#intel-flow{margin-top:10px;font-size:12px;color:var(--text3);font-family:var(--mono)}
+#intel-flow .flow-hop{margin-top:4px;color:var(--muted)}
 .bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 
 /* CARD */
@@ -359,6 +378,8 @@ body{overflow-x:hidden}
         <div id="intel-note-label" style="display:none;font-size:11px;color:var(--muted);margin-bottom:4px">Model note</div>
         <!-- AI paragraph -->
         <p id="intel-text" style="margin:0;font-size:13px;line-height:1.6;color:var(--text3)">Waiting for next 100k+ USDC/EURC transfer.</p>
+        <!-- Money flow line -->
+        <div id="intel-flow" style="display:none"></div>
       </div>
     </div>
     <div class="card">
@@ -397,6 +418,25 @@ body{overflow-x:hidden}
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- WALLET WATCH PANEL -->
+  <div id="watch-panel">
+    <div class="watch-head">
+      <span class="watch-title">Wallet Watch</span>
+      <button class="watch-notif-btn" id="watch-notif-btn">Enable browser alerts</button>
+    </div>
+    <div class="watch-add-row">
+      <input id="watch-addr-input" type="text" placeholder="0x wallet address" maxlength="42" autocomplete="off" spellcheck="false"/>
+      <select id="watch-token-select">
+        <option value="ANY">Any token</option>
+        <option value="USDC">USDC</option>
+        <option value="EURC">EURC</option>
+      </select>
+      <input id="watch-min-input" type="number" placeholder="Min amount" value="100000" min="100000" step="1" style="width:110px"/>
+      <button id="watch-add-btn">Watch</button>
+    </div>
+    <div class="watch-list" id="watch-list"></div>
   </div>
 
 </div>
@@ -604,6 +644,62 @@ function renderIntelMeta(d) {
       'via lensora.xyz';
     shareBtn.href = 'https://x.com/intent/tweet?text=' + encodeURIComponent(tweetText);
   }
+
+  // ── Money Flow line ──
+  var flowDiv = document.getElementById('intel-flow');
+  if (flowDiv) {
+    flowDiv.textContent = '';
+    flowDiv.style.display = 'none';
+    if (d.from && d.to) {
+      var line1 = document.createElement('div');
+      var fromSpan = document.createElement('span'); fromSpan.textContent = sh(d.from);
+      var arrow    = document.createElement('span'); arrow.textContent = ' \u2192 '; arrow.style.color = 'var(--muted)';
+      var toSpan   = document.createElement('span'); toSpan.textContent = sh(d.to);
+      line1.appendChild(fromSpan); line1.appendChild(arrow); line1.appendChild(toSpan);
+      if (d.source === 'CCTP') {
+        var cctpBadge2 = document.createElement('span');
+        cctpBadge2.style.cssText = 'margin-left:8px;font-size:10px;background:rgba(16,185,129,.08);color:var(--green,#10b981);border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:1px 5px';
+        cctpBadge2.textContent = 'CCTP' + (d.direction ? ' ' + d.direction : '');
+        line1.appendChild(cctpBadge2);
+      }
+      flowDiv.appendChild(line1);
+      flowDiv.style.display = 'block';
+      // Optional 1-hop: later WHALE_OUT from d.to within 24h
+      var intelTo = String(d.to).toLowerCase();
+      var intelTs = d.at ? new Date(d.at).getTime() : 0;
+      fetch('/api/whales?limit=100')
+        .then(function(r){return r.json();})
+        .then(function(rows){
+          if (!Array.isArray(rows)) return;
+          var hop = null;
+          for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            if (r.txHash === d.txHash) continue;
+            if (String(r.wallet||'').toLowerCase() !== intelTo) continue;
+            if (r.type && r.type !== 'WHALE_OUT') continue;
+            var rts = r.timestamp ? new Date(r.timestamp).getTime() : 0;
+            if (intelTs && rts && (rts <= intelTs || rts > intelTs + 86400000)) continue;
+            hop = r; break;
+          }
+          if (hop) {
+            var hopLine = document.createElement('div');
+            hopLine.className = 'flow-hop';
+            var hFrom = document.createElement('span'); hFrom.textContent = sh(hop.wallet);
+            var hArr  = document.createElement('span'); hArr.textContent = ' \u2192 '; hArr.style.color = 'var(--muted)';
+            var hAmt  = document.createElement('span'); hAmt.style.cssText = 'margin-left:6px;color:var(--muted)'; hAmt.textContent = fmt(hop.amount)+' '+(hop.token||'');
+            hopLine.appendChild(hFrom); hopLine.appendChild(hArr); hopLine.appendChild(hAmt);
+            if (hop.source === 'CCTP') {
+              var hCctp = document.createElement('span');
+              hCctp.style.cssText = 'margin-left:6px;font-size:10px;background:rgba(16,185,129,.08);color:var(--green,#10b981);border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:1px 5px';
+              hCctp.textContent = 'CCTP';
+              hopLine.appendChild(hCctp);
+            }
+            flowDiv.appendChild(hopLine);
+          }
+        })
+        .catch(function(){});
+    }
+  }
 }
 
 // ── STATS ──
@@ -655,12 +751,11 @@ async function loadFeed(){
         const addrLine=document.createElement('div');
         addrLine.className='w-addr';
         addrLine.textContent=shortAddr(w.wallet);
-        const alertLink=document.createElement('a');
-        alertLink.href='https://t.me/MagNetar1881_bot?start=subscribe_'+w.wallet;
-        alertLink.target='_blank';alertLink.rel='noopener';
-        alertLink.style.cssText='font-size:10px;font-weight:600;color:#64748b;text-decoration:none;margin-left:8px';
-        alertLink.textContent='Alert';
-        addrLine.appendChild(alertLink);
+        const watchBtn=document.createElement('button');
+        watchBtn.style.cssText='font-size:10px;font-weight:600;color:#64748b;background:transparent;border:none;cursor:pointer;margin-left:8px;padding:0';
+        watchBtn.textContent='Watch';
+        watchBtn.addEventListener('click',function(e){e.stopPropagation();addWatch(w.wallet);});
+        addrLine.appendChild(watchBtn);
         left.appendChild(tokenLine);left.appendChild(addrLine);
         const right=document.createElement('div');
         const amtEl=document.createElement('div');
@@ -1056,6 +1151,117 @@ async function init(){
 init();
 setInterval(()=>{loadStats();loadFeed()},30000);
 setInterval(()=>{loadWallets();loadTokens()},60000);
+
+// ══════════════════════════════════════
+// WALLET WATCH — localStorage only
+// ══════════════════════════════════════
+var WATCH_KEY = 'lensora_watches';
+var seenTxHashes = new Set();
+
+function loadWatches(){
+  try { return JSON.parse(localStorage.getItem(WATCH_KEY)||'[]'); } catch(_){ return []; }
+}
+function saveWatches(arr){ localStorage.setItem(WATCH_KEY, JSON.stringify(arr)); }
+
+function renderWatchList(){
+  var list = document.getElementById('watch-list');
+  if (!list) return;
+  list.textContent = '';
+  var watches = loadWatches();
+  if (!watches.length){
+    var em = document.createElement('div'); em.className='watch-empty'; em.textContent='No wallets watched yet.';
+    list.appendChild(em); return;
+  }
+  watches.forEach(function(w, idx){
+    var row = document.createElement('div'); row.className='watch-row';
+    var addr = document.createElement('span'); addr.className='wr-addr'; addr.textContent=shortAddr(w.wallet);
+    var meta = document.createElement('span'); meta.className='wr-meta';
+    meta.textContent = (w.token==='ANY'?'Any':w.token) + ' · ≥'+fmt(w.minAmount);
+    var rm = document.createElement('button'); rm.className='wr-rm'; rm.textContent='Remove';
+    rm.addEventListener('click', function(){
+      var arr = loadWatches(); arr.splice(idx,1); saveWatches(arr); renderWatchList();
+    });
+    row.appendChild(addr); row.appendChild(meta); row.appendChild(rm);
+    list.appendChild(row);
+  });
+}
+
+function addWatch(walletAddr, token, minAmount){
+  var addr = String(walletAddr||'').trim().toLowerCase();
+  if (!addr || !/^0x[0-9a-f]{40}$/.test(addr)){ alert('Invalid address'); return; }
+  var tok = token || 'ANY';
+  var min = Number(minAmount) || 100000;
+  if (min < 100000) min = 100000;
+  var arr = loadWatches();
+  if (arr.length >= 20){ alert('Max 20 wallets'); return; }
+  if (arr.some(function(w){ return w.wallet===addr; })){ return; }
+  arr.push({ wallet: addr, minAmount: min, token: tok, createdAt: new Date().toISOString() });
+  saveWatches(arr);
+  renderWatchList();
+}
+
+function checkWatchNotifications(rows){
+  if (!Array.isArray(rows)) return;
+  var watches = loadWatches();
+  if (!watches.length) return;
+  rows.forEach(function(row){
+    if (seenTxHashes.has(row.txHash)) return;
+    seenTxHashes.add(row.txHash);
+    watches.forEach(function(w){
+      var walletMatch = String(row.wallet||'').toLowerCase() === w.wallet;
+      var amtMatch    = Number(row.amount||0) >= w.minAmount;
+      var tokMatch    = w.token==='ANY' || String(row.token||'').toUpperCase()===w.token;
+      if (walletMatch && amtMatch && tokMatch){
+        if (Notification && Notification.permission==='granted'){
+          try {
+            new Notification('Lensora watch', {
+              body: fmt(row.amount)+' '+(row.token||'')+' \u00b7 '+shortAddr(w.wallet)
+            });
+          } catch(_){}
+        }
+      }
+    });
+  });
+}
+
+// Wire add button — runs after DOM is ready (init() uses DOMContentLoaded too; both fire once)
+document.addEventListener('DOMContentLoaded', function(){
+  renderWatchList();
+
+  var addBtn   = document.getElementById('watch-add-btn');
+  var addrInp  = document.getElementById('watch-addr-input');
+  var tokSel   = document.getElementById('watch-token-select');
+  var minInp   = document.getElementById('watch-min-input');
+  var notifBtn = document.getElementById('watch-notif-btn');
+
+  if (addBtn) addBtn.addEventListener('click', function(){
+    addWatch(addrInp&&addrInp.value, tokSel&&tokSel.value, minInp&&minInp.value);
+    if (addrInp) addrInp.value='';
+  });
+
+  // Enable browser alerts ONLY on explicit button click
+  if (notifBtn) notifBtn.addEventListener('click', function(){
+    if (!('Notification' in window)){ alert('Browser notifications not supported'); return; }
+    if (Notification.permission==='granted'){ notifBtn.textContent='Alerts enabled'; return; }
+    Notification.requestPermission().then(function(p){
+      notifBtn.textContent = p==='granted' ? 'Alerts enabled' : 'Alerts blocked';
+    });
+  });
+  if (Notification && Notification.permission==='granted') {
+    var nb = document.getElementById('watch-notif-btn');
+    if (nb) nb.textContent='Alerts enabled';
+  }
+});
+
+// Patch loadFeed to run watch check after each poll
+var _origLoadFeed = loadFeed;
+loadFeed = async function(){
+  await _origLoadFeed();
+  try {
+    var rows = await fetch('/api/whales?limit=20').then(function(r){return r.json();});
+    checkWatchNotifications(rows);
+  } catch(_){}
+};
 </script>
 <script src="/wallet.js"></script>
 <script>
