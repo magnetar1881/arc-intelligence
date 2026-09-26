@@ -11,7 +11,7 @@ const {
 
 const { ethers } = require("ethers");
 const { askArc } = require("../appkit/askArc");
-const { sendAlert } = require("../telegram/bot");
+// Telegram removed — no sendAlert
 const { evaluateSignals } = require("./signalEngine");
 const { lookupLabel } = require("../database/labels");
 
@@ -337,9 +337,9 @@ async function startScanner() {
                   "signals emitted:",
                   newSignals.map((s) => `${s.type}:${s.asset}`).join(", ")
                 );
-                const { notifyStrategyWatchers } = require("../telegram/bot");
+                // Telegram removed — signals logged only
                 for (const s of newSignals) {
-                  await notifyStrategyWatchers(s);
+                  console.log("signal:", s.type, s.asset);
                 }
               }
             } catch (e) {
@@ -379,7 +379,6 @@ Tx:
             `;
 
             console.log("🐋 WHALE:", symbol, amount);
-            await sendAlert(message, token, [from, to]);
 
             // ========================
             // WHALE AGENT — AI + intel.json only for LARGE (>=500k)
