@@ -330,6 +330,14 @@ function appendFooterNote(body, d, dateStr){
       for(const f of d.flows.slice(0,5)){
         lines.push(fmt(f.amount)+' '+(f.token||''));
       }
+      // Caption — no model, pure token set logic
+      const tokens=new Set(d.flows.map(function(f){return (f.token||'').toUpperCase();}));
+      const hasUsdc=tokens.has('USDC'), hasEurc=tokens.has('EURC');
+      let caption;
+      if(hasUsdc&&hasEurc)  caption='Largest indexed USDC/EURC transfers on Arc today. 100k+ only. Not a price signal.';
+      else if(hasEurc)      caption='Largest indexed EURC transfers on Arc today. 100k+ only. Not a price signal.';
+      else                  caption='Largest indexed USDC transfers on Arc today. 100k+ only. Not a price signal.';
+      lines.push(caption);
       const hasCctp=d.flows.some(function(f){return f.source==='CCTP';});
       if(hasCctp) lines.push('Includes CCTP.');
       lines.push(url);
