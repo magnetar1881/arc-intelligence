@@ -181,10 +181,11 @@ async function explainTx(txHash, btn){
   }
 }
 
-const EXPLORER_TX_URL = addr =>
-  'https://explorer.arc.io/api?module=account&action=txlist&address=' + addr + '&sort=desc&page=1&offset=25';
-const EXPLORER_TOK_URL = addr =>
-  'https://explorer.arc.io/api?module=account&action=tokentx&address=' + addr + '&sort=desc&page=1&offset=25';
+const PROXY_TX_URL  = addr => '/api/explorer/txlist?address='  + addr;
+const PROXY_TOK_URL = addr => '/api/explorer/tokentx?address=' + addr;
+
+// sessionStorage keys
+function ssKey(addr, kind){ return 'lensora_wallet_' + kind + '_' + addr; }
 
 function shortFromTo(from, to){
   const sh = a => a ? a.slice(0,6)+'…'+a.slice(-4) : '—';
@@ -305,20 +306,26 @@ async function init(){
     }
   }catch(_){ set('s-score','—'); }
 
-  // ── 2. Browser: explorer.arc.io txlist ──
+  // ── 2. Proxy: /api/explorer/txlist (server proxies explorer.arc.io) ──
+  // On success → update stats + table + save to sessionStorage.
+  // On failure → use last cached payload; if none, show unavailable msg.
   let explorerWorked = false;
   try{
     const [txResp, tokResp] = await Promise.allSettled([
-      fetch(EXPLORER_TX_URL(address), {signal: AbortSignal.timeout(10000)}),
-      fetch(EXPLORER_TOK_URL(address), {signal: AbortSignal.timeout(10000)})
+      fetch(PROXY_TX_URL(address)),
+      fetch(PROXY_TOK_URL(address))
     ]);
 
-    let txRows = [];
+    let txRows = null;
     if(txResp.status === 'fulfilled' && txResp.value.ok){
       const body = await txResp.value.json();
-      if(body && Array.isArray(body.result)) txRows = body.result;
-      else if(body && body.status === '0')   txRows = []; // valid empty
-      explorerWorked = true;
+      if(body && Array.isArray(body.result)){
+        txRows = body.result;
+        explorerWorked = true;
+      } else if(body && body.status === '0'){
+        txRows = [];
+        explorerWorked = true;
+      }
     }
 
     let tokCount = null;
@@ -344,32 +351,45 @@ async function init(){
       else if(hasReceived)       behavior = 'Receiver';
       else                       behavior = 'None';
 
+      const payload = {
+        txRows, tokCount, behavior,
+        nativeIn:  inWei.toString(),
+        nativeOut: outWei.toString()
+      };
+      try{ sessionStorage.setItem(ssKey(address,'history'), JSON.stringify(payload)); }catch(_){}
+
       set('s-behavior', behavior);
       set('s-in',  fmtNative18(inWei.toString()));
       set('s-out', fmtNative18(outWei.toString()));
       set('s-txs', txRows.length.toLocaleString());
       set('s-tok', tokCount != null ? tokCount.toLocaleString() : '—');
-
       if(noteEl) noteEl.style.display = 'none';
-
       renderRecentTxs(txRows, address, txList, countEl);
     }
   }catch(_){ explorerWorked = false; }
 
   if(!explorerWorked){
-    set('s-behavior','—'); set('s-in','—'); set('s-out','—');
-    set('s-txs','—'); set('s-tok','—');
-    if(noteEl){
-      noteEl.textContent = 'History unavailable from explorer in this browser.';
-      noteEl.style.display = 'block';
+    // Try sessionStorage fallback
+    let cached = null;
+    try{ const raw2 = sessionStorage.getItem(ssKey(address,'history')); if(raw2) cached = JSON.parse(raw2); }catch(_){}
+
+    if(cached && cached.txRows){
+      set('s-behavior', cached.behavior || '—');
+      set('s-in',  fmtNative18(cached.nativeIn  || '0'));
+      set('s-out', fmtNative18(cached.nativeOut || '0'));
+      set('s-txs', (cached.txRows.length||0).toLocaleString());
+      set('s-tok', cached.tokCount != null ? cached.tokCount.toLocaleString() : '—');
+      renderRecentTxs(cached.txRows, address, txList, countEl);
+      if(noteEl){ noteEl.textContent = 'Showing last loaded history.'; noteEl.style.display = 'block'; }
+    } else {
+      if(noteEl){ noteEl.textContent = 'History temporarily unavailable.'; noteEl.style.display = 'block'; }
+      if(txList && !txList.children.length){
+        const emp = document.createElement('div'); emp.className = 'empty';
+        emp.textContent = 'History temporarily unavailable.';
+        txList.appendChild(emp);
+      }
+      if(countEl) countEl.textContent = '';
     }
-    if(txList){
-      txList.textContent = '';
-      const emp = document.createElement('div'); emp.className='empty';
-      emp.textContent = 'History unavailable from explorer in this browser.';
-      txList.appendChild(emp);
-    }
-    if(countEl) countEl.textContent = '';
   }
 
   // ── 3. Whale index history (scanner, 100k+ USDC/EURC only) ──

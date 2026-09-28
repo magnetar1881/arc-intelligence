@@ -1151,21 +1151,21 @@ async function loadMyWallet(address){
     set('mw-whale', d.inWhaleIndex?'Yes':'No');
   }catch(_){ set('mw-score','—'); set('mw-sent','—'); set('mw-whale','—'); }
 
-  // ── 2. Browser: explorer.arc.io txlist ──
+  // ── 2. Proxy: /api/explorer/txlist (server-side, no CORS issue) ──
+  // On success → update stats + save to sessionStorage.
+  // On failure → use sessionStorage fallback; if none, show unavailable.
   const noteEl=document.getElementById('mw-note');
+  let explorerWorked=false;
   try{
-    const txUrl='https://explorer.arc.io/api?module=account&action=txlist&address='+addr+'&sort=desc&page=1&offset=25';
-    const tokUrl='https://explorer.arc.io/api?module=account&action=tokentx&address='+addr+'&sort=desc&page=1&offset=25';
     const [txResp,tokResp]=await Promise.allSettled([
-      fetch(txUrl,{signal:AbortSignal.timeout(10000)}),
-      fetch(tokUrl,{signal:AbortSignal.timeout(10000)})
+      fetch('/api/explorer/txlist?address='+addr),
+      fetch('/api/explorer/tokentx?address='+addr)
     ]);
-    let txRows=[];
-    let explorerWorked=false;
+    let txRows=null;
     if(txResp.status==='fulfilled'&&txResp.value.ok){
       const body=await txResp.value.json();
       if(body&&Array.isArray(body.result)){txRows=body.result;explorerWorked=true;}
-      else if(body&&body.status==='0')explorerWorked=true;
+      else if(body&&body.status==='0'){txRows=[];explorerWorked=true;}
     }
     let tokCount=null;
     if(tokResp.status==='fulfilled'&&tokResp.value.ok){
@@ -1180,18 +1180,31 @@ async function loadMyWallet(address){
         if((t.to||'').toLowerCase()===addr){inWei+=val;hasRecv=true;}
       }
       let beh=hasSent&&hasRecv?'Active':hasSent?'Sender':hasRecv?'Receiver':'None';
+      const payload={txRows,tokCount,behavior:beh,nativeIn:inWei.toString(),nativeOut:outWei.toString()};
+      try{sessionStorage.setItem('lensora_mw_history_'+addr,JSON.stringify(payload));}catch(_){}
       set('mw-beh',beh);
       set('mw-in', mwFmtNative18(inWei.toString()));
       set('mw-out',mwFmtNative18(outWei.toString()));
       set('mw-txs',txRows.length.toLocaleString());
       set('mw-tok',tokCount!=null?tokCount.toLocaleString():'—');
       if(noteEl)noteEl.style.display='none';
-    } else {
-      throw new Error('explorer empty');
     }
-  }catch(_){
-    set('mw-beh','—');set('mw-in','—');set('mw-out','—');set('mw-txs','—');set('mw-tok','—');
-    if(noteEl){noteEl.textContent='History unavailable from explorer in this browser.';noteEl.style.display='block';}
+  }catch(_){explorerWorked=false;}
+
+  if(!explorerWorked){
+    let cached=null;
+    try{const raw2=sessionStorage.getItem('lensora_mw_history_'+addr);if(raw2)cached=JSON.parse(raw2);}catch(_){}
+    if(cached&&cached.txRows!=null){
+      set('mw-beh',cached.behavior||'—');
+      set('mw-in', mwFmtNative18(cached.nativeIn||'0'));
+      set('mw-out',mwFmtNative18(cached.nativeOut||'0'));
+      set('mw-txs',(cached.txRows.length||0).toLocaleString());
+      set('mw-tok',cached.tokCount!=null?cached.tokCount.toLocaleString():'—');
+      if(noteEl){noteEl.textContent='Showing last loaded history.';noteEl.style.display='block';}
+    } else {
+      set('mw-beh','—');set('mw-in','—');set('mw-out','—');set('mw-txs','—');set('mw-tok','—');
+      if(noteEl){noteEl.textContent='History temporarily unavailable.';noteEl.style.display='block';}
+    }
   }
 }
 

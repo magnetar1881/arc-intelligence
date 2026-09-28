@@ -973,12 +973,74 @@ app.get("/api/v1/wallet/:address/label", async (req, res) => {
 });
 
 // ========================
-// API: My Wallet — nonce, whaleScore, inWhaleIndex only.
-// History (recent txs, volumes, behavior) is fetched browser-side
-// directly from explorer.arc.io to avoid server-side CF block.
+// API: My Wallet + Explorer proxy
+// /api/wallet/:addr     — nonce, whaleScore, inWhaleIndex (no explorer)
+// /api/explorer/txlist  — server-side proxy to explorer.arc.io txlist
+// /api/explorer/tokentx — server-side proxy to explorer.arc.io tokentx
 // Does NOT write to whales table.
 // ========================
 const { ethers } = require("ethers");
+const https = require("https");
+
+const EXPLORER_PROXY_BASE = "https://explorer.arc.io";
+const EXPLORER_PROXY_TIMEOUT_MS = 8_000;
+const EXPLORER_PROXY_TTL_MS = 30_000; // 30 s per address
+
+// explorerProxyFetch: raw HTTPS GET with timeout, returns { status, body }
+function explorerProxyFetch(url) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), EXPLORER_PROXY_TIMEOUT_MS);
+    const req = https.get(url, { headers: { "User-Agent": "lensora-proxy/1.0" } }, (res) => {
+      clearTimeout(timer);
+      let raw = "";
+      res.on("data", (c) => (raw += c));
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(raw) }); }
+        catch (_) { reject(new Error("parse_error")); }
+      });
+    });
+    req.on("error", (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+// Per-action cache: key = "txlist:0x..." | "tokentx:0x..."
+const explorerCache = new Map();
+
+async function serveExplorerProxy(action, address, res) {
+  const cacheKey = action + ":" + address;
+  const hit = explorerCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < EXPLORER_PROXY_TTL_MS) {
+    return res.json(hit.body);
+  }
+
+  const url = `${EXPLORER_PROXY_BASE}/api?module=account&action=${action}&address=${address}&sort=desc&page=1&offset=25`;
+  try {
+    const { status, body } = await explorerProxyFetch(url);
+    if (status !== 200) {
+      return res.status(502).json({ error: "explorer_http_" + status, url });
+    }
+    explorerCache.set(cacheKey, { ts: Date.now(), body });
+    return res.json(body);
+  } catch (err) {
+    return res.status(502).json({ error: err.message || "explorer_unreachable", url });
+  }
+}
+
+app.get("/api/explorer/txlist", async (req, res) => {
+  const addr = String(req.query.address || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+  await serveExplorerProxy("txlist", addr, res);
+});
+
+app.get("/api/explorer/tokentx", async (req, res) => {
+  const addr = String(req.query.address || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+  await serveExplorerProxy("tokentx", addr, res);
+});
 
 // Memory cache: address (lowercase) → { ts, data }
 const walletCache = new Map();
@@ -1019,19 +1081,12 @@ app.get("/api/wallet/:addr", async (req, res) => {
     whaleScore = walletRow.whale_score != null ? walletRow.whale_score : null;
   }
 
-  // Explorer URL for the browser to call directly (avoids server CF block)
-  const explorerUrl = `https://explorer.arc.io/api?module=account&action=txlist&address=${raw}&sort=desc&page=1&offset=25`;
-
   const data = {
     wallet:      raw,
     chainId:     5042,
     txCountFrom,
     whaleScore,
-    inWhaleIndex,
-    explorerUrl,
-    // history fields filled browser-side
-    partial: true,
-    note: "History fetched browser-side from explorer.arc.io"
+    inWhaleIndex
   };
 
   walletCache.set(raw, { ts: Date.now(), data });
