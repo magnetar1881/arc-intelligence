@@ -990,7 +990,7 @@ const EXPLORER_PROXY_TTL_MS = 30_000; // 30 s per address
 function explorerProxyFetch(url) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("timeout")), EXPLORER_PROXY_TIMEOUT_MS);
-    const req = https.get(url, { headers: { "User-Agent": "lensora-proxy/1.0" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; lensora/1.0)" } }, (res) => {
       clearTimeout(timer);
       let raw = "";
       res.on("data", (c) => (raw += c));
