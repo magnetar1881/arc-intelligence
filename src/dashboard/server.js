@@ -33,7 +33,7 @@ app.use((req, res, next) => {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: https://explorer.arc.io",
-      "connect-src 'self' https://lensora.xyz https://rpc.mainnet.arc.io https://explorer.arc.io",
+      "connect-src 'self' https://lensora.xyz https://lensora.xyz/arc-rpc https://rpc.mainnet.arc.io https://explorer.arc.io https://api.circle.com https://api-test.circle.com https://li.quest https://*.li.fi wss: https:",
       "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
     ].join("; ")
   );
@@ -970,6 +970,187 @@ app.get("/api/v1/wallet/:address/label", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ========================
+// API: My Wallet — full Arc mainnet activity for any address
+// NOT limited to 100k+ or USDC/EURC. Does not write to whales table.
+// ========================
+const { ethers } = require("ethers");
+const https = require("https");
+
+// Memory cache: address (lowercase) → { ts, data }
+const walletCache = new Map();
+const WALLET_CACHE_TTL_MS = 30_000; // 30 s
+
+const EXPLORER_BASE = "https://explorer.arc.io";
+const EXPLORER_TIMEOUT_MS = 8_000;
+
+function explorerFetch(url) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), EXPLORER_TIMEOUT_MS);
+    https.get(url, { headers: { "User-Agent": "lensora/1.0" } }, (res) => {
+      clearTimeout(timer);
+      let raw = "";
+      res.on("data", (c) => (raw += c));
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(raw) }); }
+        catch (e) { reject(new Error("parse error")); }
+      });
+    }).on("error", (e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
+// Convert 18-decimal native string to human display (up to 6 dp, trimmed)
+function fmtNative18(bigStr) {
+  if (!bigStr || bigStr === "0") return "0";
+  try {
+    return ethers.formatUnits(BigInt(bigStr), 18).replace(/(\.\d*?[1-9])0+$/, "$1").replace(/\.0$/, "");
+  } catch (_) {
+    return "0";
+  }
+}
+
+app.get("/api/wallet/:addr", async (req, res) => {
+  const raw = String(req.params.addr || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(raw)) {
+    return res.status(400).json({ error: "Invalid address: must be 0x + 40 hex chars" });
+  }
+
+  // Cache hit
+  const cached = walletCache.get(raw);
+  if (cached && Date.now() - cached.ts < WALLET_CACHE_TTL_MS) {
+    return res.json(cached.data);
+  }
+
+  const rpcUrl = process.env.RPC_URL || "https://rpc.mainnet.arc.io";
+  let provider;
+  try {
+    provider = new ethers.JsonRpcProvider(rpcUrl);
+  } catch (e) {
+    return res.status(500).json({ error: "RPC init failed: " + e.message });
+  }
+
+  // ── Try Explorer API (Blockscout-compatible) ──
+  const explorerTxUrl  = `${EXPLORER_BASE}/api?module=account&action=txlist&address=${raw}&sort=desc&page=1&offset=25`;
+  const explorerTokUrl = `${EXPLORER_BASE}/api?module=account&action=tokentx&address=${raw}&sort=desc&page=1&offset=25`;
+
+  let explorerOk = false;
+  let explorerUrl = explorerTxUrl;
+  let txRows = [];
+  let tokRows = [];
+
+  try {
+    const txResp = await explorerFetch(explorerTxUrl);
+    if (txResp.status === 200 && txResp.body && txResp.body.status === "1" && Array.isArray(txResp.body.result)) {
+      txRows = txResp.body.result;
+      explorerOk = true;
+    } else if (txResp.status === 200 && txResp.body && txResp.body.status === "0") {
+      // 0 = no txs but API responded — still counts as ok
+      explorerOk = true;
+    }
+    // tokentx — best-effort
+    try {
+      const tokResp = await explorerFetch(explorerTokUrl);
+      if (tokResp.status === 200 && tokResp.body && Array.isArray(tokResp.body.result)) {
+        tokRows = tokResp.body.result;
+      }
+    } catch (_) { /* ignore */ }
+  } catch (_) { /* explorer unreachable or CF-blocked — fall through */ }
+
+  // ── Fallback: nonce only ──
+  let txCountFrom = 0;
+  let partial = false;
+  if (explorerOk) {
+    // derive txCountFrom from nonce too (fast, accurate)
+    try { txCountFrom = await provider.getTransactionCount(raw); } catch (_) {}
+  } else {
+    partial = true;
+    try { txCountFrom = await provider.getTransactionCount(raw); } catch (_) {}
+  }
+
+  // ── Aggregate from explorer txRows ──
+  let txCountTo = 0;
+  let nativeInWei = BigInt(0);
+  let nativeOutWei = BigInt(0);
+  let txHashes = new Set();
+
+  for (const t of txRows) {
+    if (!t.hash) continue;
+    txHashes.add(t.hash.toLowerCase());
+    const val = BigInt(t.value || "0");
+    const from = (t.from || "").toLowerCase();
+    const to   = (t.to   || "").toLowerCase();
+    if (from === raw) nativeOutWei += val;
+    if (to   === raw) { nativeInWei += val; txCountTo++; }
+  }
+
+  // ── Build recent list ──
+  const recent = txRows.slice(0, 50).map((t) => {
+    const isOk = t.isError === "0" || t.isError === undefined;
+    return {
+      txHash:      t.hash || null,
+      timestamp:   t.timeStamp ? new Date(Number(t.timeStamp) * 1000).toISOString() : null,
+      from:        t.from || null,
+      to:          t.to   || null,
+      valueNative: fmtNative18(t.value || "0"),
+      method:      t.functionName
+        ? t.functionName.split("(")[0] || null
+        : (t.input && t.input !== "0x" ? "call" : null),
+      status:      t.isError !== undefined ? (isOk ? "ok" : "fail") : null
+    };
+  });
+
+  // ── Behavior ──
+  let hasSent = false, hasReceived = false;
+  for (const t of txRows) {
+    if ((t.from || "").toLowerCase() === raw) hasSent = true;
+    if ((t.to   || "").toLowerCase() === raw) hasReceived = true;
+    if (hasSent && hasReceived) break;
+  }
+  let behavior;
+  if (hasSent && hasReceived) behavior = "Active";
+  else if (hasSent)            behavior = "Sender";
+  else if (hasReceived)        behavior = "Receiver";
+  else                         behavior = "None";
+
+  // ── Whale index lookup (read-only) ──
+  let whaleScore = null;
+  let inWhaleIndex = false;
+  const walletRow = await new Promise((resolve) => {
+    db.get(
+      `SELECT whale_score FROM wallets WHERE lower(wallet) = ?`,
+      [raw],
+      (err, row) => resolve(err ? null : (row || null))
+    );
+  });
+  if (walletRow) {
+    inWhaleIndex = true;
+    whaleScore = walletRow.whale_score != null ? walletRow.whale_score : null;
+  }
+
+  const data = {
+    wallet:       raw,
+    chainId:      5042,
+    txCountFrom,
+    txCountTo,
+    txs:          txHashes.size || txRows.length,
+    nativeIn:     fmtNative18(nativeInWei.toString()),
+    nativeOut:    fmtNative18(nativeOutWei.toString()),
+    behavior,
+    whaleScore,
+    inWhaleIndex,
+    explorerUrl,
+    ...(partial ? {
+      partial: true,
+      note: "Sent-tx count from nonce. Full history needs explorer API."
+    } : {}),
+    tokenTransferCount: tokRows.length || null,
+    recent
+  };
+
+  walletCache.set(raw, { ts: Date.now(), data });
+  res.json(data);
 });
 
 app.listen(PORT, () => {

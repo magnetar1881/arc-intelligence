@@ -70,25 +70,28 @@ body{overflow-x:hidden}
      style="display:inline-block;margin-top:8px;font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none">Alert this wallet</a>
 
   <div class="stats" id="stats" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
-    <div class="stat"><div class="stat-label">Total Volume</div><div class="stat-value" id="s-vol">—</div></div>
-    <div class="stat"><div class="stat-label">Incoming</div><div class="stat-value" id="s-in" style="color:var(--green)">—</div></div>
-    <div class="stat"><div class="stat-label">Outgoing</div><div class="stat-value" id="s-out" style="color:var(--amber)">—</div></div>
-    <div class="stat"><div class="stat-label">Transfers</div><div class="stat-value" id="s-txs">—</div></div>
     <div class="stat"><div class="stat-label">Whale Score</div><div class="stat-value" id="s-score">—</div></div>
     <div class="stat"><div class="stat-label">Behavior</div><div class="stat-value" id="s-behavior">—</div></div>
-    <div class="stat"><div class="stat-label">Last Seen</div><div class="stat-value" id="s-last" style="font-size:14px">—</div></div>
+    <div class="stat"><div class="stat-label">Native USDC in</div><div class="stat-value" id="s-in" style="color:var(--green)">—</div></div>
+    <div class="stat"><div class="stat-label">Native USDC out</div><div class="stat-value" id="s-out" style="color:var(--amber)">—</div></div>
+    <div class="stat"><div class="stat-label">Txs sent (nonce)</div><div class="stat-value" id="s-sent">—</div></div>
+    <div class="stat"><div class="stat-label">Txs indexed</div><div class="stat-value" id="s-txs">—</div></div>
+    <div class="stat"><div class="stat-label">Token transfers</div><div class="stat-value" id="s-tok">—</div></div>
+    <div class="stat"><div class="stat-label">In whale index</div><div class="stat-value" id="s-whale">—</div></div>
   </div>
+  <div id="s-partial-note" style="display:none;margin:-8px 0 16px;font-size:11px;color:var(--text3)"></div>
+  <div style="margin-bottom:16px;font-size:11px;color:var(--dim)">This card is your Arc mainnet activity. The whale feed still only lists 100k+ USDC/EURC.</div>
 
   <div class="card">
     <div class="card-head">
       <span class="card-title">Recent Transactions</span>
       <span style="font-size:10px;color:var(--dim)" id="tx-count"></span>
     </div>
-    <div class="tbl-header">
+    <div class="tbl-header" style="grid-template-columns:1.6fr 1fr 1fr 80px 110px">
       <span class="tbl-hl">Tx Hash</span>
-      <span class="tbl-hl">Token</span>
-      <span class="tbl-hl" style="text-align:right">Amount</span>
-      <span class="tbl-hl">Type</span>
+      <span class="tbl-hl">From → To</span>
+      <span class="tbl-hl" style="text-align:right">Value (native)</span>
+      <span class="tbl-hl">Method</span>
       <span class="tbl-hl" style="text-align:right">Time</span>
     </div>
     <div id="tx-list">
@@ -103,18 +106,19 @@ body{overflow-x:hidden}
     <div id="explain-box" style="padding:16px 20px;font-size:13px;line-height:1.7;color:var(--text2);white-space:pre-wrap"></div>
   </div>
 
-  <div class="card">
+  <div class="card" id="whale-history-card">
     <div class="card-head">
-      <span class="card-title">Token Activity</span>
+      <span class="card-title">Whale Index History (100k+ USDC/EURC)</span>
     </div>
-    <div class="tbl-header" style="grid-template-columns:1fr 90px 110px 120px">
+    <div class="tbl-header" style="grid-template-columns:1.4fr 1fr 100px 80px 110px">
+      <span class="tbl-hl">Tx Hash</span>
       <span class="tbl-hl">Token</span>
-      <span class="tbl-hl" style="text-align:right">Txs</span>
-      <span class="tbl-hl" style="text-align:right">Volume</span>
-      <span class="tbl-hl" style="text-align:right">Last Seen</span>
+      <span class="tbl-hl" style="text-align:right">Amount</span>
+      <span class="tbl-hl">Type</span>
+      <span class="tbl-hl" style="text-align:right">Time</span>
     </div>
-    <div id="token-list">
-      <div style="padding:20px"><div class="skeleton" style="height:12px;width:60%"></div></div>
+    <div id="whale-tx-list">
+      <div style="padding:20px"><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:50%"></div></div>
     </div>
   </div>
 </div>
@@ -177,81 +181,199 @@ async function explainTx(txHash, btn){
   }
 }
 
+function shortFromTo(from, to, self){
+  const sh = a => a ? a.slice(0,6)+'…'+a.slice(-4) : '—';
+  const f = from ? sh(from) : '—';
+  const t = to   ? sh(to)   : '—';
+  return f + ' → ' + t;
+}
+
 async function init(){
   const pathParts = window.location.pathname.split('/');
-  const address = pathParts[pathParts.length-1];
+  const address = pathParts[pathParts.length-1].toLowerCase();
 
-  if(!address || address.length < 10){
+  if(!address || !/^0x[0-9a-f]{40}$/.test(address)){
     document.getElementById('wallet-address').textContent = 'Invalid address';
+    document.getElementById('tx-list').textContent = '';
     return;
   }
 
   document.getElementById('wallet-address').textContent = address;
 
   const al=document.getElementById('w-alert-link');
-  if(al) al.href='https://t.me/MagNetar1881_bot?start=subscribe_'+address;
+  if(al) al.style.display='none'; // no Telegram alert link
 
+  // ── Load full activity from new endpoint ──
   try{
-    const res = await fetch(`/api/wallets/${address}`);
-    if(!res.ok){
-      const err = await res.json().catch(()=>({}));
-      document.getElementById('tx-list').innerHTML = `<div class="empty">${err.error || 'Wallet not found'}</div>`;
-      document.getElementById('token-list').innerHTML = '';
-      return;
-    }
+    const res = await fetch('/api/wallet/' + address);
     const data = await res.json();
-    const w = data.wallet;
 
-    document.getElementById('s-vol').textContent = fmt(w.total_volume);
-    document.getElementById('s-txs').textContent = (w.transfer_count||0).toLocaleString();
-    document.getElementById('s-score').textContent = Number(w.whale_score||0).toFixed(2);
-    document.getElementById('s-behavior').innerHTML = behaviorBadge(w.behavior);
-    document.getElementById('s-last').textContent = timeAgo(w.last_seen);
-    document.getElementById('s-in').textContent = fmt(w.incoming_volume);
-    document.getElementById('s-out').textContent = fmt(w.outgoing_volume);
-
-    const txs = data.transactions || [];
-    document.getElementById('tx-count').textContent = txs.length + ' shown';
-    if(!txs.length){
-      document.getElementById('tx-list').innerHTML = '<div class="empty">No transactions recorded yet.</div>';
+    if(!res.ok){
+      const errEl = document.getElementById('tx-list');
+      errEl.textContent = '';
+      const d = document.createElement('div'); d.className='empty';
+      d.textContent = data.error || 'Failed to load wallet';
+      errEl.appendChild(d);
     } else {
-      document.getElementById('tx-list').innerHTML = txs.map(t => `
-        <div class="tx-row">
-          <div class="mono">
-            <a href="https://explorer.arc.io/tx/${t.txHash}" target="_blank" rel="noopener noreferrer"
-               style="color:var(--blue3);text-decoration:none" title="${t.txHash}">
-              ${shortHash(t.txHash)}
-            </a>
-            <button type="button" onclick="explainTx('${t.txHash}', this)"
-              style="margin-left:8px;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--blue3);cursor:pointer;font-family:var(--sans)">
-              Explain
-            </button>
-          </div>
-          <div class="mono" style="color:var(--blue3)">${escHtml(t.token || '—')}</div>
-          <div class="mono" style="color:var(--green);text-align:right;font-weight:600">${escHtml(fmt(t.amount))}</div>
-          <div class="mono" style="color:var(--muted)">${escHtml(t.type || 'WHALE')}</div>
-          <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.timestamp)}</div>
-        </div>
-      `).join('');
-    }
+      const set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+      set('s-score',    data.whaleScore != null ? Number(data.whaleScore).toFixed(2) : 'n/a');
+      set('s-behavior', data.behavior || '—');
+      set('s-in',       data.nativeIn  || '0');
+      set('s-out',      data.nativeOut || '0');
+      set('s-sent',     (data.txCountFrom||0).toLocaleString());
+      set('s-txs',      (data.txs||0).toLocaleString());
+      set('s-tok',      data.tokenTransferCount != null ? data.tokenTransferCount.toLocaleString() : '—');
+      set('s-whale',    data.inWhaleIndex ? 'Yes' : 'No');
 
-    const tokens = data.tokenActivity || [];
-    if(!tokens.length){
-      document.getElementById('token-list').innerHTML = '<div class="empty">No token activity.</div>';
-    } else {
-      document.getElementById('token-list').innerHTML = tokens.map(t => `
-        <div class="token-row">
-          <div class="mono" style="color:var(--blue3);font-weight:600">${escHtml(t.token || '—')}</div>
-          <div class="mono" style="text-align:right;color:var(--text2)">${t.transfer_count}</div>
-          <div class="mono" style="text-align:right;color:var(--green)">${fmt(t.volume)}</div>
-          <div style="text-align:right;font-size:11px;color:var(--dim)">${timeAgo(t.last_seen)}</div>
-        </div>
-      `).join('');
-    }
+      const noteEl = document.getElementById('s-partial-note');
+      if(noteEl && data.partial){
+        noteEl.textContent = data.note || 'Partial data: sent-tx count from nonce.';
+        noteEl.style.display = 'block';
+      }
 
+      // Recent txs table (all activity, no token/amount filter)
+      const recent = data.recent || [];
+      const countEl = document.getElementById('tx-count');
+      if(countEl) countEl.textContent = recent.length + ' shown';
+
+      const txList = document.getElementById('tx-list');
+      txList.textContent = '';
+      if(!recent.length){
+        const emp = document.createElement('div'); emp.className='empty';
+        emp.textContent = 'No transactions in this window.';
+        txList.appendChild(emp);
+      } else {
+        recent.forEach(t => {
+          const row = document.createElement('div');
+          row.className = 'tx-row';
+          row.style.gridTemplateColumns = '1.6fr 1fr 1fr 80px 110px';
+
+          // Tx hash cell
+          const hashCell = document.createElement('div');
+          hashCell.className = 'mono';
+          if(t.txHash){
+            const link = document.createElement('a');
+            link.href = 'https://explorer.arc.io/tx/' + t.txHash;
+            link.target = '_blank'; link.rel = 'noopener noreferrer';
+            link.style.cssText = 'color:var(--blue3);text-decoration:none';
+            link.title = t.txHash;
+            link.textContent = shortHash(t.txHash);
+            hashCell.appendChild(link);
+          } else {
+            hashCell.textContent = '—';
+          }
+          row.appendChild(hashCell);
+
+          // From→To cell
+          const ftCell = document.createElement('div');
+          ftCell.className = 'mono';
+          ftCell.style.cssText = 'font-size:11px;color:var(--text3)';
+          ftCell.textContent = shortFromTo(t.from, t.to, address);
+          row.appendChild(ftCell);
+
+          // Value cell
+          const valCell = document.createElement('div');
+          valCell.className = 'mono';
+          valCell.style.cssText = 'color:var(--green);text-align:right;font-weight:600';
+          valCell.textContent = (t.valueNative && t.valueNative !== '0') ? t.valueNative : '—';
+          row.appendChild(valCell);
+
+          // Method cell
+          const mCell = document.createElement('div');
+          mCell.className = 'mono';
+          mCell.style.cssText = 'color:var(--muted);font-size:11px';
+          mCell.textContent = t.method || '—';
+          row.appendChild(mCell);
+
+          // Time cell
+          const tCell = document.createElement('div');
+          tCell.style.cssText = 'text-align:right;font-size:11px;color:var(--dim)';
+          tCell.textContent = timeAgo(t.timestamp);
+          row.appendChild(tCell);
+
+          txList.appendChild(row);
+        });
+      }
+    }
   }catch(e){
     console.error(e);
-    document.getElementById('tx-list').innerHTML = '<div class="empty">Failed to load wallet data.</div>';
+    const errEl = document.getElementById('tx-list');
+    errEl.textContent = '';
+    const d = document.createElement('div'); d.className='empty';
+    d.textContent = 'Failed to load wallet data.';
+    errEl.appendChild(d);
+  }
+
+  // ── Load whale index history (separate, from old /api/wallets/:addr) ──
+  try{
+    const res2 = await fetch('/api/wallets/' + address);
+    const data2 = await res2.json();
+    const txs = data2.transactions || [];
+    const whaleTxList = document.getElementById('whale-tx-list');
+    if(!whaleTxList) return;
+    whaleTxList.textContent = '';
+
+    if(!txs.length){
+      const emp = document.createElement('div'); emp.className='empty';
+      emp.textContent = 'No 100k+ USDC/EURC transfers indexed for this address.';
+      whaleTxList.appendChild(emp);
+    } else {
+      txs.forEach(t => {
+        const row = document.createElement('div');
+        row.className = 'tx-row';
+
+        const hashCell = document.createElement('div');
+        hashCell.className = 'mono';
+        if(t.txHash){
+          const link = document.createElement('a');
+          link.href = 'https://explorer.arc.io/tx/' + t.txHash;
+          link.target = '_blank'; link.rel = 'noopener noreferrer';
+          link.style.cssText = 'color:var(--blue3);text-decoration:none';
+          link.title = t.txHash;
+          link.textContent = shortHash(t.txHash);
+          hashCell.appendChild(link);
+          // Explain button for whale txs
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.style.cssText = 'margin-left:8px;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--blue3);cursor:pointer;font-family:var(--sans)';
+          btn.textContent = 'Explain';
+          const txHashCopy = t.txHash;
+          btn.addEventListener('click', function(){ explainTx(txHashCopy, btn); });
+          hashCell.appendChild(btn);
+        } else {
+          hashCell.textContent = '—';
+        }
+        row.appendChild(hashCell);
+
+        const tokCell = document.createElement('div');
+        tokCell.className = 'mono';
+        tokCell.style.color = 'var(--blue3)';
+        tokCell.textContent = t.token || '—';
+        row.appendChild(tokCell);
+
+        const amtCell = document.createElement('div');
+        amtCell.className = 'mono';
+        amtCell.style.cssText = 'color:var(--green);text-align:right;font-weight:600';
+        amtCell.textContent = fmt(t.amount);
+        row.appendChild(amtCell);
+
+        const typeCell = document.createElement('div');
+        typeCell.className = 'mono';
+        typeCell.style.color = 'var(--muted)';
+        typeCell.textContent = t.type || 'WHALE';
+        row.appendChild(typeCell);
+
+        const timeCell = document.createElement('div');
+        timeCell.style.cssText = 'text-align:right;font-size:11px;color:var(--dim)';
+        timeCell.textContent = timeAgo(t.timestamp);
+        row.appendChild(timeCell);
+
+        whaleTxList.appendChild(row);
+      });
+    }
+  }catch(e){
+    const el = document.getElementById('whale-tx-list');
+    if(el){ el.textContent=''; const d=document.createElement('div'); d.className='empty'; d.textContent='Could not load whale history.'; el.appendChild(d); }
   }
 }
 

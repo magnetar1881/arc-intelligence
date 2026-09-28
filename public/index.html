@@ -321,18 +321,20 @@ body{overflow-x:hidden}
         <div style="font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--blue3);margin-bottom:4px">My wallet</div>
         <div id="mw-addr" style="font-family:var(--mono);font-size:13px;color:var(--text2)"></div>
       </div>
-      <div style="display:flex;gap:8px">
-        <a id="mw-open" href="#" style="font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none">Open profile →</a>
-        <a id="mw-alert" href="#" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:#94a3b8;text-decoration:none">Alert</a>
-      </div>
+      <a id="mw-open" href="#" style="font-size:12px;font-weight:600;color:#60a5fa;text-decoration:none">Open profile →</a>
     </div>
     <div class="mw-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px">
-      <div><div style="font-size:10px;color:var(--muted)">Score</div><div id="mw-score" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">Behavior</div><div id="mw-beh" style="font-size:16px;font-weight:700">—</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">Volume</div><div id="mw-vol" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">Transfers</div><div id="mw-txs" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Whale Score</div><div id="mw-score" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Behavior</div><div id="mw-beh" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Native USDC in</div><div id="mw-in" style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--green)">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Native USDC out</div><div id="mw-out" style="font-family:var(--mono);font-size:16px;font-weight:700;color:var(--amber)">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Txs sent</div><div id="mw-sent" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Txs indexed</div><div id="mw-txs" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">Token transfers</div><div id="mw-tok" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">In whale index</div><div id="mw-whale" style="font-family:var(--mono);font-size:16px;font-weight:700">—</div></div>
     </div>
-    <div id="mw-empty" style="display:none;margin-top:10px;font-size:12px;color:var(--text3)">No indexed activity yet for this wallet.</div>
+    <div id="mw-note" style="display:none;margin-top:10px;font-size:11px;color:var(--text3)"></div>
+    <div style="margin-top:10px;font-size:11px;color:var(--dim)">This card is your Arc mainnet activity. The whale feed still only lists 100k+ USDC/EURC.</div>
   </div>
 
   <!-- STATS -->
@@ -1121,20 +1123,40 @@ async function loadMyWallet(address){
   if(!card)return;
   if(!address){card.style.display='none';return}
   card.style.display='block';
-  document.getElementById('mw-addr').textContent=address;
-  document.getElementById('mw-open').href='/wallets/'+address;
-  document.getElementById('mw-alert').href='https://t.me/MagNetar1881_bot?start=subscribe_'+address;
+  const addrEl=document.getElementById('mw-addr');
+  if(addrEl) addrEl.textContent=address;
+  const openEl=document.getElementById('mw-open');
+  if(openEl) openEl.href='/wallets/'+address;
+
+  // Reset
+  ['mw-score','mw-beh','mw-in','mw-out','mw-sent','mw-txs','mw-tok','mw-whale'].forEach(id=>{
+    const el=document.getElementById(id);if(el)el.textContent='…';
+  });
+
   try{
-    const d=await fetch('/api/wallets/'+address).then(r=>r.json());
-    const w=d.wallet||d;
-    const has=w&&(w.wallet||w.total_volume!=null);
-    document.getElementById('mw-score').textContent=has?Number(w.whale_score||0).toFixed(2):'—';
-    document.getElementById('mw-beh').textContent=has?(w.behavior||'—').toUpperCase():'—';
-    document.getElementById('mw-vol').textContent=has?fmt(w.total_volume):'—';
-    document.getElementById('mw-txs').textContent=has?(w.transfer_count||0).toLocaleString():'—';
-    document.getElementById('mw-empty').style.display=has?'none':'block';
+    const d=await fetch('/api/wallet/'+address.toLowerCase()).then(r=>r.json());
+    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    set('mw-score', d.whaleScore!=null?Number(d.whaleScore).toFixed(2):'n/a');
+    set('mw-beh',   d.behavior||'—');
+    set('mw-in',    d.nativeIn||'0');
+    set('mw-out',   d.nativeOut||'0');
+    set('mw-sent',  (d.txCountFrom||0).toLocaleString());
+    set('mw-txs',   (d.txs||0).toLocaleString());
+    set('mw-tok',   d.tokenTransferCount!=null?d.tokenTransferCount.toLocaleString():'—');
+    set('mw-whale', d.inWhaleIndex?'Yes':'No');
+    const noteEl=document.getElementById('mw-note');
+    if(noteEl){
+      if(d.partial){
+        noteEl.textContent=d.note||'Sent-tx count from nonce. Full history needs explorer API.';
+        noteEl.style.display='block';
+      } else {
+        noteEl.style.display='none';
+      }
+    }
   }catch(e){
-    document.getElementById('mw-empty').style.display='block';
+    ['mw-score','mw-beh','mw-in','mw-out','mw-sent','mw-txs','mw-tok','mw-whale'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.textContent='—';
+    });
   }
 }
 
