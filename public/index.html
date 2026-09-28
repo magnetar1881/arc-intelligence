@@ -1118,45 +1118,80 @@ function copyAskLink(){
   navigator.clipboard.writeText(url).catch(()=>{});
 }
 
+function mwFmtNative18(weiStr){
+  if(!weiStr||weiStr==='0')return'0';
+  try{
+    const n=BigInt(weiStr);
+    const whole=n/BigInt(1e18);
+    const frac=n%BigInt(1e18);
+    if(frac===BigInt(0))return whole.toString();
+    return whole.toString()+'.'+frac.toString().padStart(18,'0').replace(/0+$/,'').slice(0,4);
+  }catch(_){return'0';}
+}
+
 async function loadMyWallet(address){
   const card=document.getElementById('my-wallet-card');
   if(!card)return;
   if(!address){card.style.display='none';return}
   card.style.display='block';
+  const addr=address.toLowerCase();
   const addrEl=document.getElementById('mw-addr');
   if(addrEl) addrEl.textContent=address;
   const openEl=document.getElementById('mw-open');
-  if(openEl) openEl.href='/wallets/'+address;
+  if(openEl) openEl.href='/wallets/'+addr;
 
-  // Reset
-  ['mw-score','mw-beh','mw-in','mw-out','mw-sent','mw-txs','mw-tok','mw-whale'].forEach(id=>{
-    const el=document.getElementById(id);if(el)el.textContent='…';
-  });
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  ['mw-score','mw-beh','mw-in','mw-out','mw-sent','mw-txs','mw-tok','mw-whale'].forEach(id=>set(id,'…'));
 
+  // ── 1. Server: nonce + whaleScore + inWhaleIndex ──
   try{
-    const d=await fetch('/api/wallet/'+address.toLowerCase()).then(r=>r.json());
-    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+    const d=await fetch('/api/wallet/'+addr).then(r=>r.json());
     set('mw-score', d.whaleScore!=null?Number(d.whaleScore).toFixed(2):'n/a');
-    set('mw-beh',   d.behavior||'—');
-    set('mw-in',    d.nativeIn||'0');
-    set('mw-out',   d.nativeOut||'0');
     set('mw-sent',  (d.txCountFrom||0).toLocaleString());
-    set('mw-txs',   (d.txs||0).toLocaleString());
-    set('mw-tok',   d.tokenTransferCount!=null?d.tokenTransferCount.toLocaleString():'—');
     set('mw-whale', d.inWhaleIndex?'Yes':'No');
-    const noteEl=document.getElementById('mw-note');
-    if(noteEl){
-      if(d.partial){
-        noteEl.textContent=d.note||'Sent-tx count from nonce. Full history needs explorer API.';
-        noteEl.style.display='block';
-      } else {
-        noteEl.style.display='none';
-      }
+  }catch(_){ set('mw-score','—'); set('mw-sent','—'); set('mw-whale','—'); }
+
+  // ── 2. Browser: explorer.arc.io txlist ──
+  const noteEl=document.getElementById('mw-note');
+  try{
+    const txUrl='https://explorer.arc.io/api?module=account&action=txlist&address='+addr+'&sort=desc&page=1&offset=25';
+    const tokUrl='https://explorer.arc.io/api?module=account&action=tokentx&address='+addr+'&sort=desc&page=1&offset=25';
+    const [txResp,tokResp]=await Promise.allSettled([
+      fetch(txUrl,{signal:AbortSignal.timeout(10000)}),
+      fetch(tokUrl,{signal:AbortSignal.timeout(10000)})
+    ]);
+    let txRows=[];
+    let explorerWorked=false;
+    if(txResp.status==='fulfilled'&&txResp.value.ok){
+      const body=await txResp.value.json();
+      if(body&&Array.isArray(body.result)){txRows=body.result;explorerWorked=true;}
+      else if(body&&body.status==='0')explorerWorked=true;
     }
-  }catch(e){
-    ['mw-score','mw-beh','mw-in','mw-out','mw-sent','mw-txs','mw-tok','mw-whale'].forEach(id=>{
-      const el=document.getElementById(id);if(el)el.textContent='—';
-    });
+    let tokCount=null;
+    if(tokResp.status==='fulfilled'&&tokResp.value.ok){
+      const tbody=await tokResp.value.json();
+      if(tbody&&Array.isArray(tbody.result))tokCount=tbody.result.length;
+    }
+    if(explorerWorked){
+      let inWei=BigInt(0),outWei=BigInt(0),hasSent=false,hasRecv=false;
+      for(const t of txRows){
+        const val=BigInt(t.value||'0');
+        if((t.from||'').toLowerCase()===addr){outWei+=val;hasSent=true;}
+        if((t.to||'').toLowerCase()===addr){inWei+=val;hasRecv=true;}
+      }
+      let beh=hasSent&&hasRecv?'Active':hasSent?'Sender':hasRecv?'Receiver':'None';
+      set('mw-beh',beh);
+      set('mw-in', mwFmtNative18(inWei.toString()));
+      set('mw-out',mwFmtNative18(outWei.toString()));
+      set('mw-txs',txRows.length.toLocaleString());
+      set('mw-tok',tokCount!=null?tokCount.toLocaleString():'—');
+      if(noteEl)noteEl.style.display='none';
+    } else {
+      throw new Error('explorer empty');
+    }
+  }catch(_){
+    set('mw-beh','—');set('mw-in','—');set('mw-out','—');set('mw-txs','—');set('mw-tok','—');
+    if(noteEl){noteEl.textContent='History unavailable from explorer in this browser.';noteEl.style.display='block';}
   }
 }
 

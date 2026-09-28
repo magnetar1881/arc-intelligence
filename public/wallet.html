@@ -181,11 +181,96 @@ async function explainTx(txHash, btn){
   }
 }
 
-function shortFromTo(from, to, self){
+const EXPLORER_TX_URL = addr =>
+  'https://explorer.arc.io/api?module=account&action=txlist&address=' + addr + '&sort=desc&page=1&offset=25';
+const EXPLORER_TOK_URL = addr =>
+  'https://explorer.arc.io/api?module=account&action=tokentx&address=' + addr + '&sort=desc&page=1&offset=25';
+
+function shortFromTo(from, to){
   const sh = a => a ? a.slice(0,6)+'…'+a.slice(-4) : '—';
-  const f = from ? sh(from) : '—';
-  const t = to   ? sh(to)   : '—';
-  return f + ' → ' + t;
+  return sh(from) + ' → ' + sh(to);
+}
+
+// Convert 18-decimal wei string to human display
+function fmtNative18(weiStr){
+  if(!weiStr || weiStr==='0') return '0';
+  try{
+    const n = BigInt(weiStr);
+    const whole = n / BigInt(1e18);
+    const frac  = n % BigInt(1e18);
+    if(frac === BigInt(0)) return whole.toString();
+    const fracStr = frac.toString().padStart(18,'0').replace(/0+$/,'').slice(0,6);
+    return whole.toString() + '.' + fracStr;
+  }catch(_){ return '0'; }
+}
+
+// Render the recent-txs card from an array of Blockscout txlist rows
+function renderRecentTxs(txRows, address, txList, countEl){
+  txList.textContent = '';
+  if(!txRows.length){
+    const emp = document.createElement('div'); emp.className='empty';
+    emp.textContent = 'No transactions in this window.';
+    txList.appendChild(emp);
+    if(countEl) countEl.textContent = '0 shown';
+    return;
+  }
+  if(countEl) countEl.textContent = txRows.length + ' shown';
+  txRows.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'tx-row';
+    row.style.gridTemplateColumns = '1.6fr 1fr 1fr 80px 110px';
+
+    // Hash
+    const hashCell = document.createElement('div');
+    hashCell.className = 'mono';
+    const hash = t.hash || t.txHash || null;
+    if(hash){
+      const link = document.createElement('a');
+      link.href = 'https://explorer.arc.io/tx/' + hash;
+      link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.style.cssText = 'color:var(--blue3);text-decoration:none';
+      link.title = hash;
+      link.textContent = shortHash(hash);
+      hashCell.appendChild(link);
+    } else { hashCell.textContent = '—'; }
+    row.appendChild(hashCell);
+
+    // From→To
+    const ftCell = document.createElement('div');
+    ftCell.className = 'mono';
+    ftCell.style.cssText = 'font-size:11px;color:var(--text3)';
+    ftCell.textContent = shortFromTo(t.from || null, t.to || null);
+    row.appendChild(ftCell);
+
+    // Value
+    const valCell = document.createElement('div');
+    valCell.className = 'mono';
+    valCell.style.cssText = 'color:var(--green);text-align:right;font-weight:600';
+    const val = fmtNative18(t.value || '0');
+    valCell.textContent = (val && val !== '0') ? val : '—';
+    row.appendChild(valCell);
+
+    // Method
+    const mCell = document.createElement('div');
+    mCell.className = 'mono';
+    mCell.style.cssText = 'color:var(--muted);font-size:11px';
+    const method = t.functionName
+      ? (t.functionName.split('(')[0] || null)
+      : (t.input && t.input !== '0x' ? 'call' : null);
+    mCell.textContent = method || '—';
+    row.appendChild(mCell);
+
+    // Time
+    const tCell = document.createElement('div');
+    tCell.style.cssText = 'text-align:right;font-size:11px;color:var(--dim)';
+    const ts = t.timeStamp
+      ? new Date(Number(t.timeStamp)*1000).toISOString()
+      : (t.timestamp || null);
+    tCell.textContent = timeAgo(ts);
+    row.appendChild(tCell);
+
+    txList.appendChild(row);
+  });
 }
 
 async function init(){
@@ -200,115 +285,98 @@ async function init(){
 
   document.getElementById('wallet-address').textContent = address;
 
-  const al=document.getElementById('w-alert-link');
-  if(al) al.style.display='none'; // no Telegram alert link
+  const al = document.getElementById('w-alert-link');
+  if(al) al.style.display = 'none';
 
-  // ── Load full activity from new endpoint ──
+  const set = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  const txList   = document.getElementById('tx-list');
+  const countEl  = document.getElementById('tx-count');
+  const noteEl   = document.getElementById('s-partial-note');
+
+  // ── 1. Server: nonce + whaleScore + inWhaleIndex ──
   try{
-    const res = await fetch('/api/wallet/' + address);
-    const data = await res.json();
-
-    if(!res.ok){
-      const errEl = document.getElementById('tx-list');
-      errEl.textContent = '';
-      const d = document.createElement('div'); d.className='empty';
-      d.textContent = data.error || 'Failed to load wallet';
-      errEl.appendChild(d);
-    } else {
-      const set = (id, v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
-      set('s-score',    data.whaleScore != null ? Number(data.whaleScore).toFixed(2) : 'n/a');
-      set('s-behavior', data.behavior || '—');
-      set('s-in',       data.nativeIn  || '0');
-      set('s-out',      data.nativeOut || '0');
-      set('s-sent',     (data.txCountFrom||0).toLocaleString());
-      set('s-txs',      (data.txs||0).toLocaleString());
-      set('s-tok',      data.tokenTransferCount != null ? data.tokenTransferCount.toLocaleString() : '—');
-      set('s-whale',    data.inWhaleIndex ? 'Yes' : 'No');
-
-      const noteEl = document.getElementById('s-partial-note');
-      if(noteEl && data.partial){
-        noteEl.textContent = data.note || 'Partial data: sent-tx count from nonce.';
-        noteEl.style.display = 'block';
-      }
-
-      // Recent txs table (all activity, no token/amount filter)
-      const recent = data.recent || [];
-      const countEl = document.getElementById('tx-count');
-      if(countEl) countEl.textContent = recent.length + ' shown';
-
-      const txList = document.getElementById('tx-list');
-      txList.textContent = '';
-      if(!recent.length){
-        const emp = document.createElement('div'); emp.className='empty';
-        emp.textContent = 'No transactions in this window.';
-        txList.appendChild(emp);
-      } else {
-        recent.forEach(t => {
-          const row = document.createElement('div');
-          row.className = 'tx-row';
-          row.style.gridTemplateColumns = '1.6fr 1fr 1fr 80px 110px';
-
-          // Tx hash cell
-          const hashCell = document.createElement('div');
-          hashCell.className = 'mono';
-          if(t.txHash){
-            const link = document.createElement('a');
-            link.href = 'https://explorer.arc.io/tx/' + t.txHash;
-            link.target = '_blank'; link.rel = 'noopener noreferrer';
-            link.style.cssText = 'color:var(--blue3);text-decoration:none';
-            link.title = t.txHash;
-            link.textContent = shortHash(t.txHash);
-            hashCell.appendChild(link);
-          } else {
-            hashCell.textContent = '—';
-          }
-          row.appendChild(hashCell);
-
-          // From→To cell
-          const ftCell = document.createElement('div');
-          ftCell.className = 'mono';
-          ftCell.style.cssText = 'font-size:11px;color:var(--text3)';
-          ftCell.textContent = shortFromTo(t.from, t.to, address);
-          row.appendChild(ftCell);
-
-          // Value cell
-          const valCell = document.createElement('div');
-          valCell.className = 'mono';
-          valCell.style.cssText = 'color:var(--green);text-align:right;font-weight:600';
-          valCell.textContent = (t.valueNative && t.valueNative !== '0') ? t.valueNative : '—';
-          row.appendChild(valCell);
-
-          // Method cell
-          const mCell = document.createElement('div');
-          mCell.className = 'mono';
-          mCell.style.cssText = 'color:var(--muted);font-size:11px';
-          mCell.textContent = t.method || '—';
-          row.appendChild(mCell);
-
-          // Time cell
-          const tCell = document.createElement('div');
-          tCell.style.cssText = 'text-align:right;font-size:11px;color:var(--dim)';
-          tCell.textContent = timeAgo(t.timestamp);
-          row.appendChild(tCell);
-
-          txList.appendChild(row);
-        });
-      }
+    const r = await fetch('/api/wallet/' + address);
+    const d = await r.json();
+    if(!r.ok){ set('s-score','—'); }
+    else{
+      set('s-score',  d.whaleScore != null ? Number(d.whaleScore).toFixed(2) : 'n/a');
+      set('s-sent',   (d.txCountFrom||0).toLocaleString());
+      set('s-whale',  d.inWhaleIndex ? 'Yes' : 'No');
     }
-  }catch(e){
-    console.error(e);
-    const errEl = document.getElementById('tx-list');
-    errEl.textContent = '';
-    const d = document.createElement('div'); d.className='empty';
-    d.textContent = 'Failed to load wallet data.';
-    errEl.appendChild(d);
+  }catch(_){ set('s-score','—'); }
+
+  // ── 2. Browser: explorer.arc.io txlist ──
+  let explorerWorked = false;
+  try{
+    const [txResp, tokResp] = await Promise.allSettled([
+      fetch(EXPLORER_TX_URL(address), {signal: AbortSignal.timeout(10000)}),
+      fetch(EXPLORER_TOK_URL(address), {signal: AbortSignal.timeout(10000)})
+    ]);
+
+    let txRows = [];
+    if(txResp.status === 'fulfilled' && txResp.value.ok){
+      const body = await txResp.value.json();
+      if(body && Array.isArray(body.result)) txRows = body.result;
+      else if(body && body.status === '0')   txRows = []; // valid empty
+      explorerWorked = true;
+    }
+
+    let tokCount = null;
+    if(tokResp.status === 'fulfilled' && tokResp.value.ok){
+      const tbody = await tokResp.value.json();
+      if(tbody && Array.isArray(tbody.result)) tokCount = tbody.result.length;
+    }
+
+    if(explorerWorked){
+      // Aggregate volumes + behavior
+      let inWei = BigInt(0), outWei = BigInt(0);
+      let hasSent = false, hasReceived = false;
+      for(const t of txRows){
+        const val  = BigInt(t.value||'0');
+        const from = (t.from||'').toLowerCase();
+        const to   = (t.to||'').toLowerCase();
+        if(from === address){ outWei += val; hasSent = true; }
+        if(to   === address){ inWei  += val; hasReceived = true; }
+      }
+      let behavior;
+      if(hasSent && hasReceived) behavior = 'Active';
+      else if(hasSent)           behavior = 'Sender';
+      else if(hasReceived)       behavior = 'Receiver';
+      else                       behavior = 'None';
+
+      set('s-behavior', behavior);
+      set('s-in',  fmtNative18(inWei.toString()));
+      set('s-out', fmtNative18(outWei.toString()));
+      set('s-txs', txRows.length.toLocaleString());
+      set('s-tok', tokCount != null ? tokCount.toLocaleString() : '—');
+
+      if(noteEl) noteEl.style.display = 'none';
+
+      renderRecentTxs(txRows, address, txList, countEl);
+    }
+  }catch(_){ explorerWorked = false; }
+
+  if(!explorerWorked){
+    set('s-behavior','—'); set('s-in','—'); set('s-out','—');
+    set('s-txs','—'); set('s-tok','—');
+    if(noteEl){
+      noteEl.textContent = 'History unavailable from explorer in this browser.';
+      noteEl.style.display = 'block';
+    }
+    if(txList){
+      txList.textContent = '';
+      const emp = document.createElement('div'); emp.className='empty';
+      emp.textContent = 'History unavailable from explorer in this browser.';
+      txList.appendChild(emp);
+    }
+    if(countEl) countEl.textContent = '';
   }
 
-  // ── Load whale index history (separate, from old /api/wallets/:addr) ──
+  // ── 3. Whale index history (scanner, 100k+ USDC/EURC only) ──
   try{
-    const res2 = await fetch('/api/wallets/' + address);
-    const data2 = await res2.json();
-    const txs = data2.transactions || [];
+    const r2 = await fetch('/api/wallets/' + address);
+    const d2 = await r2.json();
+    const txs = d2.transactions || [];
     const whaleTxList = document.getElementById('whale-tx-list');
     if(!whaleTxList) return;
     whaleTxList.textContent = '';
@@ -332,22 +400,18 @@ async function init(){
           link.title = t.txHash;
           link.textContent = shortHash(t.txHash);
           hashCell.appendChild(link);
-          // Explain button for whale txs
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.style.cssText = 'margin-left:8px;font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border2);background:var(--bg3);color:var(--blue3);cursor:pointer;font-family:var(--sans)';
           btn.textContent = 'Explain';
-          const txHashCopy = t.txHash;
-          btn.addEventListener('click', function(){ explainTx(txHashCopy, btn); });
+          const h = t.txHash;
+          btn.addEventListener('click', function(){ explainTx(h, btn); });
           hashCell.appendChild(btn);
-        } else {
-          hashCell.textContent = '—';
-        }
+        } else { hashCell.textContent = '—'; }
         row.appendChild(hashCell);
 
         const tokCell = document.createElement('div');
-        tokCell.className = 'mono';
-        tokCell.style.color = 'var(--blue3)';
+        tokCell.className = 'mono'; tokCell.style.color = 'var(--blue3)';
         tokCell.textContent = t.token || '—';
         row.appendChild(tokCell);
 
@@ -358,8 +422,7 @@ async function init(){
         row.appendChild(amtCell);
 
         const typeCell = document.createElement('div');
-        typeCell.className = 'mono';
-        typeCell.style.color = 'var(--muted)';
+        typeCell.className = 'mono'; typeCell.style.color = 'var(--muted)';
         typeCell.textContent = t.type || 'WHALE';
         row.appendChild(typeCell);
 
