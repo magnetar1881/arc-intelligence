@@ -752,7 +752,11 @@ async function loadFeed(){
         }
         const addrLine=document.createElement('div');
         addrLine.className='w-addr';
-        addrLine.textContent=shortAddr(w.wallet);
+        const addrLink=document.createElement('a');
+        addrLink.href='/wallets/'+encodeURIComponent(w.wallet);
+        addrLink.style.cssText='color:var(--dim);text-decoration:none';
+        addrLink.textContent=shortAddr(w.wallet);
+        addrLine.appendChild(addrLink);
         const watchBtn=document.createElement('button');
         watchBtn.style.cssText='font-size:10px;font-weight:600;color:#64748b;background:transparent;border:none;cursor:pointer;margin-left:8px;padding:0';
         watchBtn.textContent='Watch';
@@ -790,7 +794,7 @@ async function loadWallets(){
     const el=document.getElementById('top-wallets');
     if(!rows.length){el.innerHTML='<div class="empty">No wallet data yet.</div>';return}
     el.innerHTML=rows.map((w,i)=>`
-      <div class="wallet-row">
+      <a class="wallet-row" href="/wallets/${encodeURIComponent(w.wallet)}" style="text-decoration:none;color:inherit">
         <div class="w-rank">${i+1}</div>
         <div class="w-info">
           <div class="w-addr2">${escHtml(shortAddr(w.wallet))}</div>
@@ -798,7 +802,7 @@ async function loadWallets(){
         </div>
         <div class="score-bar"><div class="score-fill" style="width:${(w.whale_score||0)*100}%"></div></div>
         <div class="w-vol">${escHtml(fmt(w.total_volume))}</div>
-      </div>`).join('');
+      </a>`).join('');
   }catch(e){}
 }
 
