@@ -1093,6 +1093,117 @@ app.get("/api/wallet/:addr", async (req, res) => {
   res.json(data);
 });
 
+// ========================
+// ARC-SCAN FALLBACK PROXY
+// /api/arcscan/txlist?address=0x...
+// Falls back to api.arc-scan.org when explorer.arc.io is unavailable.
+// Same Blockscout-compatible JSON shape. Returns 502 JSON on failure.
+// ========================
+const ARCSCAN_PROXY_BASE    = "https://api.arc-scan.org";
+const ARCSCAN_PROXY_TIMEOUT = 8_000;
+const ARCSCAN_PROXY_TTL     = 30_000;
+const arcscanCache = new Map();
+
+async function serveArcScanProxy(action, address, res) {
+  const cacheKey = action + ":" + address;
+  const hit = arcscanCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < ARCSCAN_PROXY_TTL) {
+    return res.json(hit.body);
+  }
+
+  const url = `${ARCSCAN_PROXY_BASE}/api?module=account&action=${action}&address=${address}&sort=desc&page=1&offset=25`;
+  try {
+    const { status, body } = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("timeout")), ARCSCAN_PROXY_TIMEOUT);
+      const req2 = https.get(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; lensora/1.0)" } }, (r2) => {
+        clearTimeout(timer);
+        let raw = "";
+        r2.on("data", (c) => (raw += c));
+        r2.on("end", () => {
+          try { resolve({ status: r2.statusCode, body: JSON.parse(raw) }); }
+          catch (_) { reject(new Error("parse_error")); }
+        });
+      });
+      req2.on("error", (e) => { clearTimeout(timer); reject(e); });
+    });
+    if (status !== 200) {
+      return res.status(502).json({ error: "arcscan_http_" + status, url });
+    }
+    arcscanCache.set(cacheKey, { ts: Date.now(), body });
+    return res.json(body);
+  } catch (err) {
+    return res.status(502).json({ error: err.message || "arcscan_unreachable", url });
+  }
+}
+
+app.get("/api/arcscan/txlist", async (req, res) => {
+  const addr = String(req.query.address || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+  await serveArcScanProxy("txlist", addr, res);
+});
+
+// ========================
+// TOKEN HOLDINGS PROXY
+// GET /api/explorer/tokens?address=0x...
+// Primary:  explorer.arc.io /api?module=account&action=tokenlist
+// Fallback: api.arc-scan.org /v1/address/:addr/tokens (different path/shape)
+// Returns normalised array: [ { symbol, contractAddress, balance, decimals } ]
+// Cache 30 s. Does NOT write to whales table. cirBTC may appear — do not filter.
+// ========================
+const tokensCache = new Map();
+const TOKENS_CACHE_TTL = 30_000;
+
+app.get("/api/explorer/tokens", async (req, res) => {
+  const addr = String(req.query.address || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+
+  const cacheKey = "tokens:" + addr;
+  const hit = tokensCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < TOKENS_CACHE_TTL) {
+    return res.json(hit.body);
+  }
+
+  // ── Primary: explorer.arc.io tokenlist ──
+  const primaryUrl = `${EXPLORER_PROXY_BASE}/api?module=account&action=tokenlist&address=${addr}`;
+  try {
+    const { status, body } = await explorerProxyFetch(primaryUrl);
+    if (status === 200 && body && Array.isArray(body.result)) {
+      const out = body.result.map(t => ({
+        symbol:          t.symbol          || "",
+        contractAddress: (t.contractAddress || t.TokenAddress || "").toLowerCase(),
+        balance:         t.balance          || t.value || "0",
+        decimals:        t.decimals != null  ? t.decimals : null
+      }));
+      tokensCache.set(cacheKey, { ts: Date.now(), body: out });
+      return res.json(out);
+    }
+  } catch (_) { /* fall through to arc-scan */ }
+
+  // ── Fallback: api.arc-scan.org /v1/address/:addr/tokens ──
+  const fallbackUrl = `${ARCSCAN_PROXY_BASE}/v1/address/${addr}/tokens`;
+  try {
+    const { status: s2, body: b2 } = await explorerProxyFetch(fallbackUrl);
+    if (s2 === 200 && b2) {
+      // Shape varies; normalise best-effort
+      const items = Array.isArray(b2) ? b2 : (b2.result || b2.items || b2.tokens || []);
+      const out2 = items.map(t => ({
+        symbol:          t.symbol          || t.token?.symbol || "",
+        contractAddress: (t.contractAddress || t.token?.address || t.address || "").toLowerCase(),
+        balance:         String(t.balance  || t.value || t.amount || "0"),
+        decimals:        t.decimals != null ? t.decimals : (t.token?.decimals ?? null)
+      }));
+      tokensCache.set(cacheKey, { ts: Date.now(), body: out2 });
+      return res.json(out2);
+    }
+  } catch (_) {}
+
+  return res.status(502).json({ error: "token_list_unavailable", address: addr });
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
 });
