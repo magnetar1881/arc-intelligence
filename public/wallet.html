@@ -82,6 +82,42 @@ body{overflow-x:hidden}
   <div id="s-partial-note" style="display:none;margin:-8px 0 16px;font-size:11px;color:var(--text3)"></div>
   <div style="margin-bottom:16px;font-size:11px;color:var(--dim)">This card is your Arc mainnet activity. The whale feed still only lists 100k+ USDC/EURC.</div>
 
+  <!-- ═══════════════════════════════ WALLET STORY ═══════════════════════════════ -->
+  <div class="card" id="story-card" style="margin-bottom:16px">
+    <div class="card-head" style="display:flex;align-items:center;justify-content:space-between">
+      <span class="card-title">Wallet Story</span>
+      <button id="share-btn" type="button"
+        style="font-size:11px;font-family:var(--sans);font-weight:600;padding:5px 14px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--blue3);cursor:pointer;transition:background .15s"
+        onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">
+        Share
+      </button>
+    </div>
+    <div id="story-body" style="padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px">
+      <div class="skeleton" style="height:60px;border-radius:8px"></div>
+      <div class="skeleton" style="height:60px;border-radius:8px"></div>
+      <div class="skeleton" style="height:60px;border-radius:8px"></div>
+      <div class="skeleton" style="height:60px;border-radius:8px"></div>
+    </div>
+  </div>
+  <!-- ══════════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- ════════════════════════ PORTFOLIO ════════════════════════ -->
+  <div class="card" id="portfolio-card" style="margin-bottom:16px">
+    <div class="card-head">
+      <span class="card-title">Token Holdings</span>
+      <span style="font-size:10px;color:var(--dim)" id="portfolio-note"></span>
+    </div>
+    <div class="tbl-header" style="grid-template-columns:80px 1fr 120px">
+      <span class="tbl-hl">Symbol</span>
+      <span class="tbl-hl">Contract</span>
+      <span class="tbl-hl" style="text-align:right">Amount</span>
+    </div>
+    <div id="portfolio-list">
+      <div style="padding:20px"><div class="skeleton" style="height:12px;width:60%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:40%"></div></div>
+    </div>
+  </div>
+  <!-- ══════════════════════════════════════════════════════════ -->
+
   <div class="card">
     <div class="card-head">
       <span class="card-title">Recent Transactions</span>
@@ -181,8 +217,327 @@ async function explainTx(txHash, btn){
   }
 }
 
-const PROXY_TX_URL  = addr => '/api/explorer/txlist?address='  + addr;
-const PROXY_TOK_URL = addr => '/api/explorer/tokentx?address=' + addr;
+const PROXY_TX_URL      = addr => '/api/explorer/txlist?address='  + addr;
+const PROXY_TOK_URL     = addr => '/api/explorer/tokentx?address=' + addr;
+const ARCSCAN_TX_URL    = addr => '/api/arcscan/txlist?address='    + addr;
+
+// Arc token addresses (Arc mainnet chainId 5042)
+const USDC_ERC20  = '0x3600000000000000000000000000000000000000';
+const USDC_NATIVE = '0xfffffffffffffffffffffffffffffffffffffffe';
+const EURC_ADDR   = '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1';
+
+// ── Story builder ──
+// Input: txRows from txlist (Blockscout fmt), tokRows from tokentx, address
+// Returns: story object
+function buildStory(txRows, tokRows, address) {
+  const addr = address.toLowerCase();
+
+  // --- tx window: filter failed and gas-only txs ---
+  const goodTxs = (txRows || []).filter(t => {
+    if (t.isError === '1') return false;        // failed tx
+    return true;
+  });
+
+  // First tx in the fetched window (oldest in sorted-desc list = last element)
+  const firstTx = goodTxs.length ? goodTxs[goodTxs.length - 1] : null;
+  const firstTs = firstTx && firstTx.timeStamp
+    ? new Date(Number(firstTx.timeStamp) * 1000)
+    : null;
+
+  // --- USDC native in/out from txlist (18 decimals, tx.value, exclude failed) ---
+  let usdcInWei  = BigInt(0);
+  let usdcOutWei = BigInt(0);
+  for (const t of goodTxs) {
+    try {
+      const val = BigInt(t.value || '0');
+      if (val === BigInt(0)) continue;
+      const from = (t.from || '').toLowerCase();
+      const to   = (t.to   || '').toLowerCase();
+      if (from === addr) usdcOutWei += val;
+      if (to   === addr) usdcInWei  += val;
+    } catch (_) {}
+  }
+
+  // --- EURC in/out from tokentx (6 decimals, contractAddress matches EURC) ---
+  // Also de-dup USDC ERC-20 so we don't double-count
+  let eurcIn  = 0;
+  let eurcOut = 0;
+  let usdcTokIn  = 0;  // ERC-20 USDC token transfers (informational)
+  let usdcTokOut = 0;
+  const tokFiltered = (tokRows || []).filter(t => {
+    const ca = (t.contractAddress || '').toLowerCase();
+    return ca === EURC_ADDR || ca === USDC_ERC20 || ca === USDC_NATIVE;
+  });
+  for (const t of tokFiltered) {
+    const ca   = (t.contractAddress || '').toLowerCase();
+    const from = (t.from || '').toLowerCase();
+    const to   = (t.to   || '').toLowerCase();
+    const dec  = ca === EURC_ADDR ? 6 : (ca === USDC_NATIVE ? 18 : 6);
+    const raw  = Number(t.value || '0') / Math.pow(10, dec);
+    if (ca === EURC_ADDR) {
+      if (from === addr) eurcOut += raw;
+      if (to   === addr) eurcIn  += raw;
+    }
+    // Skip USDC ERC-20 — same pool as native, already counted above
+  }
+
+  // human-format native USDC (18 dec BigInt → number)
+  const DIV18 = BigInt('1000000000000000000');
+  const nIn  = Number(usdcInWei  / DIV18) + Number((usdcInWei  % DIV18) * BigInt(1000) / DIV18) / 1000;
+  const nOut = Number(usdcOutWei / DIV18) + Number((usdcOutWei % DIV18) * BigInt(1000) / DIV18) / 1000;
+
+  const txCount  = goodTxs.length;
+  const tokCount = (tokRows || []).length;
+
+  // --- Last 3 flows (most recent first from good txs) ---
+  const last3 = goodTxs.slice(0, 3).map(t => ({
+    hash:  t.hash || t.txHash || null,
+    from:  t.from || null,
+    to:    t.to   || null,
+    value: t.value || '0',
+    ts:    t.timeStamp ? new Date(Number(t.timeStamp)*1000) : null
+  }));
+
+  // --- What-changed: today vs 7-day daily average ---
+  // Only if window spans >= 7 days and >= 3 good txs
+  let whatChanged = null;
+  if (firstTs && txCount >= 3) {
+    const nowMs    = Date.now();
+    const windowMs = nowMs - firstTs.getTime();
+    const windowDays = windowMs / 86400000;
+    if (windowDays >= 7) {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0,0,0,0);
+      const todayTxs = goodTxs.filter(t => {
+        if (!t.timeStamp) return false;
+        return new Date(Number(t.timeStamp)*1000) >= todayStart;
+      });
+      // prior days excluding today
+      const priorTxs = goodTxs.filter(t => {
+        if (!t.timeStamp) return false;
+        return new Date(Number(t.timeStamp)*1000) < todayStart;
+      });
+      const priorDays = Math.max(1, Math.floor((todayStart.getTime() - firstTs.getTime()) / 86400000));
+      const dailyAvg  = priorTxs.length / priorDays;
+      const todayN    = todayTxs.length;
+      if (dailyAvg > 0) {
+        const ratio = todayN / dailyAvg;
+        if (ratio >= 2)        whatChanged = 'Today: ' + todayN + ' txs (2x+ above ' + dailyAvg.toFixed(1) + '/day avg)';
+        else if (ratio <= 0.3) whatChanged = 'Today: ' + todayN + ' txs (well below ' + dailyAvg.toFixed(1) + '/day avg)';
+        else                   whatChanged = 'Today: ' + todayN + ' txs (near ' + dailyAvg.toFixed(1) + '/day avg)';
+      } else {
+        whatChanged = 'Today: ' + todayN + ' txs. Prior avg: 0/day.';
+      }
+    }
+  }
+  if (!whatChanged) whatChanged = 'Not enough history.';
+
+  return {
+    firstTs,
+    usdcIn:  nIn,
+    usdcOut: nOut,
+    eurcIn,
+    eurcOut,
+    txCount,
+    tokCount,
+    last3,
+    whatChanged
+  };
+}
+
+function fmtStoryNum(n) {
+  if (!isFinite(n) || n < 0) return '0';
+  if (n >= 1e6)  return (n/1e6).toFixed(2)  + 'M';
+  if (n >= 1e3)  return (n/1e3).toFixed(1)  + 'K';
+  if (n >= 1)    return n.toFixed(2);
+  if (n > 0)     return n.toFixed(6);
+  return '0';
+}
+
+function renderStory(story, address) {
+  const body = document.getElementById('story-body');
+  if (!body) return;
+  body.textContent = '';
+  body.style.display = 'block';
+  body.style.gridTemplateColumns = '';
+
+  const sh = a => a ? a.slice(0,6)+'...'+a.slice(-4) : '?';
+
+  const rows = [
+    ['Window start',   story.firstTs ? story.firstTs.toISOString().slice(0,10) + ' (fetched window)' : 'n/a'],
+    ['USDC in',        fmtStoryNum(story.usdcIn)  + ' USDC'],
+    ['USDC out',       fmtStoryNum(story.usdcOut) + ' USDC'],
+    ['EURC in',        fmtStoryNum(story.eurcIn)  + ' EURC'],
+    ['EURC out',       fmtStoryNum(story.eurcOut) + ' EURC'],
+    ['Txs (window)',   story.txCount.toLocaleString()],
+    ['Token transfers',story.tokCount.toLocaleString()],
+    ['Activity trend', story.whatChanged],
+  ];
+
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;padding:16px 20px';
+
+  for (const [label, value] of rows) {
+    const cell = document.createElement('div');
+    cell.style.cssText = 'background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px';
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-bottom:6px';
+    lbl.textContent = label;
+    const val = document.createElement('div');
+    val.style.cssText = 'font-family:var(--mono);font-size:13px;font-weight:600;color:var(--blue3);word-break:break-all';
+    val.textContent = value;
+    cell.appendChild(lbl);
+    cell.appendChild(val);
+    grid.appendChild(cell);
+  }
+
+  // Last 3 flows
+  if (story.last3.length) {
+    const flowHead = document.createElement('div');
+    flowHead.style.cssText = 'grid-column:1/-1;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;font-weight:600;margin-top:4px';
+    flowHead.textContent = 'Last ' + story.last3.length + ' flows';
+    grid.appendChild(flowHead);
+
+    for (const f of story.last3) {
+      const fc = document.createElement('div');
+      fc.style.cssText = 'grid-column:1/-1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px';
+
+      const leftDiv = document.createElement('div');
+      leftDiv.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--text3)';
+
+      const hashSpan = document.createElement('span');
+      if (f.hash) {
+        const a = document.createElement('a');
+        a.href = 'https://explorer.arc.io/tx/' + f.hash;
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+        a.style.cssText = 'color:var(--blue3);text-decoration:none';
+        a.textContent = sh(f.hash);
+        hashSpan.appendChild(a);
+      } else { hashSpan.textContent = '?'; }
+      leftDiv.appendChild(hashSpan);
+
+      const arrowSpan = document.createElement('span');
+      arrowSpan.style.cssText = 'display:block;margin-top:3px;color:var(--muted)';
+      arrowSpan.textContent = sh(f.from) + ' -> ' + sh(f.to);
+      leftDiv.appendChild(arrowSpan);
+      fc.appendChild(leftDiv);
+
+      const rightDiv = document.createElement('div');
+      rightDiv.style.cssText = 'text-align:right;font-family:var(--mono);font-size:11px';
+
+      const valSpan = document.createElement('div');
+      valSpan.style.color = 'var(--green)';
+      valSpan.textContent = fmtNative18(f.value);
+      rightDiv.appendChild(valSpan);
+
+      const tsSpan = document.createElement('div');
+      tsSpan.style.color = 'var(--dim)';
+      tsSpan.textContent = f.ts ? timeAgo(f.ts.toISOString()) : '';
+      rightDiv.appendChild(tsSpan);
+      fc.appendChild(rightDiv);
+
+      grid.appendChild(fc);
+    }
+  }
+
+  body.appendChild(grid);
+}
+
+// Share handler — set up after address is known
+function setupShare(address) {
+  const btn = document.getElementById('share-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function() {
+    const url  = 'https://lensora.xyz/wallets/' + address;
+    const text = 'Arc mainnet wallet activity for ' + address.slice(0,10) + '...' + address.slice(-6) + ' on Lensora: ' + url;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+      }).catch(() => {
+        btn.textContent = 'Copy failed';
+        setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+      });
+    } else {
+      btn.textContent = 'Copy failed';
+      setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+    }
+  });
+}
+
+// ── Portfolio render ──
+// tokens: normalised array from /api/explorer/tokens
+// Columns: symbol, contract (short), amount (raw balance / 10^decimals)
+function renderPortfolio(tokens, noteEl, listEl) {
+  if (!listEl) return;
+  listEl.textContent = '';
+  const noteElem = noteEl || document.getElementById('portfolio-note');
+
+  if (!tokens || !tokens.length) {
+    const emp = document.createElement('div');
+    emp.className = 'empty';
+    emp.textContent = 'No token holdings found in this window.';
+    listEl.appendChild(emp);
+    if (noteElem) noteElem.textContent = '';
+    return;
+  }
+
+  if (noteElem) noteElem.textContent = tokens.length + ' token' + (tokens.length > 1 ? 's' : '');
+
+  for (const tok of tokens) {
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:10px 20px;border-bottom:1px solid rgba(26,42,69,.6);display:grid;grid-template-columns:80px 1fr 120px;gap:12px;align-items:center';
+
+    // Symbol
+    const symCell = document.createElement('div');
+    symCell.className = 'mono';
+    symCell.style.cssText = 'font-weight:600;color:var(--blue3);font-size:12px';
+    symCell.textContent = tok.symbol || '?';
+    row.appendChild(symCell);
+
+    // Contract address (short, links to explorer)
+    const caCell = document.createElement('div');
+    caCell.className = 'mono';
+    caCell.style.cssText = 'font-size:11px;color:var(--text3)';
+    if (tok.contractAddress && tok.contractAddress.length > 10) {
+      const a = document.createElement('a');
+      a.href = 'https://explorer.arc.io/token/' + tok.contractAddress;
+      a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.style.cssText = 'color:var(--text3);text-decoration:none';
+      a.textContent = tok.contractAddress.slice(0,8) + '...' + tok.contractAddress.slice(-6);
+      a.title = tok.contractAddress;
+      caCell.appendChild(a);
+    } else {
+      caCell.textContent = tok.contractAddress || '?';
+    }
+    row.appendChild(caCell);
+
+    // Amount: raw balance / 10^decimals
+    const amtCell = document.createElement('div');
+    amtCell.className = 'mono';
+    amtCell.style.cssText = 'text-align:right;color:var(--green);font-weight:600;font-size:12px';
+    try {
+      const dec = tok.decimals != null ? Number(tok.decimals) : 18;
+      const rawBig = BigInt(tok.balance || '0');
+      const div    = BigInt(10) ** BigInt(dec);
+      const whole  = rawBig / div;
+      const frac   = rawBig % div;
+      let display;
+      if (frac === BigInt(0)) {
+        display = whole.toLocaleString();
+      } else {
+        const fracStr = frac.toString().padStart(dec, '0').replace(/0+$/, '').slice(0, 6);
+        display = whole.toLocaleString() + '.' + fracStr;
+      }
+      amtCell.textContent = display;
+    } catch (_) {
+      amtCell.textContent = tok.balance || '0';
+    }
+    row.appendChild(amtCell);
+
+    listEl.appendChild(row);
+  }
+}
 
 // sessionStorage keys
 function ssKey(addr, kind){ return 'lensora_wallet_' + kind + '_' + addr; }
@@ -285,6 +640,7 @@ async function init(){
   }
 
   document.getElementById('wallet-address').textContent = address;
+  setupShare(address);
 
   const al = document.getElementById('w-alert-link');
   if(al) al.style.display = 'none';
@@ -306,70 +662,81 @@ async function init(){
     }
   }catch(_){ set('s-score','—'); }
 
-  // ── 2. Proxy: /api/explorer/txlist (server proxies explorer.arc.io) ──
-  // On success → update stats + table + save to sessionStorage.
-  // On failure → use last cached payload; if none, show unavailable msg.
+  // ── 2. Explorer proxy with arc-scan fallback ──
+  // Primary:  explorer.arc.io via /api/explorer/txlist + tokentx
+  // Fallback: api.arc-scan.org via /api/arcscan/txlist
+  // Final:    sessionStorage cache
+  let txRows  = null;
+  let tokRows = [];
   let explorerWorked = false;
+
   try{
+    // Primary
     const [txResp, tokResp] = await Promise.allSettled([
       fetch(PROXY_TX_URL(address)),
       fetch(PROXY_TOK_URL(address))
     ]);
-
-    let txRows = null;
     if(txResp.status === 'fulfilled' && txResp.value.ok){
       const body = await txResp.value.json();
-      if(body && Array.isArray(body.result)){
-        txRows = body.result;
-        explorerWorked = true;
-      } else if(body && body.status === '0'){
-        txRows = [];
-        explorerWorked = true;
-      }
+      if(body && Array.isArray(body.result))      txRows = body.result;
+      else if(body && body.status === '0')         txRows = [];
     }
-
-    let tokCount = null;
     if(tokResp.status === 'fulfilled' && tokResp.value.ok){
       const tbody = await tokResp.value.json();
-      if(tbody && Array.isArray(tbody.result)) tokCount = tbody.result.length;
+      if(tbody && Array.isArray(tbody.result)) tokRows = tbody.result;
     }
 
-    if(explorerWorked){
-      // Aggregate volumes + behavior
-      let inWei = BigInt(0), outWei = BigInt(0);
-      let hasSent = false, hasReceived = false;
-      for(const t of txRows){
+    // arc-scan fallback if primary txRows null
+    if(txRows === null){
+      try{
+        const fb = await fetch(ARCSCAN_TX_URL(address));
+        if(fb.ok){
+          const fbBody = await fb.json();
+          if(fbBody && Array.isArray(fbBody.result))   txRows = fbBody.result;
+          else if(fbBody && fbBody.status === '0')      txRows = [];
+        }
+      }catch(_){}
+    }
+
+    if(txRows !== null) explorerWorked = true;
+  }catch(_){ explorerWorked = false; }
+
+  if(explorerWorked){
+    // Aggregate volumes + behavior (skip failed txs)
+    let inWei = BigInt(0), outWei = BigInt(0);
+    let hasSent = false, hasReceived = false;
+    for(const t of txRows){
+      if(t.isError === '1') continue;
+      try{
         const val  = BigInt(t.value||'0');
         const from = (t.from||'').toLowerCase();
         const to   = (t.to||'').toLowerCase();
         if(from === address){ outWei += val; hasSent = true; }
         if(to   === address){ inWei  += val; hasReceived = true; }
-      }
-      let behavior;
-      if(hasSent && hasReceived) behavior = 'Active';
-      else if(hasSent)           behavior = 'Sender';
-      else if(hasReceived)       behavior = 'Receiver';
-      else                       behavior = 'None';
-
-      const payload = {
-        txRows, tokCount, behavior,
-        nativeIn:  inWei.toString(),
-        nativeOut: outWei.toString()
-      };
-      try{ sessionStorage.setItem(ssKey(address,'history'), JSON.stringify(payload)); }catch(_){}
-
-      set('s-behavior', behavior);
-      set('s-in',  fmtNative18(inWei.toString()));
-      set('s-out', fmtNative18(outWei.toString()));
-      set('s-txs', txRows.length.toLocaleString());
-      set('s-tok', tokCount != null ? tokCount.toLocaleString() : '—');
-      if(noteEl) noteEl.style.display = 'none';
-      renderRecentTxs(txRows, address, txList, countEl);
+      }catch(_){}
     }
-  }catch(_){ explorerWorked = false; }
+    let behavior;
+    if(hasSent && hasReceived) behavior = 'Active';
+    else if(hasSent)           behavior = 'Sender';
+    else if(hasReceived)       behavior = 'Receiver';
+    else                       behavior = 'None';
 
-  if(!explorerWorked){
-    // Try sessionStorage fallback
+    const tokCount = tokRows.length;
+    const payload = { txRows, tokRows, tokCount, behavior,
+                      nativeIn: inWei.toString(), nativeOut: outWei.toString() };
+    try{ sessionStorage.setItem(ssKey(address,'history'), JSON.stringify(payload)); }catch(_){}
+
+    set('s-behavior', behavior);
+    set('s-in',  fmtNative18(inWei.toString()));
+    set('s-out', fmtNative18(outWei.toString()));
+    set('s-txs', txRows.length.toLocaleString());
+    set('s-tok', tokCount.toLocaleString());
+    if(noteEl) noteEl.style.display = 'none';
+    renderRecentTxs(txRows, address, txList, countEl);
+    renderStory(buildStory(txRows, tokRows, address), address);
+
+  } else {
+    // sessionStorage cache
     let cached = null;
     try{ const raw2 = sessionStorage.getItem(ssKey(address,'history')); if(raw2) cached = JSON.parse(raw2); }catch(_){}
 
@@ -380,6 +747,7 @@ async function init(){
       set('s-txs', (cached.txRows.length||0).toLocaleString());
       set('s-tok', cached.tokCount != null ? cached.tokCount.toLocaleString() : '—');
       renderRecentTxs(cached.txRows, address, txList, countEl);
+      renderStory(buildStory(cached.txRows, cached.tokRows||[], address), address);
       if(noteEl){ noteEl.textContent = 'Showing last loaded history.'; noteEl.style.display = 'block'; }
     } else {
       if(noteEl){ noteEl.textContent = 'History temporarily unavailable.'; noteEl.style.display = 'block'; }
@@ -389,10 +757,43 @@ async function init(){
         txList.appendChild(emp);
       }
       if(countEl) countEl.textContent = '';
+      const sb = document.getElementById('story-body');
+      if(sb){ sb.textContent=''; const d=document.createElement('div'); d.className='empty'; d.style.padding='20px 0'; d.textContent='History temporarily unavailable.'; sb.appendChild(d); }
     }
   }
 
-  // ── 3. Whale index history (scanner, 100k+ USDC/EURC only) ──
+  // ── 3. Portfolio: token holdings from explorer proxy ──
+  // Keep last-good in sessionStorage if fetch fails.
+  {
+    const portList = document.getElementById('portfolio-list');
+    const portNote = document.getElementById('portfolio-note');
+    const portKey  = ssKey(address, 'portfolio');
+    let portTokens = null;
+
+    try {
+      const pr = await fetch('/api/explorer/tokens?address=' + address);
+      if (pr.ok) {
+        const pd = await pr.json();
+        if (Array.isArray(pd) && pd.length >= 0) {
+          portTokens = pd;
+          try { sessionStorage.setItem(portKey, JSON.stringify(pd)); } catch(_) {}
+        }
+      }
+    } catch (_) {}
+
+    if (portTokens === null) {
+      // last-good cache
+      try {
+        const raw = sessionStorage.getItem(portKey);
+        if (raw) portTokens = JSON.parse(raw);
+        if (portTokens && portNote) portNote.textContent = 'Showing cached holdings.';
+      } catch (_) {}
+    }
+
+    renderPortfolio(portTokens, portNote, portList);
+  }
+
+  // ── 4. Whale index history (scanner, 100k+ USDC/EURC only) ──
   try{
     const r2 = await fetch('/api/wallets/' + address);
     const d2 = await r2.json();
