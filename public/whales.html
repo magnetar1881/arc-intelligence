@@ -125,7 +125,7 @@ function renderFeed(){
     return`<div class="w-item">
       <div>
         <div class="w-token">${escHtml(w.token)}<span class="tier ${large?'tier-L':'tier-S'}">${large?'LARGE':'STD'}</span></div>
-        <div class="w-addr">${escHtml(shortAddr(w.wallet))}</div>
+        <a class="w-addr" href="/wallets/${encodeURIComponent(w.wallet)}" style="text-decoration:none;color:var(--dim)">${escHtml(shortAddr(w.wallet))}</a>
       </div>
       <div>
         <div class="w-amt">${escHtml(fmt(w.amount))}</div>
