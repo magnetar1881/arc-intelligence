@@ -10,3 +10,4 @@ data/*.db-shm
 *.save.*
 .DS_Store
 recovery/
+data/*.db*
