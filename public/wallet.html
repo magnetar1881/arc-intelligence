@@ -336,8 +336,10 @@ function buildStory(txRows, tokRows, address) {
     firstTs,
     usdcIn:  nIn,
     usdcOut: nOut,
+    usdcNet: nIn - nOut,
     eurcIn,
     eurcOut,
+    eurcNet: eurcIn - eurcOut,
     txCount,
     tokCount,
     last3,
@@ -363,15 +365,18 @@ function renderStory(story, address) {
 
   const sh = a => a ? a.slice(0,6)+'...'+a.slice(-4) : '?';
 
+  const fmtNet = n => (n >= 0 ? '+' : '') + fmtStoryNum(Math.abs(n)) + (n < 0 ? ' (net out)' : n === 0 ? '' : ' (net in)');
+
   const rows = [
-    ['Window start',   story.firstTs ? story.firstTs.toISOString().slice(0,10) + ' (fetched window)' : 'n/a'],
-    ['USDC in',        fmtStoryNum(story.usdcIn)  + ' USDC'],
-    ['USDC out',       fmtStoryNum(story.usdcOut) + ' USDC'],
-    ['EURC in',        fmtStoryNum(story.eurcIn)  + ' EURC'],
-    ['EURC out',       fmtStoryNum(story.eurcOut) + ' EURC'],
-    ['Txs (window)',   story.txCount.toLocaleString()],
-    ['Token transfers',story.tokCount.toLocaleString()],
-    ['Activity trend', story.whatChanged],
+    ['Window start',       story.firstTs ? story.firstTs.toISOString().slice(0,10) + ' (fetched window)' : 'n/a'],
+    ['USDC in (window)',   fmtStoryNum(story.usdcIn)  + ' USDC'],
+    ['USDC out (window)',  fmtStoryNum(story.usdcOut) + ' USDC'],
+    ['USDC net (window)',  fmtNet(story.usdcNet)      + ' USDC'],
+    ['EURC in (window)',   fmtStoryNum(story.eurcIn)  + ' EURC'],
+    ['EURC out (window)',  fmtStoryNum(story.eurcOut) + ' EURC'],
+    ['EURC net (window)',  fmtNet(story.eurcNet)      + ' EURC'],
+    ['Token transfers',    story.tokCount.toLocaleString()],
+    ['Activity trend',     story.whatChanged],
   ];
 
   const grid = document.createElement('div');
