@@ -406,17 +406,34 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// wallet.js'deki updateWalletUI'yi override et
+</script>
+<script src="/wallet.js"></script>
+<script>
+// wallet.js loaded — override updateWalletUI, same pattern as swap.html
 const _origUpdate = window.updateWalletUI;
 window.updateWalletUI = function(address) {
   if (_origUpdate) _origUpdate(address);
   if (address) onWalletConnected(address);
   else          onWalletDisconnected();
 };
-</script>
-<script src="/wallet.js"></script>
-<script>
-// wallet.js yüklendikten sonra mevcut bağlantıyı kontrol et
+
+// Wrap connectWallet to surface errors in the page status area
+const _origConnect = window.connectWallet;
+window.connectWallet = async function() {
+  try {
+    await _origConnect();
+  } catch (e) {
+    const statusEl  = document.getElementById('status-msg');
+    const statusTxt = document.getElementById('status-text');
+    if (statusEl && statusTxt) {
+      statusEl.className = 'status-msg status-error';
+      statusEl.style.display = 'block';
+      statusTxt.textContent = 'Wallet connect error: ' + (e.message || String(e));
+    }
+  }
+};
+
+// Check for already-connected wallet on page load
 if (typeof connectedWallet === 'string' && connectedWallet) {
   onWalletConnected(connectedWallet);
 }
