@@ -22,9 +22,9 @@
   "author": "magnetar1881",
   "license": "MIT",
   "dependencies": {
-    "@circle-fin/adapter-viem-v2": "^1.18.0",
-    "@circle-fin/app-kit": "^1.15.1",
-    "@circle-fin/swap-kit": "^1.7.0",
+    "@circle-fin/adapter-viem-v2": "1.19.1",
+    "@circle-fin/app-kit": "1.17.0",
+    "@circle-fin/swap-kit": "1.8.0",
 
     "dotenv": "^17.4.2",
     "ethers": "^6.16.0",

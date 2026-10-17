@@ -50602,6 +50602,13 @@ ${prettyStateOverride(stateOverride)}`;
       type: "SERVICE"
     }
   };
+  function describeObjectValue(value) {
+    try {
+      return JSON.stringify(value, (_key, entry) => typeof entry === "bigint" ? entry.toString() : entry);
+    } catch {
+      return "[unserializable object]";
+    }
+  }
   function createUnsupportedSwapRouteError(tokenIn, tokenOut, chain) {
     const errorDetails = {
       ...InputError.UNSUPPORTED_ROUTE,
@@ -50665,7 +50672,7 @@ ${prettyStateOverride(stateOverride)}`;
     if (typeof value === "string") {
       valueString = `'${value}'`;
     } else if (typeof value === "object" && value !== null) {
-      valueString = JSON.stringify(value);
+      valueString = describeObjectValue(value);
     } else {
       valueString = String(value);
     }
@@ -50991,11 +50998,40 @@ ${prettyStateOverride(stateOverride)}`;
     "0x9147d463": "Final balance is less than the initial balance",
     "0xf4b3b1bc": "Native token transfer to the beneficiary failed"
   };
-  function extractErrorSelector(msg, error) {
-    if (error !== null && typeof error === "object" && "data" in error) {
-      if (typeof error.data === "string" && /^0x[0-9a-f]{8}$/i.test(error.data)) {
-        return error.data.toLowerCase();
+  var REVERT_DATA_PATTERN = /^0x[0-9a-f]{8}(?:[0-9a-f]{2})*$/i;
+  function getRevertData(link) {
+    if ("raw" in link && typeof link.raw === "string" && REVERT_DATA_PATTERN.test(link.raw)) {
+      return link.raw;
+    }
+    if (!("data" in link)) {
+      return void 0;
+    }
+    const { data } = link;
+    if (typeof data === "string") {
+      return data;
+    }
+    if (data !== null && typeof data === "object" && "data" in data && typeof data.data === "string") {
+      return data.data;
+    }
+    return void 0;
+  }
+  function findRevertData(error, accept) {
+    const seen = /* @__PURE__ */ new Set();
+    let current = error;
+    while (current !== null && typeof current === "object" && !seen.has(current)) {
+      seen.add(current);
+      const data = getRevertData(current);
+      if (data !== void 0 && accept(data)) {
+        return data;
       }
+      current = "cause" in current ? current.cause : void 0;
+    }
+    return void 0;
+  }
+  function extractErrorSelector(msg, error) {
+    const data = findRevertData(error, (value) => /^0x[0-9a-f]{8}$/i.test(value));
+    if (data !== void 0) {
+      return data.toLowerCase();
     }
     const match = /custom error (0x[0-9a-f]{8})\b/i.exec(msg);
     const selector = match?.[1];
@@ -51121,7 +51157,7 @@ ${prettyStateOverride(stateOverride)}`;
     } else if (typeof error === "string") {
       errorMessage = error;
     } else {
-      errorMessage = JSON.stringify(error);
+      errorMessage = describeObjectValue(error);
     }
     const lowerMessage = errorMessage.toLowerCase();
     const cancellationPatterns = [
@@ -51146,6 +51182,44 @@ ${prettyStateOverride(stateOverride)}`;
       }
     }
     return false;
+  }
+  function extractHttpStatusCode(msg) {
+    const patterns = [
+      /HTTP (\d{3})/i,
+      /Status:\s*(\d{3})/i,
+      /^(\d{3}) -/
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(msg);
+      const codeStr = match?.at(1);
+      if (codeStr !== void 0) {
+        const code = Number.parseInt(codeStr, 10);
+        if (code >= 100 && code < 600) {
+          return code;
+        }
+      }
+    }
+    return null;
+  }
+  function hasResponseBody(error) {
+    return typeof error === "object" && error !== null && "responseBody" in error && typeof error["responseBody"] === "object" && error["responseBody"] !== null;
+  }
+  function isRecord(value) {
+    return typeof value === "object" && value !== null;
+  }
+  function extractResponseBody$1(error) {
+    if (!hasResponseBody(error)) {
+      return void 0;
+    }
+    const body = error.responseBody;
+    const response = body["response"];
+    if (isRecord(response)) {
+      const status = response["status"];
+      if (isRecord(status)) {
+        return status;
+      }
+    }
+    return body;
   }
   var ProxyErrorCode = {
     /** Swap amount outside the upstream provider's accepted bounds (HTTP 400) */
@@ -51338,14 +51412,8 @@ ${prettyStateOverride(stateOverride)}`;
       }
     });
   }
-  function hasResponseBody(error) {
-    return typeof error === "object" && error !== null && "responseBody" in error && typeof error["responseBody"] === "object" && error["responseBody"] !== null;
-  }
   function extractResponseBody(error) {
-    if (!hasResponseBody(error)) {
-      return void 0;
-    }
-    return error.responseBody;
+    return extractResponseBody$1(error);
   }
   function extractFieldName(entry) {
     if (typeof entry.field === "string" && entry.field.length > 0) {
@@ -51399,24 +51467,6 @@ ${prettyStateOverride(stateOverride)}`;
       return `${topMessage}: ${fieldDetail}`;
     }
     return topMessage ?? fieldDetail;
-  }
-  function extractHttpStatusCode(msg) {
-    const patterns = [
-      /HTTP (\d{3})/i,
-      /Status:\s*(\d{3})/i,
-      /^(\d{3}) -/
-    ];
-    for (const pattern of patterns) {
-      const match = pattern.exec(msg);
-      const codeStr = match?.at(1);
-      if (codeStr !== void 0) {
-        const code = Number.parseInt(codeStr, 10);
-        if (code >= 100 && code < 600) {
-          return code;
-        }
-      }
-    }
-    return null;
   }
   var Blockchain;
   (function(Blockchain4) {
@@ -51513,6 +51563,8 @@ ${prettyStateOverride(stateOverride)}`;
     SwapChain4["HyperEVM"] = "HyperEVM";
     SwapChain4["Monad"] = "Monad";
     SwapChain4["Arc"] = "Arc";
+    SwapChain4["Cronos"] = "Cronos";
+    SwapChain4["Morph"] = "Morph";
     SwapChain4["Arc_Testnet"] = "Arc_Testnet";
   })(SwapChain || (SwapChain = {}));
   var BridgeChain;
@@ -51616,6 +51668,11 @@ ${prettyStateOverride(stateOverride)}`;
     "Arc",
     "Arc_Testnet"
   ];
+  var BorrowChain;
+  (function(BorrowChain4) {
+    BorrowChain4["Arc"] = "Arc";
+    BorrowChain4["Arc_Testnet"] = "Arc_Testnet";
+  })(BorrowChain || (BorrowChain = {}));
   function defineChain(chain) {
     return chain;
   }
@@ -51827,6 +51884,8 @@ ${prettyStateOverride(stateOverride)}`;
   var BRIDGE_CONTRACT_EVM_MAINNET = "0xB3FA262d0fB521cc93bE83d87b322b8A23DAf3F0";
   var ADAPTER_CONTRACT_EVM_MAINNET = "0x7FB8c7260b63934d8da38aF902f87ae6e284a845";
   var ADAPTER_CONTRACT_EVM_TESTNET = "0xBBD70b01a1CAbc96d5b7b129Ae1AAabdf50dd40b";
+  var BATCHER_CONTRACT_ARC_TESTNET = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
+  var BATCHER_CONTRACT_ARC_MAINNET = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
   var GATEWAY_WALLET_EVM_MAINNET = "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE";
   var GATEWAY_MINTER_EVM_MAINNET = "0x2222222d7164433c4C09B0b0D809a9b52C04C205";
   var GATEWAY_WALLET_EVM_TESTNET = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
@@ -51884,7 +51943,10 @@ ${prettyStateOverride(stateOverride)}`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_MAINNET,
-      adapter: ADAPTER_CONTRACT_EVM_MAINNET
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_MAINNET
     },
     gateway: {
       domain: 26,
@@ -51946,7 +52008,10 @@ ${prettyStateOverride(stateOverride)}`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_TESTNET,
-      adapter: ADAPTER_CONTRACT_EVM_TESTNET
+      adapter: ADAPTER_CONTRACT_EVM_TESTNET,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_TESTNET
     },
     gateway: {
       domain: 26,
@@ -52505,7 +52570,8 @@ ${prettyStateOverride(stateOverride)}`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET
     }
   });
   var CronosTestnet = defineChain({
@@ -53264,7 +53330,8 @@ ${prettyStateOverride(stateOverride)}`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET
     }
   });
   var MorphTestnet = defineChain({
@@ -54919,6 +54986,10 @@ ${prettyStateOverride(stateOverride)}`;
     Blockchain.Linea_Sepolia,
     Blockchain.World_Chain_Sepolia
   ]);
+  function hasCustomContractSupport(chain, contractType) {
+    const contractAddress = chain.kitContracts?.[contractType];
+    return typeof contractAddress === "string" && contractAddress.trim().length > 0;
+  }
   /* @__PURE__ */ new Set([
     // Mainnet
     Blockchain.Ethereum,
@@ -55004,7 +55075,8 @@ ${prettyStateOverride(stateOverride)}`;
     cctpx: external_exports.any().optional(),
     kitContracts: external_exports.object({
       bridge: external_exports.string().optional(),
-      adapter: external_exports.string().optional()
+      adapter: external_exports.string().optional(),
+      senderPreservingBatcher: external_exports.string().optional()
     }).optional(),
     gateway: gatewayConfigSchema.optional()
   });
@@ -55067,6 +55139,15 @@ ${prettyStateOverride(stateOverride)}`;
       message: `"${chain.chain}" is not a supported earn chain. Supported chains: ${Object.values(EarnChain).join(", ")}`
     }))
   ]);
+  external_exports.union([
+    external_exports.string().refine((val) => val in BorrowChain, (val) => ({
+      message: `"${val}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain).join(", ")}`
+    })),
+    external_exports.nativeEnum(BorrowChain),
+    chainDefinitionSchema$2.refine((chain) => chain.chain in BorrowChain, (chain) => ({
+      message: `"${chain.chain}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain).join(", ")}`
+    }))
+  ]);
   var EARN_BRIDGE_SOURCE_CHAIN_VALUES = EARN_BRIDGE_SOURCE_BLOCKCHAINS;
   var EARN_BRIDGE_DESTINATION_CHAIN_VALUES = EARN_BRIDGE_DESTINATION_BLOCKCHAINS;
   external_exports.union([
@@ -55123,8 +55204,13 @@ ${prettyStateOverride(stateOverride)}`;
   function resolveChainName(value) {
     if (value == null) return void 0;
     if (typeof value === "string") return value;
-    if (typeof value === "object" && "chain" in value && typeof value.chain === "string") {
-      return value.chain;
+    try {
+      if (typeof value === "object" && "chain" in value) {
+        const chain = value.chain;
+        if (typeof chain === "string") return chain;
+      }
+    } catch {
+      return void 0;
     }
     return void 0;
   }
@@ -55203,7 +55289,7 @@ ${prettyStateOverride(stateOverride)}`;
     if (!(chain.chain in SwapChain)) {
       return false;
     }
-    if (!isCCTPV2Supported(chain)) {
+    if (!isCCTPV2Supported(chain) && !hasCustomContractSupport(chain, "adapter")) {
       return false;
     }
     return true;
@@ -55422,7 +55508,7 @@ ${prettyStateOverride(stateOverride)}`;
         return await makeApiRequest(url, method, isValidType, effectiveConfig, body);
       } catch (err2) {
         const error = err2 instanceof Error ? err2 : new Error(String(err2));
-        if (!isRetryableError(error)) {
+        if (effectiveConfig.isTerminalError?.(error) === true || !isRetryableError(error)) {
           throw error;
         }
         lastError = error;
@@ -55445,7 +55531,24 @@ ${prettyStateOverride(stateOverride)}`;
     return pollApiWithValidation(url, "POST", isValidType, config, body);
   };
   function validate3(value, schema, context) {
-    const result = schema.safeParse(value);
+    let result;
+    try {
+      result = schema.safeParse(value);
+    } catch (error) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid ${context}: reading a property threw`,
+        cause: {
+          trace: {
+            validationErrors: [
+              "Reading a property of the value threw"
+            ],
+            originalError: error
+          }
+        }
+      });
+    }
     if (!result.success) {
       throw createValidationErrorFromZod(result.error, context);
     }
@@ -55693,11 +55796,13 @@ ${prettyStateOverride(stateOverride)}`;
       [Blockchain.Arbitrum]: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
       [Blockchain.Avalanche]: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
       [Blockchain.Celo]: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+      [Blockchain.Cronos]: "0x66e428c3f67a68878562e79A0234c1F83c208770",
       [Blockchain.Ethereum]: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
       [Blockchain.HyperEVM]: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
       [Blockchain.Ink]: "0x0200C29006150606B650577BBE7B6248F58470c1",
       [Blockchain.Linea]: "0xA219439258ca9da29E9Cc4cE5596924745e12B93",
       [Blockchain.Monad]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
+      [Blockchain.Morph]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
       [Blockchain.NEAR]: "usdt.tether-token.near",
       [Blockchain.Optimism]: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
       [Blockchain.Polkadot_Asset_Hub]: "1984",
@@ -55742,6 +55847,7 @@ ${prettyStateOverride(stateOverride)}`;
       [Blockchain.Arbitrum]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
       [Blockchain.Avalanche]: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70",
       [Blockchain.Base]: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      [Blockchain.Cronos]: "0xF2001B145b43032AAF5Ee2884e456CCd805F677D",
       [Blockchain.Ethereum]: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
       [Blockchain.Linea]: "0x4AF15ec2A0BD43Db75dd04E62FAA3B8EF36b00d5",
       [Blockchain.Optimism]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
@@ -55783,7 +55889,9 @@ ${prettyStateOverride(stateOverride)}`;
       [Blockchain.Arbitrum]: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
       [Blockchain.Avalanche]: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB",
       [Blockchain.Base]: "0x4200000000000000000000000000000000000006",
+      [Blockchain.Cronos]: "0xe44Fd7fCb2b1581822D0c862B68222998a0c299a",
       [Blockchain.Ethereum]: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      [Blockchain.Morph]: "0x5300000000000000000000000000000000000011",
       [Blockchain.Optimism]: "0x4200000000000000000000000000000000000006",
       [Blockchain.Polygon]: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
       [Blockchain.Solana]: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"
@@ -55795,6 +55903,7 @@ ${prettyStateOverride(stateOverride)}`;
     locators: {
       [Blockchain.Ethereum]: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
       [Blockchain.Arbitrum]: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      [Blockchain.Cronos]: "0x062E66477Faf219F25D27dCED647BF57C3107d52",
       [Blockchain.Avalanche]: "0x50b7545627a5162F82A992c33b87aDc75187B218"
     }
   };
@@ -56284,7 +56393,7 @@ ${prettyStateOverride(stateOverride)}`;
     }
   }
   var name = "@circle-fin/swap-kit";
-  var version7 = "1.7.0";
+  var version7 = "1.8.0";
   var pkg = {
     name,
     version: version7
@@ -56363,7 +56472,10 @@ ${prettyStateOverride(stateOverride)}`;
     return parseAllowanceResponse(await executeAdapterReadAction(adapter, "token.allowance", params, ctx));
   }
   function parseAllowanceResponse(allowanceRaw) {
-    let value = allowanceRaw;
+    return parseTokenAmountResponse("token.allowance", allowanceRaw);
+  }
+  function parseTokenAmountResponse(action, amountRaw) {
+    let value = amountRaw;
     if (typeof value === "object" && value !== null && "amount" in value) {
       const amount = value.amount;
       if (typeof amount === "object" && amount !== null && "raw" in amount) {
@@ -56373,20 +56485,20 @@ ${prettyStateOverride(stateOverride)}`;
     if (value === void 0 || value === null) {
       return 0n;
     }
-    let allowance2;
+    let parsed;
     if (typeof value === "bigint") {
-      allowance2 = value;
+      parsed = value;
     } else if (typeof value === "string") {
       try {
-        allowance2 = BigInt(value);
+        parsed = BigInt(value);
       } catch {
-        allowance2 = void 0;
+        parsed = void 0;
       }
     }
-    if (allowance2 === void 0 || allowance2 < 0n) {
-      throw createValidationFailedError$1("token.allowance", value, "token.allowance response must be a non-negative bigint-compatible string or bigint");
+    if (parsed === void 0 || parsed < 0n) {
+      throw createValidationFailedError$1(action, value, `${action} response must be a non-negative bigint-compatible string or bigint`);
     }
-    return allowance2;
+    return parsed;
   }
   var hexStringSchema = external_exports.string().min(1, "Hex string is required").refine((value) => value.trim().length > 0, "Hex string cannot be empty").refine((value) => value.startsWith("0x"), "Hex string must start with 0x prefix").refine((value) => {
     const hexPattern = /^0x[0-9a-fA-F]+$/;
@@ -56411,6 +56523,11 @@ ${prettyStateOverride(stateOverride)}`;
     PermitType4[PermitType4["NONE"] = 0] = "NONE";
     PermitType4[PermitType4["EIP2612"] = 1] = "EIP2612";
   })(PermitType || (PermitType = {}));
+  var BorrowPermitType;
+  (function(BorrowPermitType4) {
+    BorrowPermitType4[BorrowPermitType4["NONE"] = 0] = "NONE";
+    BorrowPermitType4[BorrowPermitType4["EIP2612"] = 1] = "EIP2612";
+  })(BorrowPermitType || (BorrowPermitType = {}));
   var chainIdentifierField = external_exports.custom((value) => chainIdentifierSchema.safeParse(value).success, {
     message: "chain must be a valid chain identifier"
   });
@@ -56645,6 +56762,50 @@ ${prettyStateOverride(stateOverride)}`;
   }, {
     message: "fee amount must be non-negative (>= 0)"
   });
+  var withFallback = (schema, fallback2) => external_exports.preprocess((value) => schema.safeParse(value).success ? value : fallback2, schema);
+  var swapRouteTokenSchema = external_exports.object({
+    symbol: external_exports.string(),
+    address: external_exports.string(),
+    decimals: external_exports.number()
+  });
+  var swapRouteMetadataSchema = external_exports.record(external_exports.unknown()).optional();
+  var swapRouteStepSchema = external_exports.object({
+    type: external_exports.string(),
+    tool: external_exports.string(),
+    toolName: external_exports.string(),
+    fromToken: swapRouteTokenSchema,
+    toToken: swapRouteTokenSchema,
+    estimate: external_exports.object({
+      fromAmount: external_exports.string(),
+      toAmount: external_exports.string(),
+      gasCostUSD: external_exports.string().optional()
+    }),
+    metadata: swapRouteMetadataSchema
+  });
+  var swapRouteSchema = external_exports.object({
+    provider: external_exports.string().min(1, "provider must be a non-empty string"),
+    steps: external_exports.array(swapRouteStepSchema),
+    metadata: swapRouteMetadataSchema
+  });
+  var responseSwapRouteSchema = swapRouteSchema.extend({
+    steps: withFallback(swapRouteSchema.shape.steps, []),
+    metadata: withFallback(swapRouteMetadataSchema, void 0)
+  });
+  var createSwapFeeItemSchema = external_exports.object({
+    token: external_exports.string({
+      required_error: "fee token is required",
+      invalid_type_error: "fee token must be a string"
+    }).min(1, "fee token must be a non-empty string"),
+    amount: feeAmountSchema,
+    decimals: external_exports.number().int("fee token decimals must be an integer").nonnegative("fee token decimals must be a non-negative integer").optional(),
+    symbol: external_exports.string({
+      invalid_type_error: "fee token symbol must be a string"
+    }).min(1, "fee token symbol must be a non-empty string").optional(),
+    // Descriptive metadata: a value the SDK cannot use is dropped rather than
+    // failing the response that carries the fee.
+    type: withFallback(external_exports.string().min(1).optional(), void 0),
+    chain: withFallback(external_exports.string().min(1).optional(), void 0)
+  });
   var apiKeySchema = external_exports.string({
     required_error: "API key is required",
     invalid_type_error: "Invalid API key format"
@@ -56691,10 +56852,7 @@ ${prettyStateOverride(stateOverride)}`;
       /** Guaranteed minimum output amount (base units) */
       minAmount: external_exports.string().min(1, "minAmount must be a non-empty string").regex(/^\d+$/, "minAmount must be a numeric string"),
       /** Route information from DEX aggregator */
-      route: external_exports.object({
-        provider: external_exports.string().min(1, "provider must be a non-empty string"),
-        steps: external_exports.array(external_exports.unknown())
-      })
+      route: responseSwapRouteSchema
     }),
     /** Fee context indicating where fees should be collected */
     feeContext: quoteFeeContextSchema
@@ -56881,17 +57039,6 @@ ${prettyStateOverride(stateOverride)}`;
     }).min(1, "toChain must be a non-empty string if provided").optional(),
     apiKey: apiKeySchema.optional()
   });
-  var createSwapFeeItemSchema = external_exports.object({
-    token: external_exports.string({
-      required_error: "fee token is required",
-      invalid_type_error: "fee token must be a string"
-    }).min(1, "fee token must be a non-empty string"),
-    amount: feeAmountSchema,
-    decimals: external_exports.number().int("fee token decimals must be an integer").nonnegative("fee token decimals must be a non-negative integer").optional(),
-    symbol: external_exports.string({
-      invalid_type_error: "fee token symbol must be a string"
-    }).min(1, "fee token symbol must be a non-empty string").optional()
-  });
   var createSwapDeveloperFeeItemSchema = createSwapFeeItemSchema.extend({
     basis: external_exports.enum([
       "inputAmount",
@@ -56986,9 +57133,12 @@ ${prettyStateOverride(stateOverride)}`;
     correlationId: external_exports.preprocess((value) => external_exports.string().uuid().safeParse(value).success ? value : void 0, external_exports.string().optional()),
     config: createSwapRequestBaseSchema.shape.config.optional(),
     fees: createSwapFeesSchema.optional(),
+    // A route the SDK cannot parse is dropped instead of failing the swap.
+    route: withFallback(responseSwapRouteSchema.optional(), void 0),
     transaction: createSwapTransactionSchema
   });
   var isGetQuoteResponse = (obj) => getQuoteResponseSchema.safeParse(obj).success;
+  var parseGetQuoteResponse = (obj) => getQuoteResponseSchema.parse(obj);
   var isCreateSwapResponse = (obj) => createSwapResponseSchema.safeParse(obj).success;
   var parseCreateSwapResponse = (obj) => createSwapResponseSchema.parse(obj);
   var isGetSwapStatusResponse = (obj) => getSwapStatusResponseSchema.safeParse(obj).success;
@@ -57076,7 +57226,8 @@ ${prettyStateOverride(stateOverride)}`;
         }
       }
     };
-    return pollApiGet(url, isGetQuoteResponse, effectiveConfig);
+    const rawResponse = await pollApiGet(url, isGetQuoteResponse, effectiveConfig);
+    return parseGetQuoteResponse(rawResponse);
   };
   var buildSwapStatusUrl = (params) => {
     const url = new URL("/v1/stablecoinKits/swap/status", STABLECOIN_SERVICE_BASE_URL);
@@ -57156,2624 +57307,6 @@ ${prettyStateOverride(stateOverride)}`;
     };
     return pollApiGet(url, isGetTokenRatesResponse, effectiveConfig);
   };
-  external_exports.object({
-    /**
-     * Defines who controls the address used in operations.
-     * Must be either 'user-controlled' or 'developer-controlled'.
-     */
-    addressContext: external_exports.enum([
-      "user-controlled",
-      "developer-controlled"
-    ], {
-      errorMap: () => ({
-        message: "addressContext must be either 'user-controlled' or 'developer-controlled'. Use 'user-controlled' for browser wallets, private keys, or hardware wallets. Use 'developer-controlled' for enterprise custody solutions or multi-entity adapters."
-      })
-    }),
-    /**
-     * Array of supported chains. Must contain at least one EVM chain.
-     * All chains must be valid EVM ChainDefinition objects.
-     */
-    supportedChains: external_exports.array(external_exports.object({
-      type: external_exports.literal("evm"),
-      chainId: external_exports.number()
-    }).passthrough(), {
-      errorMap: () => ({
-        message: "supportedChains must be an array. Provide an array of EVM ChainDefinition objects."
-      })
-    }).min(1, {
-      message: "supportedChains cannot be empty. Please specify at least one supported chain."
-    })
-  }).strict();
-  var eip712DomainSchema = external_exports.object({
-    name: external_exports.string({
-      required_error: "Domain name is required. Please provide the domain name.",
-      invalid_type_error: "Domain name must be a string."
-    }).min(1, "Domain name cannot be empty."),
-    version: external_exports.string({
-      required_error: "Domain version is required. Please provide the domain version.",
-      invalid_type_error: "Domain version must be a string."
-    }).min(1, "Domain version cannot be empty."),
-    chainId: external_exports.number({
-      invalid_type_error: "Chain ID must be a number."
-    }).int("Chain ID must be an integer.").positive("Chain ID must be positive.").optional(),
-    verifyingContract: external_exports.string({
-      invalid_type_error: "Verifying contract address must be a string."
-    }).regex(/^0x[a-fA-F0-9]{40}$/, "Verifying contract must be a valid Ethereum address.").optional(),
-    salt: external_exports.string().regex(/^0x[a-fA-F0-9]+$/, "Salt must be a valid hex string.").optional()
-  });
-  var gatewayEip712DomainSchema = external_exports.object({
-    name: external_exports.string({
-      required_error: "Domain name is required. Please provide the domain name.",
-      invalid_type_error: "Domain name must be a string."
-    }).min(1, "Domain name cannot be empty."),
-    version: external_exports.string({
-      required_error: "Domain version is required. Please provide the domain version.",
-      invalid_type_error: "Domain version must be a string."
-    }).min(1, "Domain version cannot be empty.")
-  });
-  var typedDataFieldSchema = external_exports.object({
-    name: external_exports.string({
-      required_error: "Field name is required. Please provide the field name.",
-      invalid_type_error: "Field name must be a string."
-    }).min(1, "Field name cannot be empty"),
-    type: external_exports.string({
-      required_error: "Field type is required. Please provide the Solidity type.",
-      invalid_type_error: "Field type must be a string."
-    }).min(1, "Field type cannot be empty")
-  });
-  external_exports.object({
-    domain: eip712DomainSchema,
-    types: external_exports.record(external_exports.string().min(1, "Type name cannot be empty."), external_exports.array(typedDataFieldSchema, {
-      required_error: "Type definition is required. Please provide an array of field definitions.",
-      invalid_type_error: "Type definition must be an array of TypedDataField objects."
-    }).min(1, "Type definition cannot be empty. Please provide at least one field.")).refine((types) => Object.keys(types).length > 0, "Types object cannot be empty. Please provide at least one type definition."),
-    primaryType: external_exports.string({
-      required_error: "Primary type is required. Please provide the primary type name.",
-      invalid_type_error: "Primary type must be a string."
-    }).min(1, "Primary type cannot be empty."),
-    message: external_exports.record(external_exports.unknown(), {
-      required_error: "Message is required. Please provide the message object.",
-      invalid_type_error: "Message must be an object."
-    })
-  }).refine((data) => data.primaryType in data.types, (data) => ({
-    message: `Primary type "${data.primaryType}" must exist in the types definition. Available types: ${Object.keys(data.types).join(", ")}.`,
-    path: [
-      "primaryType"
-    ]
-  }));
-  external_exports.object({
-    domain: gatewayEip712DomainSchema,
-    types: external_exports.record(external_exports.string().min(1, "Type name cannot be empty."), external_exports.array(typedDataFieldSchema, {
-      required_error: "Type definition is required. Please provide an array of field definitions.",
-      invalid_type_error: "Type definition must be an array of TypedDataField objects."
-    }).min(1, "Type definition cannot be empty. Please provide at least one field.")).refine((types) => Object.keys(types).length > 0, "Types object cannot be empty. Please provide at least one type definition."),
-    primaryType: external_exports.string({
-      required_error: "Primary type is required. Please provide the primary type name.",
-      invalid_type_error: "Primary type must be a string."
-    }).min(1, "Primary type cannot be empty."),
-    message: external_exports.record(external_exports.unknown(), {
-      required_error: "Message is required. Please provide the message object.",
-      invalid_type_error: "Message must be an object."
-    })
-  }).refine((data) => data.primaryType in data.types, (data) => ({
-    message: `Primary type "${data.primaryType}" must exist in the types definition. Available types: ${Object.keys(data.types).join(", ")}.`,
-    path: [
-      "primaryType"
-    ]
-  }));
-  var abiParameterSchema = external_exports.object({
-    name: external_exports.string(),
-    type: external_exports.string().min(1, "Parameter type cannot be empty"),
-    internalType: external_exports.string().optional(),
-    components: external_exports.lazy(() => external_exports.array(abiParameterSchema)).optional()
-  });
-  var abiEntrySchema = external_exports.object({
-    type: external_exports.enum([
-      "function",
-      "constructor",
-      "event",
-      "fallback",
-      "receive",
-      "error"
-    ]),
-    name: external_exports.string().optional(),
-    inputs: external_exports.array(abiParameterSchema).default([]),
-    outputs: external_exports.array(abiParameterSchema).optional(),
-    stateMutability: external_exports.enum([
-      "pure",
-      "view",
-      "nonpayable",
-      "payable"
-    ]).optional(),
-    // Legacy fields for backwards compatibility
-    constant: external_exports.boolean().optional(),
-    payable: external_exports.boolean().optional(),
-    anonymous: external_exports.boolean().optional()
-  });
-  var abiSchema = external_exports.array(abiEntrySchema).min(1, "ABI must contain at least one entry");
-  adapterSchema.extend({
-    chainType: external_exports.union([
-      external_exports.literal("evm"),
-      external_exports.literal("hybrid")
-    ]),
-    actionRegistry: external_exports.object({
-      registerHandlers: external_exports.function().returns(external_exports.any()),
-      actionHandlers: external_exports.map(external_exports.string(), external_exports.function().returns(external_exports.any()))
-    })
-  });
-  external_exports.object({
-    type: external_exports.literal("evm"),
-    abi: abiSchema,
-    address: evmAddressSchema,
-    functionName: external_exports.string({
-      required_error: "Function name is required",
-      invalid_type_error: "Function name must be a string"
-    }).min(1, "Function name cannot be empty").refine((name4) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name4), "Function name must be a valid identifier (letters, numbers, underscore, dollar sign, cannot start with number)"),
-    args: external_exports.array(external_exports.unknown(), {
-      required_error: "Arguments array is required",
-      invalid_type_error: "Arguments must be an array"
-    })
-  });
-  external_exports.object({
-    address: evmAddressSchema,
-    value: external_exports.bigint({
-      required_error: "Value is required for native transfers",
-      invalid_type_error: "Value must be a bigint"
-    }).refine((val) => val > BigInt(0), {
-      message: "Value must be greater than 0"
-    })
-  });
-  external_exports.string({
-    required_error: "Transaction hash is required and must be a string. Please provide a valid transaction hash.",
-    invalid_type_error: "Transaction hash is required and must be a string. Please provide a valid transaction hash."
-  }).min(1, {
-    message: "Transaction hash cannot be empty. Please provide a valid transaction hash."
-  }).refine((hash3) => hash3.startsWith("0x") && hash3.length === 66, (hash3) => ({
-    message: `Transaction hash "${hash3}" is not a valid format. Expected a 32-byte hex string prefixed with '0x' (66 characters total).`
-  })).refine((hash3) => /^0x[0-9a-fA-F]{64}$/.test(hash3), (hash3) => ({
-    message: `Transaction hash "${hash3}" contains invalid characters. Only hexadecimal characters (0-9, a-f, A-F) are allowed after '0x'.`
-  }));
-  external_exports.string({
-    required_error: "Private key is required. Please provide a valid private key.",
-    invalid_type_error: "Private key must be a string. Please provide a valid private key."
-  }).transform((val) => val.startsWith("0x") ? val : `0x${val}`).pipe(external_exports.string().regex(/^0x[0-9a-fA-F]{64}$/, {
-    message: 'Private key must be a valid 64-character hex string. Please provide a valid private key with or without "0x" prefix.'
-  }));
-  var SIGNATURE_BYTE_LENGTH = 65;
-  var HEX_CHARS_PER_BYTE$1 = 2;
-  var SIGNATURE_HEX_LENGTH = SIGNATURE_BYTE_LENGTH * HEX_CHARS_PER_BYTE$1;
-  var R_HEX_LENGTH = 32 * HEX_CHARS_PER_BYTE$1;
-  var S_HEX_LENGTH = 32 * HEX_CHARS_PER_BYTE$1;
-  var LEGACY_V_VALUES = /* @__PURE__ */ new Set([
-    0,
-    1,
-    27,
-    28
-  ]);
-  var MIN_EIP155_V = 35;
-  function parseSignature(signatureHex) {
-    const hex = signatureHex.startsWith("0x") ? signatureHex.slice(2) : signatureHex;
-    const VALID_HEX_REGEX = /^[0-9a-fA-F]+$/;
-    if (!VALID_HEX_REGEX.test(hex)) {
-      throw new Error("Signature must be a valid hex string (0-9, a-f, A-F).");
-    }
-    if (hex.length !== SIGNATURE_HEX_LENGTH) {
-      throw new Error(`Invalid length: expected ${SIGNATURE_HEX_LENGTH.toString()} hex chars (65 bytes), got ${hex.length.toString()}`);
-    }
-    const r = `0x${hex.slice(0, R_HEX_LENGTH)}`;
-    const s = `0x${hex.slice(R_HEX_LENGTH, R_HEX_LENGTH + S_HEX_LENGTH)}`;
-    const vValue = parseInt(hex.slice(R_HEX_LENGTH + S_HEX_LENGTH), 16);
-    const isLegacy = LEGACY_V_VALUES.has(vValue);
-    const isEIP155 = vValue >= MIN_EIP155_V;
-    if (!isLegacy && !isEIP155) {
-      throw new Error(`Unsupported v value: ${vValue.toString()}. Must be one of [${[
-        ...LEGACY_V_VALUES
-      ].join(", ")}] or >=${MIN_EIP155_V.toString()}`);
-    }
-    return {
-      r,
-      s,
-      v: vValue
-    };
-  }
-  function buildTypedData(domain, types, primaryType, message) {
-    return {
-      domain,
-      types,
-      primaryType,
-      message
-    };
-  }
-  function computeDefaultDeadline() {
-    return BigInt(Math.floor(Date.now() / 1e3) + 3600);
-  }
-  var EIP2612_TYPES = {
-    Permit: [
-      {
-        name: "owner",
-        type: "address"
-      },
-      {
-        name: "spender",
-        type: "address"
-      },
-      {
-        name: "value",
-        type: "uint256"
-      },
-      {
-        name: "nonce",
-        type: "uint256"
-      },
-      {
-        name: "deadline",
-        type: "uint256"
-      }
-    ]
-  };
-  function hasEIP2612NonceFetching(adapter) {
-    return typeof adapter === "object" && adapter !== null && "fetchEIP2612Nonce" in adapter && typeof adapter.fetchEIP2612Nonce === "function";
-  }
-  function hasSignTypedData(adapter) {
-    return typeof adapter === "object" && adapter !== null && "signTypedData" in adapter && typeof adapter.signTypedData === "function";
-  }
-  function canSignTypedData(adapter) {
-    if (!hasSignTypedData(adapter)) {
-      return false;
-    }
-    if (typeof adapter.supportsSignTypedData === "function") {
-      const supported = adapter.supportsSignTypedData();
-      return supported === true;
-    }
-    return true;
-  }
-  async function buildEIP2612TypedData(meta, adapter, opts, ctx) {
-    const formattedOwner = convertAddress(opts.owner, "evm");
-    const formattedSpender = convertAddress(opts.spender, "evm");
-    const formattedContract = convertAddress(meta.verifyingContract, "evm");
-    const nonce = opts.nonce ?? await adapter.fetchEIP2612Nonce(formattedContract, formattedOwner, ctx);
-    const now = BigInt(Math.floor(Date.now() / 1e3));
-    const deadline = opts.deadline !== void 0 ? BigInt(opts.deadline) : computeDefaultDeadline();
-    if (deadline <= now) {
-      throw new Error(`EIP-2612 deadline must be in the future (got ${deadline.toString()}, now ${now.toString()})`);
-    }
-    const message = {
-      owner: formattedOwner,
-      spender: formattedSpender,
-      value: opts.value,
-      nonce,
-      deadline
-    };
-    return buildTypedData({
-      ...meta,
-      verifyingContract: formattedContract
-    }, EIP2612_TYPES, "Permit", message);
-  }
-  var ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-  var NATIVE_TOKEN_ADDRESS$1 = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
-  var hexBytesSchema = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
-    message: "value must be a 0x-prefixed even-length hex string"
-  }).transform((value) => value);
-  external_exports.object({
-    executeParams: external_exports.object({}).passthrough(),
-    signature: evmSignatureSchema,
-    tokenInputs: external_exports.array(external_exports.object({
-      permitType: external_exports.nativeEnum(PermitType),
-      token: evmAddressSchema,
-      amount: external_exports.bigint().refine((value) => value >= 0n, {
-        message: "amount must be a non-negative bigint"
-      }),
-      permitCalldata: hexBytesSchema
-    }))
-  }).passthrough();
-  var SOLANA_DEFAULT_PUBLIC_KEY = "11111111111111111111111111111111";
-  var NATIVE_TOKEN_ADDRESS = SOLANA_DEFAULT_PUBLIC_KEY;
-  new import_web32.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-  new import_web32.PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-  new import_web32.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
-  var enc = new TextEncoder();
-  enc.encode("gateway_minter");
-  enc.encode("gateway_minter_custody");
-  enc.encode("used_transfer_spec_hash");
-  external_exports.object({
-    amount: external_exports.bigint({
-      required_error: "amount is required for customBurn"
-    }).refine((v) => v > 0n, "amount must be greater than zero"),
-    maxFee: external_exports.bigint({
-      required_error: "maxFee is required for customBurn"
-    }).refine((v) => v >= 0n, "maxFee cannot be negative"),
-    minFinalityThreshold: external_exports.number({
-      required_error: "minFinalityThreshold is required for customBurn",
-      invalid_type_error: "minFinalityThreshold is required for customBurn"
-    }).refine((v) => Number.isFinite(v), "minFinalityThreshold is required for customBurn").refine((v) => v >= 0, "minFinalityThreshold cannot be negative"),
-    protocolFee: external_exports.bigint().optional().refine((v) => v === void 0 || v >= 0n, "protocolFee cannot be negative")
-  });
-  external_exports.object({
-    mintRecipient: external_exports.string({
-      required_error: "mintRecipient is required for customBurn"
-    }).min(1, "mintRecipient is required for customBurn"),
-    feeRecipient: external_exports.string().optional(),
-    destinationCaller: external_exports.string().optional()
-  });
-  var privateKeySchema = external_exports.string({
-    required_error: "Private key is required. Please provide a valid private key (Base58, Base64, or JSON array format).",
-    invalid_type_error: "Private key must be a string. Please provide a valid private key (Base58, Base64, or JSON array format)."
-  }).min(10, {
-    message: "Private key is too short. Please provide a valid private key."
-  }).max(1e3, {
-    message: "Private key is too long. Please provide a valid private key."
-  });
-  var solanaChainIdentifierSchema = external_exports.union([
-    external_exports.literal("Solana"),
-    external_exports.literal("Solana_Devnet"),
-    external_exports.nativeEnum(Blockchain).refine((val) => val === Blockchain.Solana || val === Blockchain.Solana_Devnet, "Must be a Solana blockchain enum value (Blockchain.Solana or Blockchain.Solana_Devnet)"),
-    external_exports.object({
-      type: external_exports.literal("solana"),
-      chain: external_exports.nativeEnum(Blockchain),
-      name: external_exports.string()
-    }).passthrough()
-  ]);
-  var solanaWalletProviderSchema = external_exports.object({
-    connect: external_exports.function().returns(external_exports.promise(external_exports.object({
-      publicKey: external_exports.object({
-        toString: external_exports.function().returns(external_exports.string())
-      })
-    }))),
-    disconnect: external_exports.function().returns(external_exports.promise(external_exports.void())),
-    isConnected: external_exports.boolean(),
-    publicKey: external_exports.union([
-      external_exports.object({
-        toString: external_exports.function().returns(external_exports.string())
-      }),
-      external_exports.null()
-    ]),
-    signTransaction: external_exports.function().returns(external_exports.promise(external_exports.unknown())),
-    signAllTransactions: external_exports.function().returns(external_exports.promise(external_exports.array(external_exports.unknown()))).optional(),
-    signMessage: external_exports.function().returns(external_exports.promise(external_exports.object({
-      signature: external_exports.instanceof(Uint8Array)
-    }))).optional()
-  }).passthrough();
-  external_exports.string({
-    invalid_type_error: "RPC URL must be a string"
-  }).url({
-    message: "RPC URL must be a valid URL"
-  });
-  external_exports.record(external_exports.unknown()).optional();
-  external_exports.object({
-    privateKey: privateKeySchema.optional(),
-    chain: solanaChainIdentifierSchema,
-    provider: solanaWalletProviderSchema.optional()
-  });
-  external_exports.object({
-    privateKey: privateKeySchema,
-    chain: solanaChainIdentifierSchema
-  });
-  external_exports.object({
-    provider: solanaWalletProviderSchema,
-    chain: solanaChainIdentifierSchema
-  });
-  function assertApiKey(apiKey) {
-    if (!apiKey) {
-      return;
-    }
-    const apiKeyResult = apiKeySchema.safeParse(apiKey);
-    if (!apiKeyResult.success) {
-      const errors = apiKeyResult.error.issues.map((issue) => issue.message).join(", ");
-      throw createValidationFailedError$1("apiKey", REDACTED_CREDENTIAL, `Invalid API key format. ${errors}. Expected format: <ENV>_API_KEY:<keyId>:<keySecret> (for example TEST_API_KEY:... or LIVE_API_KEY:...). Legacy KIT_KEY:<keyId>:<keySecret> values are still accepted. Get your key at: https://developers.circle.com/w3s/keys`);
-    }
-  }
-  var TOKEN_REGISTRY$3 = createTokenRegistry();
-  function resolveTokenAlias(token, chain) {
-    const upperToken = token.toUpperCase();
-    const nativeStablecoinContractAddress = getNativeStablecoinAddress(chain);
-    if (nativeStablecoinContractAddress !== null) {
-      if (upperToken === "NATIVE" || isNativeAliasAddress(token)) {
-        return nativeStablecoinContractAddress;
-      }
-    }
-    if (upperToken === "NATIVE") {
-      if (chain.type === "evm") {
-        return NATIVE_TOKEN_ADDRESS$1;
-      } else if (chain.type === "solana") {
-        return NATIVE_TOKEN_ADDRESS;
-      }
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Native token resolution is not supported for chain type "${chain.type}". Only EVM and Solana chains are currently supported.`,
-        cause: {
-          trace: {
-            token,
-            chainType: chain.type,
-            chain: chain.chain
-          }
-        }
-      });
-    }
-    const tokenDefinition = TOKEN_REGISTRY$3.get(upperToken);
-    if (tokenDefinition !== void 0) {
-      const resolvedAddress = tokenDefinition.locators[chain.chain];
-      if (!resolvedAddress) {
-        const chainName = chain.name;
-        throw new KitError({
-          ...InputError.UNSUPPORTED_TOKEN,
-          recoverability: "FATAL",
-          message: `${token} is not supported on ${chainName} by SDK. Use the token address instead.`,
-          cause: {
-            trace: {
-              token,
-              chain: chain.chain
-            }
-          }
-        });
-      }
-      return TOKEN_REGISTRY$3.resolve(upperToken, chain.chain).locator;
-    }
-    return token;
-  }
-  function validateResolvedAddress(address, chain) {
-    if (!isValidAddressForChain(address, chain)) {
-      const chainInfo = extractChainInfo(chain);
-      throw createInvalidAddressError(address, chainInfo.displayName, chainInfo.expectedAddressFormat);
-    }
-  }
-  function validateCustomFeeConfig(customFee, chain) {
-    const { percentageBps, amount, recipientAddress } = customFee;
-    if (percentageBps !== void 0 && amount !== void 0) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: "Cannot use both percentage-based fees (percentageBps) and callback-based fees (setCustomFeePolicy) simultaneously. Choose one approach: either set percentageBps at transaction level OR use setCustomFeePolicy at kit level.",
-        cause: {
-          trace: {
-            percentageBps,
-            amount
-          }
-        }
-      });
-    }
-    if (percentageBps !== void 0) {
-      if (percentageBps <= 0 || percentageBps > 1e4) {
-        throw new KitError({
-          ...InputError.VALIDATION_FAILED,
-          recoverability: "FATAL",
-          message: `percentageBps must be greater than 0 and less than or equal to 10000 (100%). Received: ${String(percentageBps)} bps`,
-          cause: {
-            trace: {
-              percentageBps
-            }
-          }
-        });
-      }
-    }
-    if (!recipientAddress) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: "recipientAddress is required when customFee is specified",
-        cause: {
-          trace: {
-            customFee
-          }
-        }
-      });
-    }
-    if (chain.type === "evm") {
-      const result = evmAddressSchema.safeParse(recipientAddress);
-      if (!result.success) {
-        throw createInvalidAddressError(recipientAddress, chain.name, "0x-prefixed 42-character hex string (0x + 40 hex characters)");
-      }
-    } else if (chain.type === "solana") {
-      const result = solanaAddressSchema.safeParse(recipientAddress);
-      if (!result.success) {
-        throw createInvalidAddressError(recipientAddress, chain.name, "base58-encoded string between 32-44 characters");
-      }
-    }
-  }
-  function resolveFeePayoutChain(tokenIn, tokenOut, sourceChain, destinationChain) {
-    if (destinationChain.chain !== sourceChain.chain) {
-      return sourceChain;
-    }
-    const inputIsOk = isOkToken(tokenIn, sourceChain, TOKEN_REGISTRY$3, OK_TOKEN_SYMBOLS$1);
-    if (inputIsOk) {
-      return sourceChain;
-    }
-    const outputIsOk = isOkToken(tokenOut, destinationChain, TOKEN_REGISTRY$3, OK_TOKEN_SYMBOLS$1);
-    return outputIsOk ? destinationChain : sourceChain;
-  }
-  async function buildServiceParams(params) {
-    const { from: from16, tokenIn, tokenOut, amountIn, to, config } = params;
-    const chain = from16.chain;
-    const destinationChain = params.toChain ?? chain;
-    let fromAddress = from16.address;
-    if (!fromAddress) {
-      try {
-        fromAddress = await from16.adapter.getAddress(chain);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new KitError({
-          ...InputError.VALIDATION_FAILED,
-          recoverability: "FATAL",
-          message: `Failed to extract address from adapter: ${errorMessage}`,
-          cause: {
-            trace: error
-          }
-        });
-      }
-    }
-    const resolvedTokenInAddress = resolveTokenAlias(tokenIn, chain);
-    const resolvedTokenOutAddress = resolveTokenAlias(tokenOut, destinationChain);
-    validateResolvedAddress(resolvedTokenInAddress, chain);
-    validateResolvedAddress(resolvedTokenOutAddress, destinationChain);
-    validateResolvedAddress(to, destinationChain);
-    const apiKey = resolveApiKey(config ?? {});
-    assertApiKey(apiKey);
-    const customFee = config?.customFee;
-    if (customFee !== void 0) {
-      const feePayoutChain = resolveFeePayoutChain(tokenIn, tokenOut, chain, destinationChain);
-      validateCustomFeeConfig(customFee, feePayoutChain);
-    }
-    const chainName = chain.chain;
-    const destinationChainName = destinationChain.chain;
-    return {
-      tokenInAddress: resolvedTokenInAddress,
-      tokenInChain: chainName,
-      tokenOutAddress: resolvedTokenOutAddress,
-      tokenOutChain: destinationChainName,
-      fromAddress,
-      toAddress: to,
-      amount: amountIn,
-      ...config?.slippageBps !== void 0 && {
-        slippageBps: config.slippageBps
-      },
-      ...config?.stopLimit !== void 0 && {
-        stopLimit: config.stopLimit
-      },
-      ...config?.provider !== void 0 && {
-        provider: config.provider
-      },
-      ...customFee !== void 0 && {
-        config: {
-          customFee: {
-            // Support both percentage and absolute amount
-            ...customFee.percentageBps !== void 0 && {
-              percentageBps: customFee.percentageBps
-            },
-            ...customFee.amount !== void 0 && {
-              amount: customFee.amount
-            },
-            recipientAddress: customFee.recipientAddress
-          }
-        }
-      },
-      // Omitted in permissionless mode.
-      ...apiKey ? {
-        apiKey
-      } : {}
-    };
-  }
-  var TOKEN_ADDRESS_MAPPING = {
-    USDC: "usdcAddress"
-  };
-  var EIP2612_SUPPORTED_TOKENS = /* @__PURE__ */ new Set([
-    "USDC"
-  ]);
-  var USDC_PERMIT_METADATA_BY_NAME = {
-    Ethereum: {
-      chainId: Ethereum.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Base: {
-      chainId: Base.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Polygon: {
-      chainId: Polygon.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Arbitrum: {
-      chainId: Arbitrum.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Optimism: {
-      chainId: Optimism.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Avalanche: {
-      chainId: Avalanche.chainId,
-      name: "USD Coin",
-      version: "2"
-    },
-    Linea: {
-      chainId: Linea.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Ink: {
-      chainId: Ink.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    World_Chain: {
-      chainId: WorldChain.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Unichain: {
-      chainId: Unichain.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Plume: {
-      chainId: Plume.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Sei: {
-      chainId: Sei.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Sonic: {
-      chainId: Sonic.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    XDC: {
-      chainId: XDC.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    HyperEVM: {
-      chainId: HyperEVM.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Monad: {
-      chainId: Monad.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Arc: {
-      chainId: Arc.chainId,
-      name: "USDC",
-      version: "2"
-    },
-    Arc_Testnet: {
-      chainId: ArcTestnet.chainId,
-      name: "USDC",
-      version: "2"
-    }
-  };
-  var USDC_PERMIT_METADATA = Object.values(USDC_PERMIT_METADATA_BY_NAME).reduce((acc, { chainId, name: name4, version: version16 }) => {
-    acc[chainId] = {
-      name: name4,
-      version: version16
-    };
-    return acc;
-  }, {});
-  function supportsEIP2612(tokenAddress, chain) {
-    const normalizedAddress = tokenAddress.toLowerCase();
-    if (!normalizedAddress.startsWith("0x")) {
-      return false;
-    }
-    if (chain.type !== "evm" || !(chain.chainId in USDC_PERMIT_METADATA)) {
-      return false;
-    }
-    for (const tokenId of Object.keys(TOKEN_ADDRESS_MAPPING)) {
-      const addressProperty = TOKEN_ADDRESS_MAPPING[tokenId];
-      const chainTokenAddress = chain[addressProperty];
-      if (!chainTokenAddress) {
-        continue;
-      }
-      if (chainTokenAddress.toLowerCase() === normalizedAddress) {
-        return EIP2612_SUPPORTED_TOKENS.has(tokenId);
-      }
-    }
-    return false;
-  }
-  function getTokenMetadata(tokenAddress, chain) {
-    const normalizedAddress = tokenAddress.toLowerCase();
-    for (const tokenId of Object.keys(TOKEN_ADDRESS_MAPPING)) {
-      const addressProperty = TOKEN_ADDRESS_MAPPING[tokenId];
-      const chainTokenAddress = chain[addressProperty];
-      if (!chainTokenAddress) {
-        continue;
-      }
-      if (chainTokenAddress.toLowerCase() === normalizedAddress) {
-        if (chain.type === "evm") {
-          const metadata = USDC_PERMIT_METADATA[chain.chainId];
-          if (metadata) {
-            return {
-              ...metadata
-            };
-          }
-        }
-      }
-    }
-    throw new Error(`Token ${tokenAddress} on chain ${chain.name} not found in EIP-2612 registry. Ensure supportsEIP2612() is called before getTokenMetadata().`);
-  }
-  var BYTES32_HEX_LENGTH = 66;
-  var HEX_CHARS_PER_BYTE = 2;
-  var ABI_WORD_SIZE_BYTES = 32;
-  var ABI_WORD_HEX_LENGTH = ABI_WORD_SIZE_BYTES * HEX_CHARS_PER_BYTE;
-  var VALID_V_VALUES = /* @__PURE__ */ new Set([
-    27,
-    28
-  ]);
-  function encodeEIP2612PermitCalldata(value, deadline, signature) {
-    if (typeof value !== "bigint") {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid value type for permit encoding: expected bigint, got ${typeof value}`,
-        cause: {
-          trace: {
-            value,
-            expectedType: "bigint",
-            actualType: typeof value
-          }
-        }
-      });
-    }
-    if (typeof deadline !== "bigint") {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid deadline type for permit encoding: expected bigint, got ${typeof deadline}`,
-        cause: {
-          trace: {
-            deadline,
-            expectedType: "bigint",
-            actualType: typeof deadline
-          }
-        }
-      });
-    }
-    const now = BigInt(Math.floor(Date.now() / 1e3));
-    if (deadline <= now) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Permit deadline has expired (deadline: ${deadline.toString()}, current time: ${now.toString()}). Cannot encode expired permit.`,
-        cause: {
-          trace: {
-            deadline: deadline.toString(),
-            currentTime: now.toString()
-          }
-        }
-      });
-    }
-    if (typeof signature.v !== "number" || !VALID_V_VALUES.has(signature.v)) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid signature v parameter: expected 27 or 28, got ${String(signature.v)}`,
-        cause: {
-          trace: {
-            v: signature.v,
-            validValues: Array.from(VALID_V_VALUES)
-          }
-        }
-      });
-    }
-    if (!signature.r.startsWith("0x") || signature.r.length !== BYTES32_HEX_LENGTH) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid signature r parameter: expected 0x-prefixed 32-byte hex string (${String(BYTES32_HEX_LENGTH)} chars), got length ${String(signature.r.length)}`,
-        cause: {
-          trace: {
-            r: signature.r,
-            expectedLength: BYTES32_HEX_LENGTH,
-            actualLength: signature.r.length
-          }
-        }
-      });
-    }
-    if (!signature.s.startsWith("0x") || signature.s.length !== BYTES32_HEX_LENGTH) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid signature s parameter: expected 0x-prefixed 32-byte hex string (${String(BYTES32_HEX_LENGTH)} chars), got length ${String(signature.s.length)}`,
-        cause: {
-          trace: {
-            s: signature.s,
-            expectedLength: BYTES32_HEX_LENGTH,
-            actualLength: signature.s.length
-          }
-        }
-      });
-    }
-    const encodedValue = value.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
-    const encodedDeadline = deadline.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
-    const encodedV = signature.v.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
-    const encodedR = signature.r.slice(2);
-    const encodedS = signature.s.slice(2);
-    return `0x${encodedValue}${encodedDeadline}${encodedV}${encodedR}${encodedS}`;
-  }
-  function isNativeEvmAddress(tokenAddress) {
-    return tokenAddress.toLowerCase() === NATIVE_TOKEN_ADDRESS$1.toLowerCase();
-  }
-  function isNativeSolanaAddress(tokenAddress) {
-    return tokenAddress === NATIVE_TOKEN_ADDRESS;
-  }
-  function isNativeAddress(tokenAddress, chainType) {
-    switch (chainType) {
-      case "evm":
-        return isNativeEvmAddress(tokenAddress);
-      case "solana":
-        return isNativeSolanaAddress(tokenAddress);
-      default:
-        return false;
-    }
-  }
-  function adapterSupportsPermit(adapter) {
-    return hasEIP2612NonceFetching(adapter) && canSignTypedData(adapter);
-  }
-  async function generatePermit({ adapter, tokenIn, amount, adapterContractAddress, context }) {
-    if (!hasEIP2612NonceFetching(adapter)) {
-      return null;
-    }
-    if (!hasSignTypedData(adapter)) {
-      return null;
-    }
-    const eip2612Adapter = adapter;
-    const tokenMetadata = getTokenMetadata(tokenIn, context.chain);
-    const evmChain = context.chain;
-    const typedData = await buildEIP2612TypedData({
-      name: tokenMetadata.name,
-      version: tokenMetadata.version,
-      chainId: evmChain.chainId,
-      verifyingContract: tokenIn
-    }, eip2612Adapter, {
-      owner: context.address,
-      spender: adapterContractAddress,
-      value: amount
-    }, context);
-    const signatureHex = await eip2612Adapter.signTypedData(typedData, context);
-    const signature = parseSignature(signatureHex);
-    const permitCalldata = encodeEIP2612PermitCalldata(typedData.message.value, typedData.message.deadline, signature);
-    return {
-      permitType: PermitType.EIP2612,
-      token: tokenIn,
-      amount,
-      permitCalldata
-    };
-  }
-  function createFallbackTokenInput(tokenIn, amount) {
-    return {
-      permitType: PermitType.NONE,
-      token: tokenIn,
-      amount,
-      permitCalldata: "0x"
-    };
-  }
-  async function buildTokenInputs({ adapter, context, tokenInAddress, inputAmount, allowanceStrategy }) {
-    const adapterContractAddress = context.chain.kitContracts?.adapter;
-    if (adapterContractAddress === void 0 || adapterContractAddress === "") {
-      console.warn(`No adapter contract configured for chain ${context.chain.name}. TokenInput generation skipped - swap will require pre-approved tokens.`);
-      return [];
-    }
-    const isNative = isNativeEvmAddress(tokenInAddress);
-    const isZero = tokenInAddress.toLowerCase() === ZERO_ADDRESS.toLowerCase();
-    if (isNative || isZero) {
-      return [];
-    }
-    if (allowanceStrategy === "approve") {
-      return [
-        createFallbackTokenInput(tokenInAddress, inputAmount)
-      ];
-    }
-    if (!adapterSupportsPermit(adapter)) {
-      return [
-        createFallbackTokenInput(tokenInAddress, inputAmount)
-      ];
-    }
-    if (!supportsEIP2612(tokenInAddress, context.chain)) {
-      return [
-        createFallbackTokenInput(tokenInAddress, inputAmount)
-      ];
-    }
-    try {
-      const permitInput = await generatePermit({
-        adapter,
-        tokenIn: tokenInAddress,
-        amount: inputAmount,
-        adapterContractAddress,
-        context
-      });
-      if (permitInput) {
-        return [
-          permitInput
-        ];
-      }
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "RETRYABLE",
-        message: "Permit generation returned null despite adapter passing capability checks. No on-chain approval was sent because the permit flow was expected to succeed.",
-        cause: {
-          trace: {
-            tokenInAddress,
-            chain: context.chain.name
-          }
-        }
-      });
-    } catch (err2) {
-      if (isUserCancellationError(err2)) {
-        throw new KitError({
-          ...InputError.USER_CANCELLED,
-          recoverability: "FATAL",
-          message: "User cancelled permit signature request. The swap cannot proceed without user approval.",
-          cause: {
-            trace: {
-              originalError: err2
-            }
-          }
-        });
-      }
-      if (err2 instanceof KitError) {
-        throw err2;
-      }
-      const errorMessage = err2 instanceof Error ? err2.message : JSON.stringify(err2);
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "RETRYABLE",
-        message: `Permit generation failed: ${errorMessage}. No on-chain approval was sent because the permit flow was expected to succeed. Retry or use allowanceStrategy: "approve" to force on-chain approval.`,
-        cause: {
-          trace: {
-            originalError: err2,
-            tokenInAddress,
-            chain: context.chain.name
-          }
-        }
-      });
-    }
-  }
-  var safeBigInt = (value, fieldName) => {
-    try {
-      return BigInt(value);
-    } catch (error) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: `Invalid ${fieldName}: expected string representation of a bigint, got "${value}"`,
-        cause: {
-          trace: {
-            value,
-            fieldName,
-            error
-          }
-        }
-      });
-    }
-  };
-  async function prepareEvmSwapAction(adapter, serviceResponse, context, allowanceStrategy) {
-    const { transaction } = serviceResponse;
-    if (!("executionParams" in transaction && "signature" in transaction) || typeof transaction.executionParams !== "object" || typeof transaction.signature !== "string") {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: "Execute params and signature fields are missing or invalid in service response",
-        cause: {
-          trace: {
-            transaction
-          }
-        }
-      });
-    }
-    const tokenInAddress = serviceResponse.tokenInAddress;
-    const inputAmount = safeBigInt(serviceResponse.amount, "serviceResponse.amount");
-    const instructions = transaction.executionParams.instructions.map((instruction) => ({
-      target: instruction.target,
-      data: instruction.data,
-      value: safeBigInt(instruction.value, "transaction.executionParams.instructions.value"),
-      tokenIn: instruction.tokenIn,
-      amountToApprove: safeBigInt(instruction.amountToApprove, "transaction.executionParams.instructions.amountToApprove"),
-      tokenOut: instruction.tokenOut,
-      minTokenOut: safeBigInt(instruction.minTokenOut, "transaction.executionParams.instructions.minTokenOut")
-    }));
-    const tokens2 = transaction.executionParams.tokens.map((token) => ({
-      token: token.token,
-      beneficiary: token.beneficiary
-    }));
-    const executeParams = {
-      instructions,
-      tokens: tokens2,
-      execId: safeBigInt(transaction.executionParams.execId, "transaction.executionParams.execId"),
-      deadline: safeBigInt(transaction.executionParams.deadline, "transaction.executionParams.deadline"),
-      metadata: transaction.executionParams.metadata
-    };
-    const signature = transaction.signature;
-    const tokenInputs = await buildTokenInputs({
-      adapter,
-      context,
-      tokenInAddress,
-      inputAmount,
-      allowanceStrategy
-    });
-    try {
-      return await adapter.prepareAction("swap.execute", {
-        executeParams,
-        tokenInputs,
-        signature,
-        inputAmount,
-        tokenInAddress
-      }, context);
-    } catch (error) {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "RETRYABLE",
-        message: `Failed to prepare swap action: ${error instanceof Error ? error.message : String(error)}`,
-        cause: {
-          trace: {
-            error,
-            executeParams,
-            signature
-          }
-        }
-      });
-    }
-  }
-  async function prepareSolanaSwapAction(adapter, serviceResponse, context) {
-    const { transaction } = serviceResponse;
-    if (!transaction || typeof transaction !== "object") {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: "Transaction data is missing or invalid in service response",
-        cause: {
-          trace: {
-            transaction
-          }
-        }
-      });
-    }
-    if (!("data" in transaction) || typeof transaction.data !== "string") {
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability: "FATAL",
-        message: "Transaction data field is missing or invalid in service response",
-        cause: {
-          trace: {
-            transaction
-          }
-        }
-      });
-    }
-    try {
-      return await adapter.prepareAction("swap.execute", {
-        serializedTransaction: transaction.data
-      }, context);
-    } catch (error) {
-      let recoverability = "FATAL";
-      if (isKitError(error)) {
-        recoverability = error.recoverability;
-      }
-      throw new KitError({
-        ...InputError.VALIDATION_FAILED,
-        recoverability,
-        message: `Failed to prepare Solana swap action: ${error instanceof Error ? error.message : String(error)}`,
-        cause: {
-          trace: {
-            error,
-            serializedTransaction: transaction.data
-          }
-        }
-      });
-    }
-  }
-  var TOKEN_REGISTRY$2 = createTokenRegistry();
-  function resolveTokenSymbol(token, chain) {
-    const upperToken = token.toUpperCase();
-    if (upperToken === NATIVE_TOKEN) {
-      return NATIVE_TOKEN;
-    }
-    if (TOKEN_REGISTRY$2.get(upperToken) !== void 0) {
-      return upperToken;
-    }
-    const isEvm = chain.type === "evm";
-    const normalizedToken = isEvm ? token.toLowerCase() : token;
-    if (isNativeEvmAddress(token) || isNativeSolanaAddress(token)) return NATIVE_TOKEN;
-    try {
-      const { symbol } = TOKEN_REGISTRY$2.resolveByAddress(normalizedToken, chain.chain);
-      if (symbol === void 0) {
-        return null;
-      }
-      if (symbol === NATIVE_TOKEN) {
-        return NATIVE_TOKEN;
-      }
-      return symbol.toUpperCase();
-    } catch {
-      return null;
-    }
-  }
-  async function validateNonNativeBalance(params) {
-    const { adapter, tokenInAddress, tokenInSymbol, amount, walletAddress, context } = params;
-    if (isNativeAddress(tokenInAddress, context.chain.type)) {
-      return;
-    }
-    const balance = await executeAdapterReadAction(adapter, "token.balanceOf", {
-      tokenAddress: tokenInAddress,
-      walletAddress
-    }, context);
-    const requiredAmount = BigInt(amount);
-    const currentBalance = BigInt(String(balance));
-    if (currentBalance < requiredAmount) {
-      throw new KitError({
-        ...BalanceError.INSUFFICIENT_TOKEN,
-        recoverability: "FATAL",
-        message: buildInsufficientSwapBalanceError(tokenInSymbol, walletAddress, currentBalance, requiredAmount, context.chain),
-        cause: {
-          trace: {
-            tokenIn: tokenInSymbol,
-            tokenInAddress,
-            walletAddress,
-            currentBalance: balance,
-            requiredAmount: amount
-          }
-        }
-      });
-    }
-  }
-  function buildInsufficientSwapBalanceError(tokenSymbol, walletAddress, currentBalance, requiredAmount, chain) {
-    const shortfall = requiredAmount - currentBalance;
-    const formatWithCommas = (value) => {
-      return Number(value.toString()).toLocaleString("en-US");
-    };
-    const resolvedSymbol = resolveTokenSymbol(tokenSymbol, chain);
-    const canFormat = resolvedSymbol !== null && isSwapToken(resolvedSymbol);
-    const displaySymbol = resolvedSymbol ?? tokenSymbol;
-    const currentFormatted = canFormat ? formatAmount({
-      value: currentBalance.toString(),
-      token: resolvedSymbol,
-      chain
-    }) : null;
-    const requiredFormatted = canFormat ? formatAmount({
-      value: requiredAmount.toString(),
-      token: resolvedSymbol,
-      chain
-    }) : null;
-    const shortfallFormatted = canFormat ? formatAmount({
-      value: shortfall.toString(),
-      token: resolvedSymbol,
-      chain
-    }) : null;
-    const currentBaseFormatted = formatWithCommas(currentBalance);
-    const requiredBaseFormatted = formatWithCommas(requiredAmount);
-    const shortfallBaseFormatted = formatWithCommas(shortfall);
-    const currentDisplay = currentFormatted ? `${currentFormatted} ${displaySymbol} (${currentBaseFormatted} base units)` : `${currentBaseFormatted} base units`;
-    const requiredDisplay = requiredFormatted ? `${requiredFormatted} ${displaySymbol} (${requiredBaseFormatted} base units)` : `${requiredBaseFormatted} base units`;
-    const shortfallDisplay = shortfallFormatted ? `${shortfallFormatted} ${displaySymbol} (${shortfallBaseFormatted} base units)` : `${shortfallBaseFormatted} base units`;
-    const actionAmount = shortfallFormatted ? `${shortfallFormatted} ${displaySymbol}` : `${shortfallBaseFormatted} base units of ${displaySymbol}`;
-    const requiredSummary = requiredFormatted ? `${requiredFormatted} ${displaySymbol}` : `${requiredBaseFormatted} base units of ${displaySymbol}`;
-    return `Insufficient ${displaySymbol} balance for swap operation.
-
-Wallet: ${walletAddress}
-Current balance: ${currentDisplay}
-Required: ${requiredDisplay}
-Shortfall: ${shortfallDisplay}
-
-This swap requires ${requiredSummary} to complete the transaction.
-
-Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
-  }
-  function resolveFeeChain(token, sourceChain, destinationChain) {
-    if (sourceChain.chain === destinationChain.chain) {
-      return sourceChain;
-    }
-    if (resolveTokenSymbol(token, sourceChain) !== null) {
-      return sourceChain;
-    }
-    if (resolveTokenSymbol(token, destinationChain) !== null) {
-      return destinationChain;
-    }
-    return sourceChain;
-  }
-  var TOKEN_REGISTRY$1 = createTokenRegistry();
-  async function formatTokenValue(value, token, chain, adapter) {
-    const normalizedToken = chain.type === "evm" && token.toLowerCase() === ZERO_ADDRESS.toLowerCase() ? NATIVE_TOKEN_ADDRESS$1 : token;
-    const resolvedSymbol = resolveTokenSymbol(normalizedToken, chain);
-    if (resolvedSymbol) {
-      if (isSwapToken(resolvedSymbol)) {
-        return {
-          amount: formatAmount({
-            value,
-            token: resolvedSymbol,
-            chain,
-            tokens: TOKEN_REGISTRY$1
-          }),
-          token: resolvedSymbol
-        };
-      }
-      const tokenDef = TOKEN_REGISTRY$1.get(resolvedSymbol);
-      if (tokenDef) {
-        const decimals = resolveTokenDecimals$1(tokenDef, chain.chain);
-        return {
-          amount: formatUnits2(value, decimals),
-          token: resolvedSymbol
-        };
-      }
-    }
-    try {
-      const decimals = await adapter.getTokenDecimals(normalizedToken, chain);
-      return {
-        amount: formatUnits2(value, decimals),
-        token: normalizedToken
-      };
-    } catch {
-      return {
-        amount: value,
-        token: normalizedToken
-      };
-    }
-  }
-  function isBatchCapableSwapAdapter(adapter) {
-    return typeof adapter === "object" && adapter !== null && typeof adapter.supportsAtomicBatch === "function" && typeof adapter.batchExecute === "function";
-  }
-  async function shouldUseBatchedSwap({ adapter, chain, tokenInAddress, allowanceStrategy, batchTransactions }) {
-    if (batchTransactions === false) {
-      return false;
-    }
-    if (chain.type !== "evm") {
-      return false;
-    }
-    if (isNativeEvmAddress(tokenInAddress)) {
-      return false;
-    }
-    const canUsePermit = allowanceStrategy !== "approve" && supportsEIP2612(tokenInAddress, chain) && adapterSupportsPermit(adapter);
-    if (canUsePermit) {
-      return false;
-    }
-    const usdt = chain.usdtAddress?.toLowerCase();
-    if (usdt !== void 0 && tokenInAddress.toLowerCase() === usdt) {
-      return false;
-    }
-    if (!isBatchCapableSwapAdapter(adapter)) {
-      return false;
-    }
-    try {
-      return await adapter.supportsAtomicBatch(chain);
-    } catch {
-      return false;
-    }
-  }
-  async function executeBatchedApproveAndSwap({ adapter, chain, approveRequest, swapRequest, fromAddress }) {
-    if (approveRequest.type !== "evm" || swapRequest.type !== "evm" || !approveRequest.getCallData || !swapRequest.getCallData) {
-      throw new KitError({
-        ...InputError.UNSUPPORTED_ACTION,
-        recoverability: "FATAL",
-        message: "Batched swap requires EVM prepared requests with getCallData() support."
-      });
-    }
-    const approveCallData = approveRequest.getCallData();
-    const swapCallData = swapRequest.getCallData();
-    const batchResult = await adapter.batchExecute([
-      approveCallData,
-      swapCallData
-    ], chain, {
-      fromAddress
-    });
-    const swapReceipt = batchResult.receipts[1];
-    if (swapReceipt === void 0 || swapReceipt.txHash === "") {
-      if (isKitError(batchResult.error)) {
-        throw batchResult.error;
-      }
-      throw new KitError({
-        ...NetworkError.TIMEOUT,
-        recoverability: "FATAL",
-        message: `Batched swap did not confirm on-chain (batchId: ${batchResult.batchId}). The batch was already submitted \u2014 check its status before retrying.`,
-        // Preserve the underlying confirmation failure when it isn't a KitError —
-        // the signing-strategy path returns a raw viem error (e.g. a dropped or
-        // replaced tx) — so the root cause survives behind the generic timeout.
-        cause: {
-          trace: {
-            batchId: batchResult.batchId,
-            ...batchResult.error != null && {
-              error: batchResult.error
-            }
-          }
-        }
-      });
-    }
-    if (swapReceipt.status !== "success") {
-      throw createTransactionRevertedError(chain.name, "Batched swap transaction reverted on-chain", void 0, swapReceipt.txHash, buildExplorerUrl(chain, swapReceipt.txHash));
-    }
-    const executedTransactions = [];
-    const approveReceipt = batchResult.receipts[0];
-    if (approveReceipt !== void 0 && approveReceipt.txHash !== "" && approveReceipt.txHash !== swapReceipt.txHash) {
-      executedTransactions.push({
-        type: "approval",
-        txHash: approveReceipt.txHash
-      });
-    }
-    executedTransactions.push({
-      type: "swap",
-      txHash: swapReceipt.txHash
-    });
-    return {
-      swapTxHash: swapReceipt.txHash,
-      executedTransactions
-    };
-  }
-  var GAS_SAFETY_MULTIPLIER = 1.3;
-  var TOKEN_REGISTRY = createTokenRegistry();
-  function enhanceKitErrorWithTxDetails(err2, txHash, explorerUrl) {
-    const existingTrace = typeof err2.cause?.trace === "object" && err2.cause.trace !== null ? err2.cause.trace : {};
-    return new KitError({
-      code: err2.code,
-      name: err2.name,
-      type: err2.type,
-      recoverability: err2.recoverability,
-      message: err2.message,
-      cause: {
-        ...err2.cause,
-        trace: {
-          ...existingTrace,
-          txHash,
-          ...explorerUrl && {
-            explorerUrl
-          }
-        }
-      }
-    });
-  }
-  function handleSwapExecutionError(err2, txHash, chain) {
-    if (!txHash) {
-      throw err2;
-    }
-    let explorerUrl;
-    try {
-      explorerUrl = buildExplorerUrl(chain, txHash);
-    } catch {
-    }
-    if (isKitError(err2)) {
-      throw enhanceKitErrorWithTxDetails(err2, txHash, explorerUrl);
-    }
-    throw parseBlockchainError(err2, {
-      chain: chain.name,
-      operation: "swap",
-      txHash,
-      ...explorerUrl && {
-        explorerUrl
-      }
-    });
-  }
-  var SUPPORTED_CHAINS = getSwapSupportedChains(Chains);
-  var SAME_CHAIN_AMOUNT_OUT_POLL_DELAYS_MS = [
-    1e3,
-    2e3,
-    2e3
-  ];
-  var sleep$2 = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  function buildSwapProgress(statusResult) {
-    return {
-      status: statusResult.status,
-      ...statusResult.substatus !== void 0 && {
-        substatus: statusResult.substatus
-      },
-      ...statusResult.substatusMessage !== void 0 && {
-        substatusMessage: statusResult.substatusMessage
-      }
-    };
-  }
-  async function fetchSameChainStatusSnapshot({ isCrossChainSwap, txHash, chain, apiKey }) {
-    if (isCrossChainSwap) {
-      return {
-        progress: {
-          status: "PENDING"
-        }
-      };
-    }
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        const statusResult = await getSwapStatus$1({
-          txHash,
-          chain: chain.chain,
-          ...apiKey !== void 0 && {
-            apiKey
-          }
-        });
-        if (statusResult.status === "DONE" && statusResult.amountOut !== void 0) {
-          return {
-            progress: buildSwapProgress(statusResult),
-            amountOut: statusResult.amountOut
-          };
-        }
-      } catch {
-        return {
-          progress: {
-            status: "DONE"
-          }
-        };
-      }
-      const delayMs = SAME_CHAIN_AMOUNT_OUT_POLL_DELAYS_MS[attempt];
-      if (delayMs === void 0) {
-        return {
-          progress: {
-            status: "DONE"
-          }
-        };
-      }
-      await sleep$2(delayMs);
-    }
-  }
-  var StablecoinServiceSwapProvider = class {
-    /** The name of the provider */
-    name = "StablecoinServiceSwapProvider";
-    /**
-    * Array of chains supported by this swap provider.
-    *
-    * This list is used by SwapKit to determine which chains are available
-    * for swapping tokens through this provider.
-    */
-    supportedChains = SUPPORTED_CHAINS;
-    /** This provider supports same-chain and cross-chain swap routes. */
-    supportsCrossChain = true;
-    /**
-    * Normalize a token identifier for consistent comparison.
-    *
-    * @remarks
-    * - 'NATIVE' literal and native currency symbols (e.g., 'ETH', 'SOL') are normalized to 'native'.
-    * - 'USDC' literal is normalized to the chain's USDC address (lowercased).
-    * - 'USDT' literal is normalized to the chain's USDT address (lowercased).
-    * - EVM addresses (starting with `0x`) are lowercased for case-insensitive matching.
-    * - Solana base58 addresses are preserved as-is to maintain case sensitivity.
-    *
-    * @param tokenAddress - The token address or symbol to normalize, or `null`.
-    * @param chain - The chain definition containing the native currency symbol.
-    * @returns The normalized token identifier, or an empty string if `null`.
-    */
-    normalizeToken(tokenAddress, chain) {
-      if (tokenAddress === null || tokenAddress === "") {
-        return "";
-      }
-      const nativeStablecoinSymbol = getNativeStablecoinSymbol(chain);
-      if (nativeStablecoinSymbol !== null) {
-        const upper = tokenAddress.toUpperCase();
-        if (upper === "NATIVE" || isNativeAliasAddress(tokenAddress)) {
-          return `symbol:${nativeStablecoinSymbol}`;
-        }
-      }
-      const resolvedTokenSymbol = resolveTokenSymbol(tokenAddress, chain);
-      if (resolvedTokenSymbol !== null) {
-        return `symbol:${resolvedTokenSymbol.toUpperCase()}`;
-      }
-      if (chain.type === "solana") {
-        return tokenAddress;
-      }
-      if (chain.type === "evm") {
-        return tokenAddress.toLowerCase();
-      }
-      return tokenAddress;
-    }
-    /**
-    * Determine whether the provider supports the supplied swap route.
-    *
-    * @remarks
-    * This method validates that:
-    * - The chain is swap-supported (mainnet or whitelisted testnet with CCTPv2)
-    * - Both tokens are supported (USDC, USDT, native currency, or token literals)
-    * - The tokens are different (no same-token swaps)
-    *
-    * Token addresses are normalized for comparison:
-    * - EVM addresses are lowercased for case-insensitive matching
-    * - Solana addresses preserve case sensitivity
-    * - Token literals ('NATIVE', 'USDC', 'USDT') are recognized and normalized (case-insensitive)
-    *
-    * @param tokenIn - The input token address or alias.
-    * @param tokenOut - The output token address or alias.
-    * @param chain - The source chain where the swap will start.
-    * @param toChain - Optional destination chain for cross-chain swaps.
-    * @returns `true` if the provider supports this route, `false` otherwise.
-    *
-    * @example
-    * ```typescript
-    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
-    * import { Ethereum, Base, Solana } from '@core/chains'
-    *
-    * const provider = new StablecoinServiceSwapProvider()
-    *
-    * // Check swap using token literals
-    * const usdcToUsdt = provider.supportsRoute('USDC', 'USDT', Ethereum)
-    * console.log('USDC→USDT on Ethereum:', usdcToUsdt) // true
-    *
-    * // Check swap using literal and address
-    * const usdcToNative = provider.supportsRoute('USDC', 'NATIVE', Base)
-    * console.log('USDC→NATIVE on Base:', usdcToNative) // true
-    *
-    * // Check EVM token swap with addresses (case-insensitive)
-    * const addressSwap = provider.supportsRoute(
-    *   '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC address
-    *   '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT address
-    *   Ethereum
-    * )
-    * console.log('Address-based swap:', addressSwap) // true
-    *
-    * // Check native token swap using NATIVE
-    * const usdcToNativeBase = provider.supportsRoute(
-    *   '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC address on Base
-    *   'NATIVE', // Native gas token
-    *   Base
-    * )
-    * console.log('USDC→NATIVE on Base:', usdcToNativeBase) // true
-    *
-    * // Check Solana swap (addresses are case-sensitive)
-    * const solanaSwap = provider.supportsRoute(
-    *   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-    *   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
-    *   Solana
-    * )
-    * console.log('USDC→USDT on Solana:', solanaSwap) // true
-    * ```
-    */
-    supportsRoute(tokenInAddress, tokenOutAddress, chain, toChain) {
-      const destinationChain = toChain ?? chain;
-      const isCrossChainSwap = destinationChain.chain !== chain.chain;
-      if (!isSwapSupportedChain(chain)) {
-        return false;
-      }
-      if (!isSwapSupportedChain(destinationChain)) {
-        return false;
-      }
-      const normalizedTokenInAddress = this.normalizeToken(tokenInAddress, chain);
-      const normalizedTokenOutAddress = this.normalizeToken(tokenOutAddress, destinationChain);
-      if (normalizedTokenInAddress === "" || normalizedTokenOutAddress === "") {
-        return false;
-      }
-      if (!isCrossChainSwap && normalizedTokenInAddress === normalizedTokenOutAddress) {
-        return false;
-      }
-      if (isCrossChainSwap) {
-        return true;
-      }
-      return getSwapOkTokenStatus(tokenInAddress, tokenOutAddress, chain, TOKEN_REGISTRY, OK_TOKEN_SYMBOLS$1).hasOkToken;
-    }
-    /**
-    * Estimate swap costs and output amount by delegating to the Stablecoin Service quote API.
-    *
-    * @remarks
-    * This method fetches a quote from Circle's Stablecoin Service API without
-    * executing the actual swap. Unlike on-chain gas estimation, this method
-    * does NOT require the wallet to hold the input token balance—gas limits
-    * are provided by the service response.
-    *
-    * **Important**: The gas fee returned in `fees` is the gas limit (max units),
-    * not the actual gas cost in wei. For precise fee calculations, multiply
-    * by the current gas price.
-    *
-    * Use this to:
-    * - Display expected output amounts to users
-    * - Show fee breakdown before committing to a swap
-    * - Validate that the swap parameters are acceptable
-    *
-    * The estimate includes:
-    * - `stopLimit`: Minimum guaranteed output in base units
-    * - `estimatedOutput`: Expected output in human-readable format
-    * - `fees`: Detailed breakdown of all applicable fees
-    * - `transaction`: Pre-built transaction data for execution
-    *
-    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter.
-    * @param params - The swap parameters containing adapter context, tokens, amount, and config.
-    * @returns A promise resolving to the estimate result with transaction data and fees.
-    * @throws {@link KitError} If validation fails or the service is unavailable.
-    *
-    * @example
-    * ```typescript
-    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
-    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2'
-    * import { Ethereum } from '@core/chains'
-    *
-    * const provider = new StablecoinServiceSwapProvider()
-    * const adapter = createViemAdapterFromPrivateKey({
-    *   privateKey: process.env.PRIVATE_KEY
-    * })
-    *
-    * // Get swap estimate for USDC → USDT
-    * const estimate = await provider.estimate({
-    *   from: { adapter, chain: Ethereum },
-    *   tokenIn: 'USDC',  // Token alias
-    *   tokenOut: 'USDT', // Token alias
-    *   amountIn: '100.00',
-    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-    *   config: { slippageBps: 300 } // 3% slippage tolerance
-    * })
-    *
-    * console.log('Stop limit (base units):', estimate.stopLimit)
-    * console.log('Estimated output:', estimate.estimatedOutput)
-    * console.log('Fees:', estimate.fees)
-    * ```
-    *
-    * @example
-    * ```typescript
-    * // Estimate with custom stop limit
-    * const estimateWithStopLimit = await provider.estimate({
-    *   from: { adapter, chain: Ethereum },
-    *   tokenIn: 'USDC',  // Token alias
-    *   tokenOut: 'USDT', // Token alias
-    *   amountIn: '100.00',
-    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-    *   config: {
-    *     slippageBps: 300,
-    *     stopLimit: '99000000' // Minimum 99 USDT output
-    *   }
-    * })
-    * ```
-    */
-    async estimate(params) {
-      validateServiceSwapParams(params);
-      const { chain } = params.from;
-      const destinationChain = params.toChain ?? chain;
-      const serviceParams = await buildServiceParams(params);
-      const serviceResponse = await createSwap(serviceParams);
-      let estimatedGasFee = "0";
-      const evmGasLimit = "gasLimit" in serviceResponse.transaction ? serviceResponse.transaction.gasLimit : void 0;
-      if (chain.type === "evm" && evmGasLimit !== void 0) {
-        const gasLimitUnits = BigInt(evmGasLimit);
-        const gasEstimate = await params.from.adapter.calculateTransactionFee(gasLimitUnits, void 0, chain);
-        estimatedGasFee = formatAmount({
-          value: gasEstimate.fee,
-          token: "NATIVE",
-          chain
-        });
-      } else if (chain.type === "solana") {
-        const gasEstimate = await params.from.adapter.calculateTransactionFee(300000n, void 0, chain);
-        estimatedGasFee = formatAmount({
-          value: gasEstimate.fee,
-          token: "NATIVE",
-          chain
-        });
-      }
-      const adapter = params.from.adapter;
-      const formattedFees = await this.buildFormattedFees(serviceResponse.fees, chain, destinationChain, adapter, params.config?.customFee?.recipientAddress);
-      const fees2 = [
-        ...formattedFees,
-        {
-          token: chain.nativeCurrency.symbol,
-          amount: estimatedGasFee,
-          type: "gas"
-        }
-      ];
-      const [formattedStopLimit, formattedEstimatedOutput] = await Promise.all([
-        formatTokenValue(serviceResponse.stopLimit, serviceParams.tokenOutAddress, destinationChain, adapter),
-        formatTokenValue(serviceResponse.estimatedAmount, serviceParams.tokenOutAddress, destinationChain, adapter)
-      ]);
-      const estimateResult = {
-        stopLimit: formattedStopLimit,
-        estimatedOutput: formattedEstimatedOutput,
-        fees: fees2
-      };
-      return estimateResult;
-    }
-    /**
-    * Prepares a token approval transaction for swap operations.
-    *
-    * @remarks
-    * This method creates a prepared transaction that approves the Adapter Contract
-    * to spend a specified amount of tokens. The approval is required before
-    * initiating a swap operation when the token doesn't support EIP-2612 permits.
-    *
-    * This follows the same pattern as CCTPV2BridgingProvider.approve(), ensuring
-    * consistency across the codebase.
-    *
-    * **Approval Strategy:**
-    *
-    * The method intelligently selects the appropriate approval function based on
-    * the token being approved:
-    *
-    * - **USDC**: Uses `usdc.increaseAllowance` (safer, avoids race conditions)
-    *   - OpenZeppelin's ERC20 extension with relative increase
-    *   - Prevents front-running attacks on allowance changes
-    *   - Recommended for USDC by Circle
-    *
-    * - **Other ERC-20 tokens** (USDT, DAI, etc.): Uses `token.approve`
-    *   - Standard ERC-20 approve function
-    *   - Industry standard used by Uniswap, 1inch, and all major DEXs
-    *   - Theoretical race condition is rare in practice
-    *   - Atomic swap execution provides additional safety
-    *
-    * **When is this used?**
-    * - Token doesn't support EIP-2612 (e.g., USDT, some DAI versions)
-    * - Fallback when permit signature generation fails
-    * - User explicitly requests approval strategy via config
-    *
-    * **Flow:**
-    * 1. Detect token type (USDC vs other ERC-20)
-    * 2. Prepare appropriate action (`usdc.increaseAllowance` or `token.approve`)
-    * 3. Return prepared request (caller executes and waits for confirmation)
-    *
-    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter
-    * @param adapter - The adapter for transaction preparation and execution
-    * @param amount - The amount of tokens to approve (as string in base units)
-    * @param tokenAddress - The token contract address to approve
-    * @param spenderAddress - The Adapter Contract address that will spend the tokens
-    * @param resolvedContext - The resolved operation context containing chain and address information
-    * @returns Promise resolving to a prepared chain request ready for execution
-    *
-    * @throws Error when adapter is not provided
-    * @throws Error when amount is invalid (empty, negative, or malformed)
-    *
-    * @example USDC approval (uses increaseAllowance)
-    * ```typescript
-    * // Internal use in swap() method for USDC
-    * const approvalRequest = await this.approve(
-    *   adapter,
-    *   '1000000', // 1 USDC (6 decimals)
-    *   '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC address
-    *   '0xAdapterContract', // Adapter Contract address
-    *   resolvedContext
-    * )
-    * // Uses usdc.increaseAllowance internally
-    *
-    * // Execute and wait for confirmation
-    * const txHash = await approvalRequest.execute()
-    * await adapter.waitForTransaction(txHash, undefined, chain)
-    * ```
-    *
-    * @example USDT approval (uses approve)
-    * ```typescript
-    * // Internal use in swap() method for USDT
-    * const approvalRequest = await this.approve(
-    *   adapter,
-    *   '1000000', // 1 USDT (6 decimals)
-    *   '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT address
-    *   '0xAdapterContract', // Adapter Contract address
-    *   resolvedContext
-    * )
-    * // Uses token.approve internally
-    *
-    * // Execute and wait for confirmation
-    * const txHash = await approvalRequest.execute()
-    * await adapter.waitForTransaction(txHash, undefined, chain)
-    * ```
-    *
-    * @internal
-    */
-    async approve(adapter, amount, tokenAddress, spenderAddress, resolvedContext) {
-      const chain = resolvedContext.chain;
-      const isUsdc = tokenAddress.toLowerCase() === chain.usdcAddress?.toLowerCase();
-      const operationContext = resolvedContext;
-      if (isUsdc) {
-        return await adapter.prepareAction("usdc.increaseAllowance", {
-          amount: BigInt(amount),
-          delegate: spenderAddress
-        }, operationContext);
-      } else {
-        return await adapter.prepareAction("token.approve", {
-          tokenAddress,
-          amount: BigInt(amount),
-          delegate: spenderAddress
-        }, operationContext);
-      }
-    }
-    /**
-    * Handle EVM token approval for swap operations.
-    *
-    * @remarks
-    * Determine whether the swap requires a separate on-chain approval
-    * transaction and, if so, execute it before the swap itself.
-    *
-    * **Decision matrix (in order of precedence):**
-    *
-    * | Condition | Result |
-    * |-----------|--------|
-    * | Native token (ETH, MATIC, …) | Skip — no approval needed |
-    * | `allowanceStrategy === 'approve'` | Force on-chain approval, even when permit is available |
-    * | Token supports EIP-2612 **and** adapter supports EIP-2612 | Skip — permit will be bundled into the swap tx |
-    * | Otherwise | On-chain approval required |
-    *
-    * When on-chain approval **is** required the method delegates to
-    * {@link handleUsdtApproval} (USDT needs a reset-to-zero flow) or
-    * {@link handleStandardApproval} (all other ERC-20 tokens, including
-    * USDC via `increaseAllowance`).
-    *
-    * @typeParam TFromAdapterCapabilities - The adapter capabilities type
-    * @param adapter - The adapter for transaction execution
-    * @param chain - The chain definition containing contract addresses
-    * @param serviceParams - The swap parameters from the service
-    * @param resolvedContext - The resolved operation context
-    * @param executedTransactions - Array to track executed transactions
-    * @param allowanceStrategy - Optional override for the allowance strategy.
-    *   When set to `'approve'`, the permit flow is bypassed and a standard
-    *   on-chain approval transaction is always sent.  When `'permit'` or
-    *   `undefined` the method follows the default EIP-2612 detection logic.
-    * @returns Promise that resolves when approval is complete (or skipped)
-    * @throws KitError when adapter contract address is missing or approval fails
-    */
-    async handleEvmTokenApproval(adapter, chain, executionCtx, resolvedContext, executedTransactions, allowanceStrategy) {
-      const isNativeToken3 = isNativeEvmAddress(executionCtx.tokenInAddress);
-      const tokenSupportsPermit = supportsEIP2612(executionCtx.tokenInAddress, chain);
-      const canUsePermitFlow = tokenSupportsPermit && adapterSupportsPermit(adapter) && allowanceStrategy !== "approve";
-      const needsApproval = !isNativeToken3 && !canUsePermitFlow;
-      if (!needsApproval) {
-        return;
-      }
-      const adapterContractAddress = chain.kitContracts?.adapter;
-      if (!adapterContractAddress) {
-        throw new KitError({
-          ...InputError.VALIDATION_FAILED,
-          recoverability: "FATAL",
-          message: `Adapter contract not configured for chain ${chain.name}. Swap operations require an adapter contract.`,
-          cause: {
-            trace: {
-              chain: chain.name
-            }
-          }
-        });
-      }
-      const tokenAddress = executionCtx.tokenInAddress.toLowerCase();
-      const usdt = chain.usdtAddress?.toLowerCase();
-      const isTokenUsdt = usdt !== void 0 && tokenAddress === usdt;
-      if (isTokenUsdt) {
-        await this.handleUsdtApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions);
-      } else {
-        await this.handleStandardApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions);
-      }
-    }
-    /**
-    * Handle USDT approval with reset flow
-    *
-    * USDT requires allowance to be reset to 0 before setting a new non-zero value.
-    * This method checks the current allowance and:
-    * - If sufficient, proceeds without changes
-    * - If non-zero but insufficient, resets to 0 then sets new amount
-    * - If zero, sets new amount directly
-    *
-    * @param adapter - The chain adapter instance
-    * @param chain - The chain definition
-    * @param serviceParams - The service parameters containing amount and addresses
-    * @param adapterContractAddress - The adapter contract address to approve
-    * @param resolvedContext - The resolved operation context
-    * @param executedTransactions - Array to track executed approval transactions
-    * @returns A Promise that resolves when approval transactions are complete
-    *
-    * @throws Error if the adapter fails to prepare or execute approval transactions
-    * @throws Error if transaction confirmation fails or times out
-    */
-    async handleUsdtApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions) {
-      const current = await readTokenAllowance(adapter, {
-        tokenAddress: executionCtx.tokenInAddress,
-        delegate: adapterContractAddress
-      }, resolvedContext);
-      const required = BigInt(executionCtx.amount);
-      if (current >= required) {
-        return;
-      }
-      if (current > 0n) {
-        const resetReq = await this.approve(adapter, "0", executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
-        const resetTx = await resetReq.execute();
-        executedTransactions.push({
-          type: "approval",
-          txHash: resetTx
-        });
-        await adapter.waitForTransaction(resetTx, void 0, chain);
-      }
-      const approvalReq = await this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
-      const approvalTx = await approvalReq.execute();
-      executedTransactions.push({
-        type: "approval",
-        txHash: approvalTx
-      });
-      await adapter.waitForTransaction(approvalTx, void 0, chain);
-    }
-    /**
-    * Handle standard ERC-20 token approval
-    *
-    * Execute a standard ERC-20 approve transaction for non-USDT tokens.
-    * This is a straightforward approval without special reset requirements.
-    *
-    * @param adapter - The chain adapter instance
-    * @param chain - The chain definition
-    * @param serviceParams - The service parameters containing amount and addresses
-    * @param adapterContractAddress - The adapter contract address to approve
-    * @param resolvedContext - The resolved operation context
-    * @param executedTransactions - Array to track executed approval transactions
-    * @returns A Promise that resolves when the approval transaction is complete
-    *
-    * @throws Error if the adapter fails to prepare or execute the approval transaction
-    * @throws Error if transaction confirmation fails or times out
-    */
-    async handleStandardApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions) {
-      const approvalReq = await this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
-      const approvalTx = await approvalReq.execute();
-      executedTransactions.push({
-        type: "approval",
-        txHash: approvalTx
-      });
-      await adapter.waitForTransaction(approvalTx, void 0, chain);
-    }
-    /**
-    * Execute a token swap operation through the Stablecoin Service.
-    *
-    * @remarks
-    * This method coordinates with the stablecoin-service to prepare and execute swap transactions.
-    * It handles parameter validation, service communication, automatic token approval, transaction
-    * preparation, execution, and confirmation monitoring.
-    *
-    * **Automatic Approval Flow** (similar to BridgeKit):
-    * 1. **Check for EIP-2612 support**: Detects if token supports gasless approvals
-    * 2. **If token supports EIP-2612** (USDC, EURC):
-    *    - Generate permit signature (off-chain, gasless)
-    *    - Execute swap in **single transaction**
-    * 3. **If token doesn't support EIP-2612**:
-    *    - Execute approval transaction (on-chain)
-    *    - Wait for approval confirmation
-    *    - Execute swap transaction
-    *    - Total: **two transactions**
-    *
-    * **EIP-2612 Benefits**:
-    * - Single transaction (lower gas costs)
-    * - Better UX (one wallet interaction)
-    * - No pre-approval required
-    *
-    * **Supported EIP-2612 Tokens**:
-    * - USDC on Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, World Chain, Sepolia
-    *
-    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter
-    * @param params - The swap parameters containing adapter context, tokens, amount, destination, and configuration
-    * @returns Promise resolving to SwapResult with transaction hash and details
-    * @throws KitError when validation fails or transaction reverts
-    * @throws Error when service communication or transaction execution fails
-    *
-    * @example Swap with EIP-2612 (single transaction)
-    * ```typescript
-    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
-    * import { createAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2'
-    * import { Ethereum } from '@core/chains'
-    *
-    * const provider = new StablecoinServiceSwapProvider()
-    *
-    * const adapter = createAdapterFromPrivateKey({
-    *   privateKey: process.env.PRIVATE_KEY
-    * })
-    *
-    * // Swap USDC → USDT (supports EIP-2612)
-    * const result = await provider.swap({
-    *   from: { adapter, chain: Ethereum },
-    *   tokenIn: 'USDC',  // Token alias
-    *   tokenOut: 'USDT', // Token alias
-    *   amountIn: '100.00',
-    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'
-    * })
-    * // User signs permit (off-chain) → Swap executes (1 tx total)
-    *
-    * console.log('Swap completed:', result.txHash)
-    * ```
-    *
-    * @example Swap without EIP-2612 (two transactions)
-    * ```typescript
-    * // Swap token that doesn't support EIP-2612
-    * const result = await provider.swap({
-    *   from: { adapter, chain: Ethereum },
-    *   tokenIn: 'USDC',   // Token alias
-    *   tokenOut: 'NATIVE', // Token alias (ETH on Ethereum)
-    *   amountIn: '100.00',
-    *   to: '0xRecipient'
-    * })
-    * // Approval tx executes and confirms → Then swap executes (2 txs total)
-    * ```
-    *
-    * @example Swap with custom configuration
-    * ```typescript
-    * const result = await provider.swap({
-    *   from: { adapter, chain: Ethereum },
-    *   tokenIn: 'USDC', // Alias supported
-    *   tokenOut: 'USDT', // Alias supported
-    *   amountIn: '100.00',
-    *   to: '0xRecipient',
-    *   config: {
-    *     slippageBps: 500, // 5% slippage tolerance
-    *     customFee: {
-    *       value: '1000000', // 1 USDC fee
-    *       recipientAddress: '0xFeeRecipient'
-    *     }
-    *   }
-    * })
-    *
-    * console.log('Transaction hash:', result.txHash)
-    * console.log('Input amount:', result.amountIn)
-    * console.log('Fees:', result.fees)
-    * ```
-    *
-    * @example
-    * ```typescript
-    * // Swap with error handling
-    * import { isKitError, isFatalError, isRetryableError } from '@core/errors'
-    *
-    * try {
-    *   const result = await provider.swap({
-    *     from: { adapter, chain: Ethereum },
-    *     tokenIn: 'USDC',  // Token alias
-    *     tokenOut: 'USDT', // Token alias
-    *     amountIn: '100.00',
-    *     to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'
-    *   })
-    *   console.log('Swap completed:', result.txHash)
-    * } catch (error) {
-    *   if (isKitError(error)) {
-    *     if (isFatalError(error)) {
-    *       console.error('Fatal error - check parameters:', error.message)
-    *     } else if (isRetryableError(error)) {
-    *       console.log('Transient error - retrying...')
-    *     }
-    *   }
-    * }
-    * ```
-    *
-    * @example Error handling
-    * ```typescript
-    * try {
-    *   const result = await provider.swap(params)
-    *   console.log('Success:', result.txHash)
-    * } catch (error) {
-    *   if (error instanceof KitError) {
-    *     console.error('Swap failed:', error.message)
-    *     console.error('Recoverability:', error.recoverability)
-    *     console.error('Trace:', error.cause?.trace)
-    *   }
-    * }
-    * ```
-    */
-    async swap(params) {
-      const { from: from16, tokenIn, tokenOut, config } = params;
-      const { adapter, chain } = from16;
-      const destinationChain = params.toChain ?? chain;
-      const isCrossChainSwap = destinationChain.chain !== chain.chain;
-      const serviceParams = await buildServiceParams(params);
-      const executionCtx = {
-        tokenInAddress: serviceParams.tokenInAddress,
-        tokenOutAddress: serviceParams.tokenOutAddress,
-        amount: serviceParams.amount,
-        fromAddress: serviceParams.fromAddress
-      };
-      const resolvedContext = await resolveOperationContext(adapter, {
-        chain,
-        address: serviceParams.fromAddress
-      });
-      if (chain.type === "solana") {
-        await validateNonNativeBalance({
-          adapter,
-          tokenInAddress: serviceParams.tokenInAddress,
-          tokenInSymbol: tokenIn,
-          amount: serviceParams.amount,
-          walletAddress: serviceParams.fromAddress,
-          context: resolvedContext
-        });
-      }
-      const serviceResponse = await createSwap(serviceParams);
-      const executedTransactions = [];
-      const { preparedAction, batchedSwapPlan } = await this.prepareSwapRequests({
-        adapter,
-        chain,
-        serviceResponse,
-        resolvedContext,
-        executionCtx,
-        config,
-        executedTransactions
-      });
-      let txHash;
-      const evmGasLimit = "gasLimit" in serviceResponse.transaction ? serviceResponse.transaction.gasLimit : void 0;
-      try {
-        if (batchedSwapPlan) {
-          const batched = await executeBatchedApproveAndSwap({
-            adapter,
-            chain,
-            approveRequest: batchedSwapPlan.approveRequest,
-            swapRequest: batchedSwapPlan.swapRequest,
-            fromAddress: executionCtx.fromAddress
-          });
-          txHash = batched.swapTxHash;
-          executedTransactions.push(...batched.executedTransactions);
-        } else if (preparedAction) {
-          txHash = await this.executeSwapTransaction(preparedAction, evmGasLimit);
-          executedTransactions.push({
-            type: "swap",
-            txHash
-          });
-          const txReceipt = await adapter.waitForTransaction(txHash, void 0, chain);
-          if (txReceipt.status === "reverted") {
-            const explorerUrl = buildExplorerUrl(chain, txHash);
-            throw createTransactionRevertedError(chain.name, "Swap transaction reverted on-chain", void 0, txHash, explorerUrl);
-          }
-        } else {
-          throw new KitError({
-            ...InputError.UNSUPPORTED_ACTION,
-            recoverability: "FATAL",
-            message: "No swap execution path was prepared."
-          });
-        }
-      } catch (err2) {
-        handleSwapExecutionError(err2, txHash, chain);
-      }
-      const swapResultFees = serviceResponse.fees ? await this.buildFormattedFees(serviceResponse.fees, chain, destinationChain, adapter, config?.customFee?.recipientAddress) : void 0;
-      const statusSnapshot = await fetchSameChainStatusSnapshot({
-        isCrossChainSwap,
-        txHash,
-        chain,
-        ...serviceParams.apiKey !== void 0 && {
-          apiKey: serviceParams.apiKey
-        }
-      });
-      const correlationId = serviceResponse.correlationId;
-      return {
-        tokenIn,
-        tokenOut,
-        chain,
-        amountIn: serviceParams.amount,
-        fromAddress: serviceParams.fromAddress,
-        toAddress: serviceParams.toAddress,
-        txHash,
-        ...correlationId !== void 0 && {
-          correlationId
-        },
-        executedTransactions,
-        ...config !== void 0 && {
-          config
-        },
-        ...swapResultFees !== void 0 && {
-          fees: swapResultFees
-        },
-        progress: statusSnapshot.progress,
-        ...statusSnapshot.amountOut !== void 0 && {
-          amountOut: statusSnapshot.amountOut
-        }
-      };
-    }
-    /**
-    * Prepare the swap execution request(s) for the source wallet's chain.
-    *
-    * Produces either a single {@link PreparedChainRequest} (Solana, or the
-    * sequential EVM approve-then-swap path) or a `batchedSwapPlan` (the EVM
-    * atomic approve+swap path chosen when the adapter supports EIP-5792 atomic
-    * batching). The caller executes whichever field is populated. Any on-chain
-    * approval sent on the sequential path is appended to `executedTransactions`.
-    *
-    * @typeParam TFromAdapterCapabilities - Source-adapter capability set.
-    * @param args - Inputs derived from the validated swap request.
-    * @param args.adapter - Source-chain wallet adapter.
-    * @param args.chain - Source chain definition.
-    * @param args.serviceResponse - Validated createSwap response.
-    * @param args.resolvedContext - Resolved operation context.
-    * @param args.executionCtx - Minimal on-chain execution context.
-    * @param args.config - Optional swap configuration (allowance/batch flags).
-    * @param args.executedTransactions - Array appended with any sent approval.
-    * @returns The prepared action or the batched approve+swap plan.
-    * @throws KitError when the EVM atomic-batch path is selected but the chain
-    *   has no configured adapter contract.
-    */
-    async prepareSwapRequests(args) {
-      const { adapter, chain, serviceResponse, resolvedContext, executionCtx, config, executedTransactions } = args;
-      if (chain.type === "solana") {
-        return {
-          preparedAction: await prepareSolanaSwapAction(adapter, serviceResponse, resolvedContext)
-        };
-      }
-      const useBatch = await shouldUseBatchedSwap({
-        adapter,
-        chain,
-        tokenInAddress: executionCtx.tokenInAddress,
-        allowanceStrategy: config?.allowanceStrategy,
-        batchTransactions: config?.batchTransactions
-      });
-      if (useBatch) {
-        const adapterContractAddress = chain.kitContracts?.adapter;
-        if (!adapterContractAddress) {
-          throw new KitError({
-            ...InputError.VALIDATION_FAILED,
-            recoverability: "FATAL",
-            message: `Adapter contract not configured for chain ${chain.name}. Swap operations require an adapter contract.`,
-            cause: {
-              trace: {
-                chain: chain.name
-              }
-            }
-          });
-        }
-        const [approveRequest, swapRequest] = await Promise.all([
-          this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext),
-          prepareEvmSwapAction(adapter, serviceResponse, resolvedContext, "approve")
-        ]);
-        return {
-          batchedSwapPlan: {
-            approveRequest,
-            swapRequest
-          }
-        };
-      }
-      await this.handleEvmTokenApproval(adapter, chain, executionCtx, resolvedContext, executedTransactions, config?.allowanceStrategy);
-      return {
-        preparedAction: await prepareEvmSwapAction(adapter, serviceResponse, resolvedContext, config?.allowanceStrategy)
-      };
-    }
-    /**
-    * Executes a swap transaction with the appropriate gas limit for the chain type.
-    *
-    * For EVM chains, performs a local eth_estimateGas call, applies a 1.3x safety
-    * multiplier for the full adapter execution path (DEX swap, fee split, token sweep),
-    * and uses the greater of (local estimate × 1.3) or the proxy's gasLimit. If local
-    * estimation fails, falls back to the proxy's gasLimit.
-    *
-    * @param preparedAction - The prepared chain request to execute.
-    * @param evmGasLimit - Optional gas limit from the proxy service for EVM transactions.
-    * @returns The transaction hash.
-    */
-    async executeSwapTransaction(preparedAction, evmGasLimit) {
-      if (preparedAction.type === "evm" && evmGasLimit) {
-        const proxyGasLimit = Number(evmGasLimit);
-        let effectiveGasLimit = proxyGasLimit;
-        try {
-          const localEstimate = await preparedAction.estimate();
-          const localGas = Number(localEstimate?.gas);
-          if (Number.isFinite(localGas) && localGas > 0) {
-            const localWithBuffer = Math.ceil(localGas * GAS_SAFETY_MULTIPLIER);
-            if (Number.isFinite(localWithBuffer) && localWithBuffer > 0) {
-              effectiveGasLimit = Math.max(localWithBuffer, proxyGasLimit);
-            }
-          }
-        } catch {
-        }
-        return preparedAction.execute({
-          gasLimit: effectiveGasLimit
-        });
-      }
-      return preparedAction.execute();
-    }
-    /**
-    * Build formatted fee arrays from the service response.
-    *
-    * @remarks
-    * Consolidate provider, swap, and developer fee formatting into a
-    * single call so both {@link estimate} and {@link swap} share the
-    * same logic.
-    *
-    * @param fees - The fee breakdown from the service response.
-    * @param chain - The chain definition for token resolution and formatting.
-    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
-    * @param recipientAddress - Optional developer fee recipient address.
-    * @returns Promise resolving to the combined formatted fee array.
-    */
-    async buildFormattedFees(fees2, chain, destinationChain, adapter, recipientAddress) {
-      if (!fees2) return [];
-      const [providerFees, swapFees, developerFees] = await Promise.all([
-        this.formatServiceFees(fees2.provider, chain, destinationChain, "provider", adapter),
-        this.formatServiceFees(fees2.swap, chain, destinationChain, "swap", adapter),
-        recipientAddress ? this.formatDeveloperFees(fees2.developer, chain, destinationChain, recipientAddress, adapter) : Promise.resolve([])
-      ]);
-      return [
-        ...providerFees,
-        ...swapFees,
-        ...developerFees
-      ];
-    }
-    /**
-    * Resolve a single fee item to its display token and human-readable amount.
-    *
-    * @remarks
-    * Prefer the self-describing metadata the service attaches to each fee:
-    * `decimals` (and `symbol`) come straight from the provider quote, so they
-    * are authoritative even for a token absent from the SDK registry on both
-    * chains. That is the case {@link resolveFeeChain} cannot recover — a
-    * destination-denominated fee token resolves on neither the source registry
-    * nor the source-bound adapter, leaving the amount as raw base units. When
-    * the service omits `decimals` (optional during rollout), fall back to
-    * inferring the fee token's chain and resolving via the registry/adapter.
-    *
-    * Like {@link formatTokenValue}, this never throws: fee display is cosmetic
-    * and must not fail an estimate/swap. A malformed self-describing `decimals`
-    * (e.g. a non-numeric `amount` or invalid decimal count that makes
-    * {@link formatUnits} throw) falls through to chain-based resolution rather
-    * than propagating out of {@link buildFormattedFees}.
-    *
-    * @param fee - The fee item from the service response.
-    * @param chain - The source chain definition.
-    * @param destinationChain - The destination chain definition.
-    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
-    * @returns Promise resolving to the formatted amount and display token.
-    */
-    async formatFeeValue(fee, chain, destinationChain, adapter) {
-      if (fee.decimals != null) {
-        try {
-          return {
-            amount: formatUnits2(fee.amount, fee.decimals),
-            token: fee.symbol ?? fee.token
-          };
-        } catch {
-        }
-      }
-      const feeChain = resolveFeeChain(fee.token, chain, destinationChain);
-      return formatTokenValue(fee.amount, fee.token, feeChain, adapter);
-    }
-    /**
-    * Format service fee items into the SDK's ServiceSwapFee structure.
-    *
-    * @remarks
-    * Transform raw fee data from the service into formatted fees with:
-    * - Resolved token symbols (USDC, USDT, NATIVE) when possible
-    * - Human-readable decimal amounts via {@link formatTokenValue}
-    * - On-chain decimals fallback for unregistered tokens via adapter
-    * - Raw passthrough only when both registry and adapter fail
-    *
-    * @param feeItems - Array of fee items from the service response.
-    * @param chain - The source chain definition for token resolution and formatting.
-    * @param destinationChain - The destination chain, used to resolve fees denominated in the output token.
-    * @param type - The fee type to assign ('provider' or 'swap').
-    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
-    * @returns Promise resolving to formatted ServiceSwapFee array.
-    */
-    async formatServiceFees(feeItems, chain, destinationChain, type2, adapter) {
-      if (!feeItems) return [];
-      return Promise.all(feeItems.map(async (fee) => {
-        const formatted4 = await this.formatFeeValue(fee, chain, destinationChain, adapter);
-        return {
-          token: formatted4.token,
-          amount: formatted4.amount,
-          type: type2
-        };
-      }));
-    }
-    /**
-    * Format developer fee items into the SDK's ServiceSwapFee structure.
-    *
-    * @param feeItems - Array of developer fee items from the service response.
-    * @param chain - The source chain definition for token resolution and formatting.
-    * @param destinationChain - The destination chain, used to resolve fees denominated in the output token.
-    * @param recipientAddress - The developer's fee recipient address from config.
-    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
-    * @returns Promise resolving to formatted ServiceSwapFee array with developer entries.
-    */
-    async formatDeveloperFees(feeItems, chain, destinationChain, recipientAddress, adapter) {
-      if (!feeItems) return [];
-      return Promise.all(feeItems.map(async (fee) => {
-        const formatted4 = await this.formatFeeValue(fee, chain, destinationChain, adapter);
-        return {
-          token: formatted4.token,
-          amount: formatted4.amount,
-          type: "developer",
-          recipientAddress
-        };
-      }));
-    }
-  };
-  var TransferSpeed;
-  (function(TransferSpeed3) {
-    TransferSpeed3["FAST"] = "FAST";
-    TransferSpeed3["SLOW"] = "SLOW";
-  })(TransferSpeed || (TransferSpeed = {}));
-  var createDecimalStringValidator = (options) => (schema) => {
-    const capitalizedAttributeName = options.attributeName.charAt(0).toUpperCase() + options.attributeName.slice(1);
-    return schema.regex(/^-?(?:\d+(?:\.\d+)?|\.\d+)$/, options.regexMessage).superRefine((val, ctx) => {
-      const amount = Number.parseFloat(val);
-      if (Number.isNaN(amount)) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          message: options.regexMessage
-        });
-        return;
-      }
-      if (options.maxDecimals !== void 0) {
-        const decimalPart = val.split(".")[1];
-        if (decimalPart && decimalPart.length > options.maxDecimals) {
-          ctx.addIssue({
-            code: external_exports.ZodIssueCode.custom,
-            message: `Maximum supported decimal places: ${options.maxDecimals.toString()}`
-          });
-          return;
-        }
-      }
-      if (options.allowZero && amount < 0) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          message: `${capitalizedAttributeName} must be non-negative`
-        });
-      } else if (!options.allowZero && amount <= 0) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          message: `${capitalizedAttributeName} must be greater than 0`
-        });
-      }
-    });
-  };
-  var chainDefinitionSchema = external_exports.object({
-    name: external_exports.string().min(1, "Chain name is required"),
-    type: external_exports.string().min(1, "Chain type is required")
-  });
-  var walletContextSchema = external_exports.object({
-    adapter: external_exports.object({
-      prepare: external_exports.function().returns(external_exports.any()),
-      waitForTransaction: external_exports.function().returns(external_exports.any())
-    }),
-    address: external_exports.string().min(1),
-    chain: external_exports.object({
-      name: external_exports.string(),
-      type: external_exports.string(),
-      isTestnet: external_exports.boolean()
-    })
-  });
-  var destinationContextSchema = walletContextSchema.extend({
-    useForwarder: external_exports.boolean().optional(),
-    recipientAddress: external_exports.string().optional()
-  });
-  var forwarderOnlyDestinationSchema = external_exports.object({
-    chain: chainDefinitionSchema.extend({
-      isTestnet: external_exports.boolean()
-    }),
-    recipientAddress: external_exports.string().min(1, "Recipient address is required for forwarder-only destination"),
-    useForwarder: external_exports.literal(true)
-  }).superRefine((data, ctx) => {
-    if (!isValidAddressForChain(data.recipientAddress, data.chain.name)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        message: `Invalid recipient address format for chain ${data.chain.name}`,
-        path: [
-          "recipientAddress"
-        ]
-      });
-    }
-  });
-  var bridgeDestinationSchema = external_exports.union([
-    destinationContextSchema,
-    forwarderOnlyDestinationSchema
-  ]);
-  var customFeeSchema = external_exports.object({
-    /**
-     * The fee to charge for the transfer as string.
-     * Must be a non-negative value using dot (.) as decimal separator,
-     * with no thousand separators or comma decimals.
-     */
-    value: createDecimalStringValidator({
-      allowZero: true,
-      regexMessage: "Value must be a non-negative numeric string with dot (.) as decimal separator, with no thousand separators or comma decimals.",
-      attributeName: "value"
-    })(external_exports.string()).optional(),
-    /**
-     * The fee recipient address.
-     * Must be a valid address string.
-     */
-    recipientAddress: external_exports.string().trim().min(1, "Fee recipient must be a non-empty string").optional()
-  }).strict();
-  function createBridgeParamsSchema(tokenSchema2, config) {
-    const { maxDecimals } = config;
-    return external_exports.object({
-      amount: external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
-        allowZero: false,
-        regexMessage: AMOUNT_FORMAT_ERROR_MESSAGE,
-        attributeName: "amount",
-        maxDecimals
-      })(external_exports.string())),
-      source: walletContextSchema,
-      destination: bridgeDestinationSchema,
-      token: tokenSchema2,
-      config: external_exports.object({
-        transferSpeed: external_exports.nativeEnum(TransferSpeed).optional(),
-        maxFee: external_exports.string().pipe(createDecimalStringValidator({
-          allowZero: true,
-          regexMessage: MAX_FEE_FORMAT_ERROR_MESSAGE,
-          attributeName: "maxFee",
-          maxDecimals
-        })(external_exports.string())).optional(),
-        customFee: customFeeSchema.optional()
-      })
-    });
-  }
-  createBridgeParamsSchema(external_exports.literal("USDC"), {
-    maxDecimals: 6
-  });
-  var swapChainIdentifierField = external_exports.custom((value) => swapChainIdentifierSchema.safeParse(value).success, {
-    message: "chain must be a supported swap chain"
-  });
-  var optionalSwapChainIdentifierField = swapChainIdentifierField.optional();
-  var adapterContextSchema = external_exports.object({
-    adapter: adapterSchema,
-    chain: swapChainIdentifierField,
-    address: external_exports.string().optional()
-  });
-  var allowanceStrategySchema = external_exports.enum([
-    "permit",
-    "approve"
-  ]);
-  var swapCustomFeeSchema = external_exports.object({
-    /**
-     * Fee percentage in basis points (percentage approach).
-     * 100 bps = 1%, must be > 0 and <= 10000.
-     */
-    percentageBps: external_exports.number().int().positive().max(1e4),
-    /**
-     * Fee recipient address (required).
-     * Must be a valid EVM address or Solana address.
-     */
-    recipientAddress: external_exports.string().refine((value) => evmAddressSchema.safeParse(value).success || solanaAddressSchema.safeParse(value).success, {
-      message: "recipientAddress must be a valid blockchain address: EVM (0x + 40 hex chars) or Solana (base58, 32-44 chars)"
-    })
-  }).strict();
-  var swapConfigSchema = external_exports.object({
-    allowanceStrategy: allowanceStrategySchema.optional(),
-    slippageBps: external_exports.number().int().min(0).optional(),
-    stopLimit: external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
-      allowZero: true,
-      regexMessage: 'Stop limit must be a numeric string with dot (.) as decimal separator (e.g., "0.1", ".1", "10.5", "1000.50"), with no thousand separators or comma decimals.',
-      attributeName: "stopLimit"
-    })(external_exports.string())).optional(),
-    customFee: swapCustomFeeSchema.optional(),
-    apiKey: external_exports.string().optional(),
-    kitKey: external_exports.string().optional()
-  });
-  var swapDestinationSchema = external_exports.object({
-    chain: optionalSwapChainIdentifierField,
-    recipientAddress: external_exports.string().refine((value) => evmAddressSchema.safeParse(value).success || solanaAddressSchema.safeParse(value).success, {
-      message: "recipientAddress must be a valid blockchain address: EVM (0x + 40 hex chars) or Solana (base58, 32-44 chars)"
-    }).optional()
-  }).strict();
-  var EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
-  var SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-  var BASE58_CHARS_REGEX = /^[1-9A-HJ-NP-Za-km-z]+$/;
-  function looksLikeSolanaAddress(value) {
-    return BASE58_CHARS_REGEX.test(value) && value.length >= 32;
-  }
-  var MAX_DISPLAY_LENGTH = 30;
-  function truncate(value) {
-    return value.length > MAX_DISPLAY_LENGTH ? `${value.slice(0, MAX_DISPLAY_LENGTH)}...` : value;
-  }
-  var _symbolResult;
-  var swapTokenSchema = external_exports.string().superRefine((value, ctx) => {
-    if (value.startsWith("0x")) {
-      if (!EVM_ADDRESS_REGEX.test(value)) {
-        ctx.addIssue({
-          code: external_exports.ZodIssueCode.custom,
-          message: `Invalid EVM token address format. Expected '0x' followed by 40 hexadecimal characters, but received: '${truncate(value)}'`
-        });
-      }
-      return;
-    }
-    _symbolResult = supportedSwapTokenSchema.safeParse(value);
-    if (_symbolResult.success) {
-      return;
-    }
-    if (SOLANA_ADDRESS_REGEX.test(value)) {
-      return;
-    }
-    if (looksLikeSolanaAddress(value)) {
-      ctx.addIssue({
-        code: external_exports.ZodIssueCode.custom,
-        message: `Invalid Solana token address format. Expected 32-44 base58 characters, but received: '${truncate(value)}'`
-      });
-      return;
-    }
-    ctx.addIssue({
-      code: external_exports.ZodIssueCode.custom,
-      message: `Unknown token symbol '${truncate(value)}'. Supported symbols include USDC, USDT, WETH, NATIVE, and others. See SDK documentation for the full list. You can also provide a token contract address (EVM: 0x... or Solana: base58).`
-    });
-  }).transform((value) => _symbolResult?.success ? _symbolResult.data : value);
-  var amountInSchema = external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
-    allowZero: false,
-    regexMessage: AMOUNT_FORMAT_ERROR_MESSAGE,
-    attributeName: "amountIn",
-    maxDecimals: 18
-  })(external_exports.string())).describe("The amount of the input token to swap, expressed as a human-readable decimal string in token units (e.g., '0.05' for 0.05 USDC or 0.05 ETH).");
-  var swapParamsSchema = external_exports.object({
-    from: adapterContextSchema,
-    tokenIn: swapTokenSchema,
-    tokenOut: swapTokenSchema,
-    amountIn: amountInSchema,
-    to: swapDestinationSchema.optional(),
-    config: swapConfigSchema.optional()
-  });
-  var customFeePolicySchema = external_exports.object({
-    computeFee: external_exports.function().returns(external_exports.string().or(external_exports.promise(external_exports.string()))),
-    resolveFeeRecipientAddress: external_exports.function().returns(external_exports.string().or(external_exports.promise(external_exports.string())))
-  }).strict();
-  var assertCustomFeePolicySymbol = /* @__PURE__ */ Symbol("assertCustomFeePolicy");
-  function assertCustomFeePolicy(config) {
-    validateWithStateTracking(config, customFeePolicySchema, "SwapKit custom fee policy", assertCustomFeePolicySymbol);
-  }
-  var ASSERT_SWAP_PARAMS_SYMBOL = /* @__PURE__ */ Symbol("assertSwapParams");
-  function assertSwapParams(params, schema) {
-    validateWithStateTracking(params, schema, "swap parameters", ASSERT_SWAP_PARAMS_SYMBOL);
-  }
   function createAmountError(reason, message, context, cause) {
     const trace = {
       reason
@@ -60588,6 +58121,2792 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       return toJSON(this);
     }
   };
+  function isBigIntLike(value) {
+    try {
+      BigInt(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function isNonNegativeBigIntLike$1(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var hexBytesSchema$2 = external_exports.union([
+    hexStringSchema,
+    external_exports.literal("0x")
+  ]).refine((value) => value.length % 2 === 0, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  });
+  var uint256LikeSchema$1 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike$1, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var amountJsonSchema = external_exports.object({
+    raw: external_exports.string().refine(isBigIntLike, {
+      message: "raw must be a bigint-compatible string"
+    }),
+    decimals: external_exports.number().int().nonnegative()
+  });
+  var claimRewardsInstructionSchema = external_exports.object({
+    target: evmAddressSchema,
+    data: hexBytesSchema$2,
+    value: uint256LikeSchema$1,
+    tokenIn: evmAddressSchema,
+    amountToApprove: uint256LikeSchema$1,
+    tokenOut: evmAddressSchema,
+    minTokenOut: uint256LikeSchema$1
+  }).passthrough();
+  var claimRewardsTokenSchema = external_exports.object({
+    token: evmAddressSchema,
+    beneficiary: evmAddressSchema
+  }).passthrough();
+  var claimRewardsExecutionParamsSchema = external_exports.object({
+    instructions: external_exports.tuple([
+      claimRewardsInstructionSchema
+    ]).rest(claimRewardsInstructionSchema),
+    tokens: external_exports.tuple([
+      claimRewardsTokenSchema
+    ]).rest(claimRewardsTokenSchema),
+    execId: uint256LikeSchema$1,
+    deadline: uint256LikeSchema$1,
+    metadata: hexBytesSchema$2
+  }).passthrough();
+  var claimedAmountSchema = external_exports.object({
+    token: evmAddressSchema,
+    symbol: external_exports.string(),
+    amount: amountJsonSchema
+  });
+  var claimRewardsPayloadSchema = external_exports.object({
+    rewards: external_exports.array(claimedAmountSchema),
+    executionParams: claimRewardsExecutionParamsSchema.optional(),
+    signature: evmSignatureSchema.optional()
+  }).refine((data) => {
+    const signedFieldCount = (data.executionParams === void 0 ? 0 : 1) + (data.signature === void 0 ? 0 : 1);
+    if (data.rewards.length > 0) {
+      return signedFieldCount === 2;
+    }
+    return signedFieldCount === 0;
+  }, {
+    message: "claim rewards response must include executionParams and signature only when rewards are claimable"
+  });
+  external_exports.object({
+    data: claimRewardsPayloadSchema
+  });
+  var claimRewardsQuoteRewardSchema = external_exports.object({
+    token: external_exports.string(),
+    symbol: external_exports.string(),
+    amount: amountJsonSchema
+  });
+  var claimRewardsQuotePayloadSchema = external_exports.object({
+    rewards: external_exports.array(claimRewardsQuoteRewardSchema)
+  });
+  external_exports.object({
+    data: claimRewardsQuotePayloadSchema
+  });
+  external_exports.object({
+    /**
+     * Defines who controls the address used in operations.
+     * Must be either 'user-controlled' or 'developer-controlled'.
+     */
+    addressContext: external_exports.enum([
+      "user-controlled",
+      "developer-controlled"
+    ], {
+      errorMap: () => ({
+        message: "addressContext must be either 'user-controlled' or 'developer-controlled'. Use 'user-controlled' for browser wallets, private keys, or hardware wallets. Use 'developer-controlled' for enterprise custody solutions or multi-entity adapters."
+      })
+    }),
+    /**
+     * Array of supported chains. Must contain at least one EVM chain.
+     * All chains must be valid EVM ChainDefinition objects.
+     */
+    supportedChains: external_exports.array(external_exports.object({
+      type: external_exports.literal("evm"),
+      chainId: external_exports.number()
+    }).passthrough(), {
+      errorMap: () => ({
+        message: "supportedChains must be an array. Provide an array of EVM ChainDefinition objects."
+      })
+    }).min(1, {
+      message: "supportedChains cannot be empty. Please specify at least one supported chain."
+    })
+  }).strict();
+  var eip712DomainSchema = external_exports.object({
+    name: external_exports.string({
+      required_error: "Domain name is required. Please provide the domain name.",
+      invalid_type_error: "Domain name must be a string."
+    }).min(1, "Domain name cannot be empty."),
+    version: external_exports.string({
+      required_error: "Domain version is required. Please provide the domain version.",
+      invalid_type_error: "Domain version must be a string."
+    }).min(1, "Domain version cannot be empty."),
+    chainId: external_exports.number({
+      invalid_type_error: "Chain ID must be a number."
+    }).int("Chain ID must be an integer.").positive("Chain ID must be positive.").optional(),
+    verifyingContract: external_exports.string({
+      invalid_type_error: "Verifying contract address must be a string."
+    }).regex(/^0x[a-fA-F0-9]{40}$/, "Verifying contract must be a valid Ethereum address.").optional(),
+    salt: external_exports.string().regex(/^0x[a-fA-F0-9]+$/, "Salt must be a valid hex string.").optional()
+  });
+  var gatewayEip712DomainSchema = external_exports.object({
+    name: external_exports.string({
+      required_error: "Domain name is required. Please provide the domain name.",
+      invalid_type_error: "Domain name must be a string."
+    }).min(1, "Domain name cannot be empty."),
+    version: external_exports.string({
+      required_error: "Domain version is required. Please provide the domain version.",
+      invalid_type_error: "Domain version must be a string."
+    }).min(1, "Domain version cannot be empty.")
+  });
+  var typedDataFieldSchema = external_exports.object({
+    name: external_exports.string({
+      required_error: "Field name is required. Please provide the field name.",
+      invalid_type_error: "Field name must be a string."
+    }).min(1, "Field name cannot be empty"),
+    type: external_exports.string({
+      required_error: "Field type is required. Please provide the Solidity type.",
+      invalid_type_error: "Field type must be a string."
+    }).min(1, "Field type cannot be empty")
+  });
+  external_exports.object({
+    domain: eip712DomainSchema,
+    types: external_exports.record(external_exports.string().min(1, "Type name cannot be empty."), external_exports.array(typedDataFieldSchema, {
+      required_error: "Type definition is required. Please provide an array of field definitions.",
+      invalid_type_error: "Type definition must be an array of TypedDataField objects."
+    }).min(1, "Type definition cannot be empty. Please provide at least one field.")).refine((types) => Object.keys(types).length > 0, "Types object cannot be empty. Please provide at least one type definition."),
+    primaryType: external_exports.string({
+      required_error: "Primary type is required. Please provide the primary type name.",
+      invalid_type_error: "Primary type must be a string."
+    }).min(1, "Primary type cannot be empty."),
+    message: external_exports.record(external_exports.unknown(), {
+      required_error: "Message is required. Please provide the message object.",
+      invalid_type_error: "Message must be an object."
+    })
+  }).refine((data) => data.primaryType in data.types, (data) => ({
+    message: `Primary type "${data.primaryType}" must exist in the types definition. Available types: ${Object.keys(data.types).join(", ")}.`,
+    path: [
+      "primaryType"
+    ]
+  }));
+  external_exports.object({
+    domain: gatewayEip712DomainSchema,
+    types: external_exports.record(external_exports.string().min(1, "Type name cannot be empty."), external_exports.array(typedDataFieldSchema, {
+      required_error: "Type definition is required. Please provide an array of field definitions.",
+      invalid_type_error: "Type definition must be an array of TypedDataField objects."
+    }).min(1, "Type definition cannot be empty. Please provide at least one field.")).refine((types) => Object.keys(types).length > 0, "Types object cannot be empty. Please provide at least one type definition."),
+    primaryType: external_exports.string({
+      required_error: "Primary type is required. Please provide the primary type name.",
+      invalid_type_error: "Primary type must be a string."
+    }).min(1, "Primary type cannot be empty."),
+    message: external_exports.record(external_exports.unknown(), {
+      required_error: "Message is required. Please provide the message object.",
+      invalid_type_error: "Message must be an object."
+    })
+  }).refine((data) => data.primaryType in data.types, (data) => ({
+    message: `Primary type "${data.primaryType}" must exist in the types definition. Available types: ${Object.keys(data.types).join(", ")}.`,
+    path: [
+      "primaryType"
+    ]
+  }));
+  var abiParameterSchema = external_exports.object({
+    name: external_exports.string(),
+    type: external_exports.string().min(1, "Parameter type cannot be empty"),
+    internalType: external_exports.string().optional(),
+    components: external_exports.lazy(() => external_exports.array(abiParameterSchema)).optional()
+  });
+  var abiEntrySchema = external_exports.object({
+    type: external_exports.enum([
+      "function",
+      "constructor",
+      "event",
+      "fallback",
+      "receive",
+      "error"
+    ]),
+    name: external_exports.string().optional(),
+    inputs: external_exports.array(abiParameterSchema).default([]),
+    outputs: external_exports.array(abiParameterSchema).optional(),
+    stateMutability: external_exports.enum([
+      "pure",
+      "view",
+      "nonpayable",
+      "payable"
+    ]).optional(),
+    // Legacy fields for backwards compatibility
+    constant: external_exports.boolean().optional(),
+    payable: external_exports.boolean().optional(),
+    anonymous: external_exports.boolean().optional()
+  });
+  var abiSchema = external_exports.array(abiEntrySchema).min(1, "ABI must contain at least one entry");
+  adapterSchema.extend({
+    chainType: external_exports.union([
+      external_exports.literal("evm"),
+      external_exports.literal("hybrid")
+    ]),
+    actionRegistry: external_exports.object({
+      registerHandlers: external_exports.function().returns(external_exports.any()),
+      actionHandlers: external_exports.map(external_exports.string(), external_exports.function().returns(external_exports.any()))
+    })
+  });
+  external_exports.object({
+    type: external_exports.literal("evm").optional(),
+    abi: abiSchema,
+    address: evmAddressSchema,
+    functionName: external_exports.string({
+      required_error: "Function name is required",
+      invalid_type_error: "Function name must be a string"
+    }).min(1, "Function name cannot be empty").refine((name4) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name4), "Function name must be a valid identifier (letters, numbers, underscore, dollar sign, cannot start with number)"),
+    args: external_exports.array(external_exports.unknown(), {
+      required_error: "Arguments array is required",
+      invalid_type_error: "Arguments must be an array"
+    })
+  });
+  external_exports.object({
+    address: evmAddressSchema,
+    value: external_exports.bigint({
+      required_error: "Value is required for native transfers",
+      invalid_type_error: "Value must be a bigint"
+    }).refine((val) => val > BigInt(0), {
+      message: "Value must be greater than 0"
+    })
+  });
+  external_exports.string({
+    required_error: "Transaction hash is required and must be a string. Please provide a valid transaction hash.",
+    invalid_type_error: "Transaction hash is required and must be a string. Please provide a valid transaction hash."
+  }).min(1, {
+    message: "Transaction hash cannot be empty. Please provide a valid transaction hash."
+  }).refine((hash3) => hash3.startsWith("0x") && hash3.length === 66, (hash3) => ({
+    message: `Transaction hash "${hash3}" is not a valid format. Expected a 32-byte hex string prefixed with '0x' (66 characters total).`
+  })).refine((hash3) => /^0x[0-9a-fA-F]{64}$/.test(hash3), (hash3) => ({
+    message: `Transaction hash "${hash3}" contains invalid characters. Only hexadecimal characters (0-9, a-f, A-F) are allowed after '0x'.`
+  }));
+  external_exports.string({
+    required_error: "Private key is required. Please provide a valid private key.",
+    invalid_type_error: "Private key must be a string. Please provide a valid private key."
+  }).transform((val) => val.startsWith("0x") ? val : `0x${val}`).pipe(external_exports.string().regex(/^0x[0-9a-fA-F]{64}$/, {
+    message: 'Private key must be a valid 64-character hex string. Please provide a valid private key with or without "0x" prefix.'
+  }));
+  var SIGNATURE_BYTE_LENGTH = 65;
+  var HEX_CHARS_PER_BYTE$1 = 2;
+  var SIGNATURE_HEX_LENGTH = SIGNATURE_BYTE_LENGTH * HEX_CHARS_PER_BYTE$1;
+  var R_HEX_LENGTH = 32 * HEX_CHARS_PER_BYTE$1;
+  var S_HEX_LENGTH = 32 * HEX_CHARS_PER_BYTE$1;
+  var LEGACY_V_VALUES = /* @__PURE__ */ new Set([
+    0,
+    1,
+    27,
+    28
+  ]);
+  var MIN_EIP155_V = 35;
+  function parseSignature(signatureHex) {
+    const hex = signatureHex.startsWith("0x") ? signatureHex.slice(2) : signatureHex;
+    const VALID_HEX_REGEX = /^[0-9a-fA-F]+$/;
+    if (!VALID_HEX_REGEX.test(hex)) {
+      throw new Error("Signature must be a valid hex string (0-9, a-f, A-F).");
+    }
+    if (hex.length !== SIGNATURE_HEX_LENGTH) {
+      throw new Error(`Invalid length: expected ${SIGNATURE_HEX_LENGTH.toString()} hex chars (65 bytes), got ${hex.length.toString()}`);
+    }
+    const r = `0x${hex.slice(0, R_HEX_LENGTH)}`;
+    const s = `0x${hex.slice(R_HEX_LENGTH, R_HEX_LENGTH + S_HEX_LENGTH)}`;
+    const vValue = parseInt(hex.slice(R_HEX_LENGTH + S_HEX_LENGTH), 16);
+    const isLegacy = LEGACY_V_VALUES.has(vValue);
+    const isEIP155 = vValue >= MIN_EIP155_V;
+    if (!isLegacy && !isEIP155) {
+      throw new Error(`Unsupported v value: ${vValue.toString()}. Must be one of [${[
+        ...LEGACY_V_VALUES
+      ].join(", ")}] or >=${MIN_EIP155_V.toString()}`);
+    }
+    return {
+      r,
+      s,
+      v: vValue
+    };
+  }
+  function buildTypedData(domain, types, primaryType, message) {
+    return {
+      domain,
+      types,
+      primaryType,
+      message
+    };
+  }
+  function computeDefaultDeadline() {
+    return BigInt(Math.floor(Date.now() / 1e3) + 3600);
+  }
+  var EIP2612_TYPES = {
+    Permit: [
+      {
+        name: "owner",
+        type: "address"
+      },
+      {
+        name: "spender",
+        type: "address"
+      },
+      {
+        name: "value",
+        type: "uint256"
+      },
+      {
+        name: "nonce",
+        type: "uint256"
+      },
+      {
+        name: "deadline",
+        type: "uint256"
+      }
+    ]
+  };
+  function hasEIP2612NonceFetching(adapter) {
+    return typeof adapter === "object" && adapter !== null && "fetchEIP2612Nonce" in adapter && typeof adapter.fetchEIP2612Nonce === "function";
+  }
+  function hasSignTypedData(adapter) {
+    return typeof adapter === "object" && adapter !== null && "signTypedData" in adapter && typeof adapter.signTypedData === "function";
+  }
+  function canSignTypedData(adapter) {
+    if (!hasSignTypedData(adapter)) {
+      return false;
+    }
+    if (typeof adapter.supportsSignTypedData === "function") {
+      const supported = adapter.supportsSignTypedData();
+      return supported === true;
+    }
+    return true;
+  }
+  async function buildEIP2612TypedData(meta, adapter, opts, ctx) {
+    const formattedOwner = convertAddress(opts.owner, "evm");
+    const formattedSpender = convertAddress(opts.spender, "evm");
+    const formattedContract = convertAddress(meta.verifyingContract, "evm");
+    const nonce = opts.nonce ?? await adapter.fetchEIP2612Nonce(formattedContract, formattedOwner, ctx);
+    const now = BigInt(Math.floor(Date.now() / 1e3));
+    const deadline = opts.deadline !== void 0 ? BigInt(opts.deadline) : computeDefaultDeadline();
+    if (deadline <= now) {
+      throw new Error(`EIP-2612 deadline must be in the future (got ${deadline.toString()}, now ${now.toString()})`);
+    }
+    const message = {
+      owner: formattedOwner,
+      spender: formattedSpender,
+      value: opts.value,
+      nonce,
+      deadline
+    };
+    return buildTypedData({
+      ...meta,
+      verifyingContract: formattedContract
+    }, EIP2612_TYPES, "Permit", message);
+  }
+  var ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  var NATIVE_TOKEN_ADDRESS$1 = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+  var hexBytesSchema$1 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  }).transform((value) => value);
+  external_exports.object({
+    executeParams: external_exports.object({}).passthrough(),
+    signature: evmSignatureSchema,
+    tokenInputs: external_exports.array(external_exports.object({
+      permitType: external_exports.nativeEnum(PermitType),
+      token: evmAddressSchema,
+      amount: external_exports.bigint().refine((value) => value >= 0n, {
+        message: "amount must be a non-negative bigint"
+      }),
+      permitCalldata: hexBytesSchema$1
+    }))
+  }).passthrough();
+  var hexBytesSchema = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  }).transform((value) => value);
+  function isNonNegativeBigIntLike(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var uint256LikeSchema = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var borrowExecutionParamsSchema = external_exports.object({
+    instructions: external_exports.array(external_exports.object({
+      target: evmAddressSchema,
+      data: hexBytesSchema,
+      value: uint256LikeSchema,
+      tokenIn: evmAddressSchema,
+      amountToApprove: uint256LikeSchema,
+      tokenOut: evmAddressSchema,
+      minTokenOut: uint256LikeSchema
+    }).passthrough()).min(1),
+    tokens: external_exports.array(external_exports.object({
+      token: evmAddressSchema,
+      beneficiary: evmAddressSchema
+    }).passthrough()),
+    execId: uint256LikeSchema,
+    deadline: uint256LikeSchema,
+    metadata: hexBytesSchema
+  }).passthrough();
+  external_exports.object({
+    executeParams: borrowExecutionParamsSchema,
+    signature: evmSignatureSchema,
+    tokenInputs: external_exports.array(external_exports.object({
+      permitType: external_exports.nativeEnum(BorrowPermitType),
+      token: evmAddressSchema,
+      amount: external_exports.bigint().refine((value) => value >= 0n, {
+        message: "amount must be a non-negative bigint"
+      }),
+      permitCalldata: hexBytesSchema
+    }))
+  }).passthrough();
+  var SOLANA_DEFAULT_PUBLIC_KEY = "11111111111111111111111111111111";
+  var NATIVE_TOKEN_ADDRESS = SOLANA_DEFAULT_PUBLIC_KEY;
+  new import_web32.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+  new import_web32.PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+  new import_web32.PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+  var enc = new TextEncoder();
+  enc.encode("gateway_minter");
+  enc.encode("gateway_minter_custody");
+  enc.encode("used_transfer_spec_hash");
+  external_exports.object({
+    amount: external_exports.bigint({
+      required_error: "amount is required for customBurn"
+    }).refine((v) => v > 0n, "amount must be greater than zero"),
+    maxFee: external_exports.bigint({
+      required_error: "maxFee is required for customBurn"
+    }).refine((v) => v >= 0n, "maxFee cannot be negative"),
+    minFinalityThreshold: external_exports.number({
+      required_error: "minFinalityThreshold is required for customBurn",
+      invalid_type_error: "minFinalityThreshold is required for customBurn"
+    }).refine((v) => Number.isFinite(v), "minFinalityThreshold is required for customBurn").refine((v) => v >= 0, "minFinalityThreshold cannot be negative"),
+    protocolFee: external_exports.bigint().optional().refine((v) => v === void 0 || v >= 0n, "protocolFee cannot be negative")
+  });
+  external_exports.object({
+    mintRecipient: external_exports.string({
+      required_error: "mintRecipient is required for customBurn"
+    }).min(1, "mintRecipient is required for customBurn"),
+    feeRecipient: external_exports.string().optional(),
+    destinationCaller: external_exports.string().optional()
+  });
+  var privateKeySchema = external_exports.string({
+    required_error: "Private key is required. Please provide a valid private key (Base58, Base64, or JSON array format).",
+    invalid_type_error: "Private key must be a string. Please provide a valid private key (Base58, Base64, or JSON array format)."
+  }).min(10, {
+    message: "Private key is too short. Please provide a valid private key."
+  }).max(1e3, {
+    message: "Private key is too long. Please provide a valid private key."
+  });
+  var solanaChainIdentifierSchema = external_exports.union([
+    external_exports.literal("Solana"),
+    external_exports.literal("Solana_Devnet"),
+    external_exports.nativeEnum(Blockchain).refine((val) => val === Blockchain.Solana || val === Blockchain.Solana_Devnet, "Must be a Solana blockchain enum value (Blockchain.Solana or Blockchain.Solana_Devnet)"),
+    external_exports.object({
+      type: external_exports.literal("solana"),
+      chain: external_exports.nativeEnum(Blockchain),
+      name: external_exports.string()
+    }).passthrough()
+  ]);
+  var solanaWalletProviderSchema = external_exports.object({
+    connect: external_exports.function().returns(external_exports.promise(external_exports.object({
+      publicKey: external_exports.object({
+        toString: external_exports.function().returns(external_exports.string())
+      })
+    }))),
+    disconnect: external_exports.function().returns(external_exports.promise(external_exports.void())),
+    isConnected: external_exports.boolean(),
+    publicKey: external_exports.union([
+      external_exports.object({
+        toString: external_exports.function().returns(external_exports.string())
+      }),
+      external_exports.null()
+    ]),
+    signTransaction: external_exports.function().returns(external_exports.promise(external_exports.unknown())),
+    signAllTransactions: external_exports.function().returns(external_exports.promise(external_exports.array(external_exports.unknown()))).optional(),
+    signMessage: external_exports.function().returns(external_exports.promise(external_exports.object({
+      signature: external_exports.instanceof(Uint8Array)
+    }))).optional()
+  }).passthrough();
+  external_exports.string({
+    invalid_type_error: "RPC URL must be a string"
+  }).url({
+    message: "RPC URL must be a valid URL"
+  });
+  external_exports.record(external_exports.unknown()).optional();
+  external_exports.object({
+    privateKey: privateKeySchema.optional(),
+    chain: solanaChainIdentifierSchema,
+    provider: solanaWalletProviderSchema.optional()
+  });
+  external_exports.object({
+    privateKey: privateKeySchema,
+    chain: solanaChainIdentifierSchema
+  });
+  external_exports.object({
+    provider: solanaWalletProviderSchema,
+    chain: solanaChainIdentifierSchema
+  });
+  function assertApiKey(apiKey) {
+    if (!apiKey) {
+      return;
+    }
+    const apiKeyResult = apiKeySchema.safeParse(apiKey);
+    if (!apiKeyResult.success) {
+      const errors = apiKeyResult.error.issues.map((issue) => issue.message).join(", ");
+      throw createValidationFailedError$1("apiKey", REDACTED_CREDENTIAL, `Invalid API key format. ${errors}. Expected format: <ENV>_API_KEY:<keyId>:<keySecret> (for example TEST_API_KEY:... or LIVE_API_KEY:...). Legacy KIT_KEY:<keyId>:<keySecret> values are still accepted. Get your key at: https://developers.circle.com/w3s/keys`);
+    }
+  }
+  var TOKEN_REGISTRY$3 = createTokenRegistry();
+  function resolveTokenAlias(token, chain) {
+    const upperToken = token.toUpperCase();
+    const nativeStablecoinContractAddress = getNativeStablecoinAddress(chain);
+    if (nativeStablecoinContractAddress !== null) {
+      if (upperToken === "NATIVE" || isNativeAliasAddress(token)) {
+        return nativeStablecoinContractAddress;
+      }
+    }
+    if (upperToken === "NATIVE") {
+      if (chain.type === "evm") {
+        return NATIVE_TOKEN_ADDRESS$1;
+      } else if (chain.type === "solana") {
+        return NATIVE_TOKEN_ADDRESS;
+      }
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Native token resolution is not supported for chain type "${chain.type}". Only EVM and Solana chains are currently supported.`,
+        cause: {
+          trace: {
+            token,
+            chainType: chain.type,
+            chain: chain.chain
+          }
+        }
+      });
+    }
+    const tokenDefinition = TOKEN_REGISTRY$3.get(upperToken);
+    if (tokenDefinition !== void 0) {
+      const resolvedAddress = tokenDefinition.locators[chain.chain];
+      if (!resolvedAddress) {
+        const chainName = chain.name;
+        throw new KitError({
+          ...InputError.UNSUPPORTED_TOKEN,
+          recoverability: "FATAL",
+          message: `${token} is not supported on ${chainName} by SDK. Use the token address instead.`,
+          cause: {
+            trace: {
+              token,
+              chain: chain.chain
+            }
+          }
+        });
+      }
+      return TOKEN_REGISTRY$3.resolve(upperToken, chain.chain).locator;
+    }
+    return token;
+  }
+  function validateResolvedAddress(address, chain) {
+    if (!isValidAddressForChain(address, chain)) {
+      const chainInfo = extractChainInfo(chain);
+      throw createInvalidAddressError(address, chainInfo.displayName, chainInfo.expectedAddressFormat);
+    }
+  }
+  function validateCustomFeeConfig(customFee, chain) {
+    const { percentageBps, amount, recipientAddress } = customFee;
+    if (percentageBps !== void 0 && amount !== void 0) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: "Cannot use both percentage-based fees (percentageBps) and callback-based fees (setCustomFeePolicy) simultaneously. Choose one approach: either set percentageBps at transaction level OR use setCustomFeePolicy at kit level.",
+        cause: {
+          trace: {
+            percentageBps,
+            amount
+          }
+        }
+      });
+    }
+    if (percentageBps !== void 0) {
+      if (percentageBps <= 0 || percentageBps > 1e4) {
+        throw new KitError({
+          ...InputError.VALIDATION_FAILED,
+          recoverability: "FATAL",
+          message: `percentageBps must be greater than 0 and less than or equal to 10000 (100%). Received: ${String(percentageBps)} bps`,
+          cause: {
+            trace: {
+              percentageBps
+            }
+          }
+        });
+      }
+    }
+    if (!recipientAddress) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: "recipientAddress is required when customFee is specified",
+        cause: {
+          trace: {
+            customFee
+          }
+        }
+      });
+    }
+    if (chain.type === "evm") {
+      const result = evmAddressSchema.safeParse(recipientAddress);
+      if (!result.success) {
+        throw createInvalidAddressError(recipientAddress, chain.name, "0x-prefixed 42-character hex string (0x + 40 hex characters)");
+      }
+    } else if (chain.type === "solana") {
+      const result = solanaAddressSchema.safeParse(recipientAddress);
+      if (!result.success) {
+        throw createInvalidAddressError(recipientAddress, chain.name, "base58-encoded string between 32-44 characters");
+      }
+    }
+  }
+  function resolveFeePayoutChain(tokenIn, tokenOut, sourceChain, destinationChain) {
+    if (destinationChain.chain !== sourceChain.chain) {
+      return sourceChain;
+    }
+    const inputIsOk = isOkToken(tokenIn, sourceChain, TOKEN_REGISTRY$3, OK_TOKEN_SYMBOLS$1);
+    if (inputIsOk) {
+      return sourceChain;
+    }
+    const outputIsOk = isOkToken(tokenOut, destinationChain, TOKEN_REGISTRY$3, OK_TOKEN_SYMBOLS$1);
+    return outputIsOk ? destinationChain : sourceChain;
+  }
+  async function buildServiceParams(params) {
+    const { from: from16, tokenIn, tokenOut, amountIn, to, config } = params;
+    const chain = from16.chain;
+    const destinationChain = params.toChain ?? chain;
+    let fromAddress = from16.address;
+    if (!fromAddress) {
+      try {
+        fromAddress = await from16.adapter.getAddress(chain);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new KitError({
+          ...InputError.VALIDATION_FAILED,
+          recoverability: "FATAL",
+          message: `Failed to extract address from adapter: ${errorMessage}`,
+          cause: {
+            trace: error
+          }
+        });
+      }
+    }
+    const resolvedTokenInAddress = resolveTokenAlias(tokenIn, chain);
+    const resolvedTokenOutAddress = resolveTokenAlias(tokenOut, destinationChain);
+    validateResolvedAddress(resolvedTokenInAddress, chain);
+    validateResolvedAddress(resolvedTokenOutAddress, destinationChain);
+    validateResolvedAddress(to, destinationChain);
+    const apiKey = resolveApiKey(config ?? {});
+    assertApiKey(apiKey);
+    const customFee = config?.customFee;
+    if (customFee !== void 0) {
+      const feePayoutChain = resolveFeePayoutChain(tokenIn, tokenOut, chain, destinationChain);
+      validateCustomFeeConfig(customFee, feePayoutChain);
+    }
+    const chainName = chain.chain;
+    const destinationChainName = destinationChain.chain;
+    return {
+      tokenInAddress: resolvedTokenInAddress,
+      tokenInChain: chainName,
+      tokenOutAddress: resolvedTokenOutAddress,
+      tokenOutChain: destinationChainName,
+      fromAddress,
+      toAddress: to,
+      amount: amountIn,
+      ...config?.slippageBps !== void 0 && {
+        slippageBps: config.slippageBps
+      },
+      ...config?.stopLimit !== void 0 && {
+        stopLimit: config.stopLimit
+      },
+      ...config?.provider !== void 0 && {
+        provider: config.provider
+      },
+      ...customFee !== void 0 && {
+        config: {
+          customFee: {
+            // Support both percentage and absolute amount
+            ...customFee.percentageBps !== void 0 && {
+              percentageBps: customFee.percentageBps
+            },
+            ...customFee.amount !== void 0 && {
+              amount: customFee.amount
+            },
+            recipientAddress: customFee.recipientAddress
+          }
+        }
+      },
+      // Omitted in permissionless mode.
+      ...apiKey ? {
+        apiKey
+      } : {}
+    };
+  }
+  var TOKEN_ADDRESS_MAPPING = {
+    USDC: "usdcAddress"
+  };
+  var EIP2612_SUPPORTED_TOKENS = /* @__PURE__ */ new Set([
+    "USDC"
+  ]);
+  var USDC_PERMIT_METADATA_BY_NAME = {
+    Ethereum: {
+      chainId: Ethereum.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Base: {
+      chainId: Base.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Polygon: {
+      chainId: Polygon.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Arbitrum: {
+      chainId: Arbitrum.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Optimism: {
+      chainId: Optimism.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Avalanche: {
+      chainId: Avalanche.chainId,
+      name: "USD Coin",
+      version: "2"
+    },
+    Linea: {
+      chainId: Linea.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Ink: {
+      chainId: Ink.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    World_Chain: {
+      chainId: WorldChain.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Unichain: {
+      chainId: Unichain.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Plume: {
+      chainId: Plume.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Sei: {
+      chainId: Sei.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Sonic: {
+      chainId: Sonic.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    XDC: {
+      chainId: XDC.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    HyperEVM: {
+      chainId: HyperEVM.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Monad: {
+      chainId: Monad.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Arc: {
+      chainId: Arc.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Cronos: {
+      chainId: Cronos.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Morph: {
+      chainId: Morph.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Arc_Testnet: {
+      chainId: ArcTestnet.chainId,
+      name: "USDC",
+      version: "2"
+    }
+  };
+  var USDC_PERMIT_METADATA = Object.values(USDC_PERMIT_METADATA_BY_NAME).reduce((acc, { chainId, name: name4, version: version16 }) => {
+    acc[chainId] = {
+      name: name4,
+      version: version16
+    };
+    return acc;
+  }, {});
+  function supportsEIP2612(tokenAddress, chain) {
+    const normalizedAddress = tokenAddress.toLowerCase();
+    if (!normalizedAddress.startsWith("0x")) {
+      return false;
+    }
+    if (chain.type !== "evm" || !(chain.chainId in USDC_PERMIT_METADATA)) {
+      return false;
+    }
+    for (const tokenId of Object.keys(TOKEN_ADDRESS_MAPPING)) {
+      const addressProperty = TOKEN_ADDRESS_MAPPING[tokenId];
+      const chainTokenAddress = chain[addressProperty];
+      if (!chainTokenAddress) {
+        continue;
+      }
+      if (chainTokenAddress.toLowerCase() === normalizedAddress) {
+        return EIP2612_SUPPORTED_TOKENS.has(tokenId);
+      }
+    }
+    return false;
+  }
+  function getTokenMetadata(tokenAddress, chain) {
+    const normalizedAddress = tokenAddress.toLowerCase();
+    for (const tokenId of Object.keys(TOKEN_ADDRESS_MAPPING)) {
+      const addressProperty = TOKEN_ADDRESS_MAPPING[tokenId];
+      const chainTokenAddress = chain[addressProperty];
+      if (!chainTokenAddress) {
+        continue;
+      }
+      if (chainTokenAddress.toLowerCase() === normalizedAddress) {
+        if (chain.type === "evm") {
+          const metadata = USDC_PERMIT_METADATA[chain.chainId];
+          if (metadata) {
+            return {
+              ...metadata
+            };
+          }
+        }
+      }
+    }
+    throw new Error(`Token ${tokenAddress} on chain ${chain.name} not found in EIP-2612 registry. Ensure supportsEIP2612() is called before getTokenMetadata().`);
+  }
+  var BYTES32_HEX_LENGTH = 66;
+  var HEX_CHARS_PER_BYTE = 2;
+  var ABI_WORD_SIZE_BYTES = 32;
+  var ABI_WORD_HEX_LENGTH = ABI_WORD_SIZE_BYTES * HEX_CHARS_PER_BYTE;
+  var VALID_V_VALUES = /* @__PURE__ */ new Set([
+    27,
+    28
+  ]);
+  function encodeEIP2612PermitCalldata(value, deadline, signature) {
+    if (typeof value !== "bigint") {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid value type for permit encoding: expected bigint, got ${typeof value}`,
+        cause: {
+          trace: {
+            value,
+            expectedType: "bigint",
+            actualType: typeof value
+          }
+        }
+      });
+    }
+    if (typeof deadline !== "bigint") {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid deadline type for permit encoding: expected bigint, got ${typeof deadline}`,
+        cause: {
+          trace: {
+            deadline,
+            expectedType: "bigint",
+            actualType: typeof deadline
+          }
+        }
+      });
+    }
+    const now = BigInt(Math.floor(Date.now() / 1e3));
+    if (deadline <= now) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Permit deadline has expired (deadline: ${deadline.toString()}, current time: ${now.toString()}). Cannot encode expired permit.`,
+        cause: {
+          trace: {
+            deadline: deadline.toString(),
+            currentTime: now.toString()
+          }
+        }
+      });
+    }
+    if (typeof signature.v !== "number" || !VALID_V_VALUES.has(signature.v)) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid signature v parameter: expected 27 or 28, got ${String(signature.v)}`,
+        cause: {
+          trace: {
+            v: signature.v,
+            validValues: Array.from(VALID_V_VALUES)
+          }
+        }
+      });
+    }
+    if (!signature.r.startsWith("0x") || signature.r.length !== BYTES32_HEX_LENGTH) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid signature r parameter: expected 0x-prefixed 32-byte hex string (${String(BYTES32_HEX_LENGTH)} chars), got length ${String(signature.r.length)}`,
+        cause: {
+          trace: {
+            r: signature.r,
+            expectedLength: BYTES32_HEX_LENGTH,
+            actualLength: signature.r.length
+          }
+        }
+      });
+    }
+    if (!signature.s.startsWith("0x") || signature.s.length !== BYTES32_HEX_LENGTH) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid signature s parameter: expected 0x-prefixed 32-byte hex string (${String(BYTES32_HEX_LENGTH)} chars), got length ${String(signature.s.length)}`,
+        cause: {
+          trace: {
+            s: signature.s,
+            expectedLength: BYTES32_HEX_LENGTH,
+            actualLength: signature.s.length
+          }
+        }
+      });
+    }
+    const encodedValue = value.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
+    const encodedDeadline = deadline.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
+    const encodedV = signature.v.toString(16).padStart(ABI_WORD_HEX_LENGTH, "0");
+    const encodedR = signature.r.slice(2);
+    const encodedS = signature.s.slice(2);
+    return `0x${encodedValue}${encodedDeadline}${encodedV}${encodedR}${encodedS}`;
+  }
+  function isNativeEvmAddress(tokenAddress) {
+    return tokenAddress.toLowerCase() === NATIVE_TOKEN_ADDRESS$1.toLowerCase();
+  }
+  function isNativeSolanaAddress(tokenAddress) {
+    return tokenAddress === NATIVE_TOKEN_ADDRESS;
+  }
+  function isNativeAddress(tokenAddress, chainType) {
+    switch (chainType) {
+      case "evm":
+        return isNativeEvmAddress(tokenAddress);
+      case "solana":
+        return isNativeSolanaAddress(tokenAddress);
+      default:
+        return false;
+    }
+  }
+  function adapterSupportsPermit(adapter) {
+    return hasEIP2612NonceFetching(adapter) && canSignTypedData(adapter);
+  }
+  async function generatePermit({ adapter, tokenIn, amount, adapterContractAddress, context }) {
+    if (!hasEIP2612NonceFetching(adapter)) {
+      return null;
+    }
+    if (!hasSignTypedData(adapter)) {
+      return null;
+    }
+    const eip2612Adapter = adapter;
+    const tokenMetadata = getTokenMetadata(tokenIn, context.chain);
+    const evmChain = context.chain;
+    const typedData = await buildEIP2612TypedData({
+      name: tokenMetadata.name,
+      version: tokenMetadata.version,
+      chainId: evmChain.chainId,
+      verifyingContract: tokenIn
+    }, eip2612Adapter, {
+      owner: context.address,
+      spender: adapterContractAddress,
+      value: amount
+    }, context);
+    const signatureHex = await eip2612Adapter.signTypedData(typedData, context);
+    const signature = parseSignature(signatureHex);
+    const permitCalldata = encodeEIP2612PermitCalldata(typedData.message.value, typedData.message.deadline, signature);
+    return {
+      permitType: PermitType.EIP2612,
+      token: tokenIn,
+      amount,
+      permitCalldata
+    };
+  }
+  function createFallbackTokenInput(tokenIn, amount) {
+    return {
+      permitType: PermitType.NONE,
+      token: tokenIn,
+      amount,
+      permitCalldata: "0x"
+    };
+  }
+  async function buildTokenInputs({ adapter, context, tokenInAddress, inputAmount, allowanceStrategy }) {
+    const adapterContractAddress = context.chain.kitContracts?.adapter;
+    if (adapterContractAddress === void 0 || adapterContractAddress === "") {
+      console.warn(`No adapter contract configured for chain ${context.chain.name}. TokenInput generation skipped - swap will require pre-approved tokens.`);
+      return [];
+    }
+    const isNative = isNativeEvmAddress(tokenInAddress);
+    const isZero = tokenInAddress.toLowerCase() === ZERO_ADDRESS.toLowerCase();
+    if (isNative || isZero) {
+      return [];
+    }
+    if (allowanceStrategy === "approve") {
+      return [
+        createFallbackTokenInput(tokenInAddress, inputAmount)
+      ];
+    }
+    if (!adapterSupportsPermit(adapter)) {
+      return [
+        createFallbackTokenInput(tokenInAddress, inputAmount)
+      ];
+    }
+    if (!supportsEIP2612(tokenInAddress, context.chain)) {
+      return [
+        createFallbackTokenInput(tokenInAddress, inputAmount)
+      ];
+    }
+    try {
+      const permitInput = await generatePermit({
+        adapter,
+        tokenIn: tokenInAddress,
+        amount: inputAmount,
+        adapterContractAddress,
+        context
+      });
+      if (permitInput) {
+        return [
+          permitInput
+        ];
+      }
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: "Permit generation returned null despite adapter passing capability checks. No on-chain approval was sent because the permit flow was expected to succeed.",
+        cause: {
+          trace: {
+            tokenInAddress,
+            chain: context.chain.name
+          }
+        }
+      });
+    } catch (err2) {
+      if (isUserCancellationError(err2)) {
+        throw new KitError({
+          ...InputError.USER_CANCELLED,
+          recoverability: "FATAL",
+          message: "User cancelled permit signature request. The swap cannot proceed without user approval.",
+          cause: {
+            trace: {
+              originalError: err2
+            }
+          }
+        });
+      }
+      if (err2 instanceof KitError) {
+        throw err2;
+      }
+      const errorMessage = err2 instanceof Error ? err2.message : JSON.stringify(err2);
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: `Permit generation failed: ${errorMessage}. No on-chain approval was sent because the permit flow was expected to succeed. Retry or use allowanceStrategy: "approve" to force on-chain approval.`,
+        cause: {
+          trace: {
+            originalError: err2,
+            tokenInAddress,
+            chain: context.chain.name
+          }
+        }
+      });
+    }
+  }
+  var safeBigInt = (value, fieldName) => {
+    try {
+      return BigInt(value);
+    } catch (error) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid ${fieldName}: expected string representation of a bigint, got "${value}"`,
+        cause: {
+          trace: {
+            value,
+            fieldName,
+            error
+          }
+        }
+      });
+    }
+  };
+  async function prepareEvmSwapAction(adapter, serviceResponse, context, allowanceStrategy) {
+    const { transaction } = serviceResponse;
+    if (!("executionParams" in transaction && "signature" in transaction) || typeof transaction.executionParams !== "object" || typeof transaction.signature !== "string") {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: "Execute params and signature fields are missing or invalid in service response",
+        cause: {
+          trace: {
+            transaction
+          }
+        }
+      });
+    }
+    const tokenInAddress = serviceResponse.tokenInAddress;
+    const inputAmount = safeBigInt(serviceResponse.amount, "serviceResponse.amount");
+    const instructions = transaction.executionParams.instructions.map((instruction) => ({
+      target: instruction.target,
+      data: instruction.data,
+      value: safeBigInt(instruction.value, "transaction.executionParams.instructions.value"),
+      tokenIn: instruction.tokenIn,
+      amountToApprove: safeBigInt(instruction.amountToApprove, "transaction.executionParams.instructions.amountToApprove"),
+      tokenOut: instruction.tokenOut,
+      minTokenOut: safeBigInt(instruction.minTokenOut, "transaction.executionParams.instructions.minTokenOut")
+    }));
+    const tokens2 = transaction.executionParams.tokens.map((token) => ({
+      token: token.token,
+      beneficiary: token.beneficiary
+    }));
+    const executeParams = {
+      instructions,
+      tokens: tokens2,
+      execId: safeBigInt(transaction.executionParams.execId, "transaction.executionParams.execId"),
+      deadline: safeBigInt(transaction.executionParams.deadline, "transaction.executionParams.deadline"),
+      metadata: transaction.executionParams.metadata
+    };
+    const signature = transaction.signature;
+    const tokenInputs = await buildTokenInputs({
+      adapter,
+      context,
+      tokenInAddress,
+      inputAmount,
+      allowanceStrategy
+    });
+    try {
+      return await adapter.prepareAction("swap.execute", {
+        executeParams,
+        tokenInputs,
+        signature,
+        inputAmount,
+        tokenInAddress
+      }, context);
+    } catch (error) {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: `Failed to prepare swap action: ${error instanceof Error ? error.message : String(error)}`,
+        cause: {
+          trace: {
+            error,
+            executeParams,
+            signature
+          }
+        }
+      });
+    }
+  }
+  async function prepareSolanaSwapAction(adapter, serviceResponse, context) {
+    const { transaction } = serviceResponse;
+    if (!transaction || typeof transaction !== "object") {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: "Transaction data is missing or invalid in service response",
+        cause: {
+          trace: {
+            transaction
+          }
+        }
+      });
+    }
+    if (!("data" in transaction) || typeof transaction.data !== "string") {
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: "Transaction data field is missing or invalid in service response",
+        cause: {
+          trace: {
+            transaction
+          }
+        }
+      });
+    }
+    try {
+      return await adapter.prepareAction("swap.execute", {
+        serializedTransaction: transaction.data
+      }, context);
+    } catch (error) {
+      let recoverability = "FATAL";
+      if (isKitError(error)) {
+        recoverability = error.recoverability;
+      }
+      throw new KitError({
+        ...InputError.VALIDATION_FAILED,
+        recoverability,
+        message: `Failed to prepare Solana swap action: ${error instanceof Error ? error.message : String(error)}`,
+        cause: {
+          trace: {
+            error,
+            serializedTransaction: transaction.data
+          }
+        }
+      });
+    }
+  }
+  var TOKEN_REGISTRY$2 = createTokenRegistry();
+  function resolveTokenSymbol(token, chain) {
+    const upperToken = token.toUpperCase();
+    if (upperToken === NATIVE_TOKEN) {
+      return NATIVE_TOKEN;
+    }
+    if (TOKEN_REGISTRY$2.get(upperToken) !== void 0) {
+      return upperToken;
+    }
+    const isEvm = chain.type === "evm";
+    const normalizedToken = isEvm ? token.toLowerCase() : token;
+    if (isNativeEvmAddress(token) || isNativeSolanaAddress(token)) return NATIVE_TOKEN;
+    try {
+      const { symbol } = TOKEN_REGISTRY$2.resolveByAddress(normalizedToken, chain.chain);
+      if (symbol === void 0) {
+        return null;
+      }
+      if (symbol === NATIVE_TOKEN) {
+        return NATIVE_TOKEN;
+      }
+      return symbol.toUpperCase();
+    } catch {
+      return null;
+    }
+  }
+  async function validateNonNativeBalance(params) {
+    const { adapter, tokenInAddress, tokenInSymbol, amount, walletAddress, context } = params;
+    if (isNativeAddress(tokenInAddress, context.chain.type)) {
+      return;
+    }
+    const balance = await executeAdapterReadAction(adapter, "token.balanceOf", {
+      tokenAddress: tokenInAddress,
+      walletAddress
+    }, context);
+    const requiredAmount = BigInt(amount);
+    const currentBalance = BigInt(String(balance));
+    if (currentBalance < requiredAmount) {
+      throw new KitError({
+        ...BalanceError.INSUFFICIENT_TOKEN,
+        recoverability: "FATAL",
+        message: buildInsufficientSwapBalanceError(tokenInSymbol, walletAddress, currentBalance, requiredAmount, context.chain),
+        cause: {
+          trace: {
+            tokenIn: tokenInSymbol,
+            tokenInAddress,
+            walletAddress,
+            currentBalance: balance,
+            requiredAmount: amount
+          }
+        }
+      });
+    }
+  }
+  function buildInsufficientSwapBalanceError(tokenSymbol, walletAddress, currentBalance, requiredAmount, chain) {
+    const shortfall = requiredAmount - currentBalance;
+    const formatWithCommas = (value) => {
+      return Number(value.toString()).toLocaleString("en-US");
+    };
+    const resolvedSymbol = resolveTokenSymbol(tokenSymbol, chain);
+    const canFormat = resolvedSymbol !== null && isSwapToken(resolvedSymbol);
+    const displaySymbol = resolvedSymbol ?? tokenSymbol;
+    const currentFormatted = canFormat ? formatAmount({
+      value: currentBalance.toString(),
+      token: resolvedSymbol,
+      chain
+    }) : null;
+    const requiredFormatted = canFormat ? formatAmount({
+      value: requiredAmount.toString(),
+      token: resolvedSymbol,
+      chain
+    }) : null;
+    const shortfallFormatted = canFormat ? formatAmount({
+      value: shortfall.toString(),
+      token: resolvedSymbol,
+      chain
+    }) : null;
+    const currentBaseFormatted = formatWithCommas(currentBalance);
+    const requiredBaseFormatted = formatWithCommas(requiredAmount);
+    const shortfallBaseFormatted = formatWithCommas(shortfall);
+    const currentDisplay = currentFormatted ? `${currentFormatted} ${displaySymbol} (${currentBaseFormatted} base units)` : `${currentBaseFormatted} base units`;
+    const requiredDisplay = requiredFormatted ? `${requiredFormatted} ${displaySymbol} (${requiredBaseFormatted} base units)` : `${requiredBaseFormatted} base units`;
+    const shortfallDisplay = shortfallFormatted ? `${shortfallFormatted} ${displaySymbol} (${shortfallBaseFormatted} base units)` : `${shortfallBaseFormatted} base units`;
+    const actionAmount = shortfallFormatted ? `${shortfallFormatted} ${displaySymbol}` : `${shortfallBaseFormatted} base units of ${displaySymbol}`;
+    const requiredSummary = requiredFormatted ? `${requiredFormatted} ${displaySymbol}` : `${requiredBaseFormatted} base units of ${displaySymbol}`;
+    return `Insufficient ${displaySymbol} balance for swap operation.
+
+Wallet: ${walletAddress}
+Current balance: ${currentDisplay}
+Required: ${requiredDisplay}
+Shortfall: ${shortfallDisplay}
+
+This swap requires ${requiredSummary} to complete the transaction.
+
+Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
+  }
+  function resolveFeeChain(token, sourceChain, destinationChain) {
+    if (sourceChain.chain === destinationChain.chain) {
+      return sourceChain;
+    }
+    if (resolveTokenSymbol(token, sourceChain) !== null) {
+      return sourceChain;
+    }
+    if (resolveTokenSymbol(token, destinationChain) !== null) {
+      return destinationChain;
+    }
+    return sourceChain;
+  }
+  var TOKEN_REGISTRY$1 = createTokenRegistry();
+  async function formatTokenValue(value, token, chain, adapter) {
+    const normalizedToken = chain.type === "evm" && token.toLowerCase() === ZERO_ADDRESS.toLowerCase() ? NATIVE_TOKEN_ADDRESS$1 : token;
+    const resolvedSymbol = resolveTokenSymbol(normalizedToken, chain);
+    if (resolvedSymbol) {
+      if (isSwapToken(resolvedSymbol)) {
+        return {
+          amount: formatAmount({
+            value,
+            token: resolvedSymbol,
+            chain,
+            tokens: TOKEN_REGISTRY$1
+          }),
+          token: resolvedSymbol
+        };
+      }
+      const tokenDef = TOKEN_REGISTRY$1.get(resolvedSymbol);
+      if (tokenDef) {
+        const decimals = resolveTokenDecimals$1(tokenDef, chain.chain);
+        return {
+          amount: formatUnits2(value, decimals),
+          token: resolvedSymbol
+        };
+      }
+    }
+    try {
+      const decimals = await adapter.getTokenDecimals(normalizedToken, chain);
+      return {
+        amount: formatUnits2(value, decimals),
+        token: normalizedToken
+      };
+    } catch {
+      return {
+        amount: value,
+        token: normalizedToken
+      };
+    }
+  }
+  function isBatchCapableSwapAdapter(adapter) {
+    return typeof adapter === "object" && adapter !== null && typeof adapter.supportsAtomicBatch === "function" && typeof adapter.batchExecute === "function";
+  }
+  async function shouldUseBatchedSwap({ adapter, chain, tokenInAddress, allowanceStrategy, batchTransactions }) {
+    if (batchTransactions === false) {
+      return false;
+    }
+    if (chain.type !== "evm") {
+      return false;
+    }
+    if (isNativeEvmAddress(tokenInAddress)) {
+      return false;
+    }
+    const canUsePermit = allowanceStrategy !== "approve" && supportsEIP2612(tokenInAddress, chain) && adapterSupportsPermit(adapter);
+    if (canUsePermit) {
+      return false;
+    }
+    const usdt = chain.usdtAddress?.toLowerCase();
+    if (usdt !== void 0 && tokenInAddress.toLowerCase() === usdt) {
+      return false;
+    }
+    if (!isBatchCapableSwapAdapter(adapter)) {
+      return false;
+    }
+    try {
+      return await adapter.supportsAtomicBatch(chain);
+    } catch {
+      return false;
+    }
+  }
+  async function executeBatchedApproveAndSwap({ adapter, chain, approveRequest, swapRequest, fromAddress }) {
+    if (approveRequest.type !== "evm" || swapRequest.type !== "evm" || !approveRequest.getCallData || !swapRequest.getCallData) {
+      throw new KitError({
+        ...InputError.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Batched swap requires EVM prepared requests with getCallData() support."
+      });
+    }
+    const approveCallData = approveRequest.getCallData();
+    const swapCallData = swapRequest.getCallData();
+    const batchResult = await adapter.batchExecute([
+      approveCallData,
+      swapCallData
+    ], chain, {
+      fromAddress
+    });
+    const swapReceipt = batchResult.receipts[1];
+    if (swapReceipt === void 0 || swapReceipt.txHash === "") {
+      if (isKitError(batchResult.error)) {
+        throw batchResult.error;
+      }
+      throw new KitError({
+        ...NetworkError.TIMEOUT,
+        recoverability: "FATAL",
+        message: `Batched swap did not confirm on-chain (batchId: ${batchResult.batchId}). The batch was already submitted \u2014 check its status before retrying.`,
+        // Preserve the underlying confirmation failure when it isn't a KitError —
+        // the signing-strategy path returns a raw viem error (e.g. a dropped or
+        // replaced tx) — so the root cause survives behind the generic timeout.
+        cause: {
+          trace: {
+            batchId: batchResult.batchId,
+            ...batchResult.error != null && {
+              error: batchResult.error
+            }
+          }
+        }
+      });
+    }
+    if (swapReceipt.status !== "success") {
+      throw createTransactionRevertedError(chain.name, "Batched swap transaction reverted on-chain", void 0, swapReceipt.txHash, buildExplorerUrl(chain, swapReceipt.txHash));
+    }
+    const executedTransactions = [];
+    const approveReceipt = batchResult.receipts[0];
+    if (approveReceipt !== void 0 && approveReceipt.txHash !== "" && approveReceipt.txHash !== swapReceipt.txHash) {
+      executedTransactions.push({
+        type: "approval",
+        txHash: approveReceipt.txHash
+      });
+    }
+    executedTransactions.push({
+      type: "swap",
+      txHash: swapReceipt.txHash
+    });
+    return {
+      swapTxHash: swapReceipt.txHash,
+      executedTransactions
+    };
+  }
+  var GAS_SAFETY_MULTIPLIER = 1.3;
+  var DEFAULT_EVM_SWAP_GAS_LIMIT = 500000n;
+  var TOKEN_REGISTRY = createTokenRegistry();
+  function enhanceKitErrorWithTxDetails(err2, txHash, explorerUrl) {
+    const existingTrace = typeof err2.cause?.trace === "object" && err2.cause.trace !== null ? err2.cause.trace : {};
+    return new KitError({
+      code: err2.code,
+      name: err2.name,
+      type: err2.type,
+      recoverability: err2.recoverability,
+      message: err2.message,
+      cause: {
+        ...err2.cause,
+        trace: {
+          ...existingTrace,
+          txHash,
+          ...explorerUrl && {
+            explorerUrl
+          }
+        }
+      }
+    });
+  }
+  function handleSwapExecutionError(err2, txHash, chain) {
+    if (!txHash) {
+      throw err2;
+    }
+    let explorerUrl;
+    try {
+      explorerUrl = buildExplorerUrl(chain, txHash);
+    } catch {
+    }
+    if (isKitError(err2)) {
+      throw enhanceKitErrorWithTxDetails(err2, txHash, explorerUrl);
+    }
+    throw parseBlockchainError(err2, {
+      chain: chain.name,
+      operation: "swap",
+      txHash,
+      ...explorerUrl && {
+        explorerUrl
+      }
+    });
+  }
+  var SUPPORTED_CHAINS = getSwapSupportedChains(Chains);
+  var SAME_CHAIN_AMOUNT_OUT_POLL_DELAYS_MS = [
+    1e3,
+    2e3,
+    2e3
+  ];
+  var sleep$2 = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  function buildSwapProgress(statusResult) {
+    return {
+      status: statusResult.status,
+      ...statusResult.substatus !== void 0 && {
+        substatus: statusResult.substatus
+      },
+      ...statusResult.substatusMessage !== void 0 && {
+        substatusMessage: statusResult.substatusMessage
+      }
+    };
+  }
+  async function fetchSameChainStatusSnapshot({ isCrossChainSwap, txHash, chain, apiKey }) {
+    if (isCrossChainSwap) {
+      return {
+        progress: {
+          status: "PENDING"
+        }
+      };
+    }
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const statusResult = await getSwapStatus$1({
+          txHash,
+          chain: chain.chain,
+          ...apiKey !== void 0 && {
+            apiKey
+          }
+        });
+        if (statusResult.status === "DONE" && statusResult.amountOut !== void 0) {
+          return {
+            progress: buildSwapProgress(statusResult),
+            amountOut: statusResult.amountOut
+          };
+        }
+      } catch {
+        return {
+          progress: {
+            status: "DONE"
+          }
+        };
+      }
+      const delayMs = SAME_CHAIN_AMOUNT_OUT_POLL_DELAYS_MS[attempt];
+      if (delayMs === void 0) {
+        return {
+          progress: {
+            status: "DONE"
+          }
+        };
+      }
+      await sleep$2(delayMs);
+    }
+  }
+  var StablecoinServiceSwapProvider = class {
+    /** The name of the provider */
+    name = "StablecoinServiceSwapProvider";
+    /**
+    * Array of chains supported by this swap provider.
+    *
+    * This list is used by SwapKit to determine which chains are available
+    * for swapping tokens through this provider.
+    */
+    supportedChains = SUPPORTED_CHAINS;
+    /** This provider supports same-chain and cross-chain swap routes. */
+    supportsCrossChain = true;
+    /**
+    * Normalize a token identifier for consistent comparison.
+    *
+    * @remarks
+    * - 'NATIVE' literal and native currency symbols (e.g., 'ETH', 'SOL') are normalized to 'native'.
+    * - 'USDC' literal is normalized to the chain's USDC address (lowercased).
+    * - 'USDT' literal is normalized to the chain's USDT address (lowercased).
+    * - EVM addresses (starting with `0x`) are lowercased for case-insensitive matching.
+    * - Solana base58 addresses are preserved as-is to maintain case sensitivity.
+    *
+    * @param tokenAddress - The token address or symbol to normalize, or `null`.
+    * @param chain - The chain definition containing the native currency symbol.
+    * @returns The normalized token identifier, or an empty string if `null`.
+    */
+    normalizeToken(tokenAddress, chain) {
+      if (tokenAddress === null || tokenAddress === "") {
+        return "";
+      }
+      const nativeStablecoinSymbol = getNativeStablecoinSymbol(chain);
+      if (nativeStablecoinSymbol !== null) {
+        const upper = tokenAddress.toUpperCase();
+        if (upper === "NATIVE" || isNativeAliasAddress(tokenAddress)) {
+          return `symbol:${nativeStablecoinSymbol}`;
+        }
+      }
+      const resolvedTokenSymbol = resolveTokenSymbol(tokenAddress, chain);
+      if (resolvedTokenSymbol !== null) {
+        return `symbol:${resolvedTokenSymbol.toUpperCase()}`;
+      }
+      if (chain.type === "solana") {
+        return tokenAddress;
+      }
+      if (chain.type === "evm") {
+        return tokenAddress.toLowerCase();
+      }
+      return tokenAddress;
+    }
+    /**
+    * Determine whether the provider supports the supplied swap route.
+    *
+    * @remarks
+    * This method validates that:
+    * - The chain is swap-supported (mainnet or whitelisted testnet with CCTPv2)
+    * - Both tokens are supported (USDC, USDT, native currency, or token literals)
+    * - The tokens are different (no same-token swaps)
+    *
+    * Token addresses are normalized for comparison:
+    * - EVM addresses are lowercased for case-insensitive matching
+    * - Solana addresses preserve case sensitivity
+    * - Token literals ('NATIVE', 'USDC', 'USDT') are recognized and normalized (case-insensitive)
+    *
+    * @param tokenIn - The input token address or alias.
+    * @param tokenOut - The output token address or alias.
+    * @param chain - The source chain where the swap will start.
+    * @param toChain - Optional destination chain for cross-chain swaps.
+    * @returns `true` if the provider supports this route, `false` otherwise.
+    *
+    * @example
+    * ```typescript
+    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
+    * import { Ethereum, Base, Solana } from '@core/chains'
+    *
+    * const provider = new StablecoinServiceSwapProvider()
+    *
+    * // Check swap using token literals
+    * const usdcToUsdt = provider.supportsRoute('USDC', 'USDT', Ethereum)
+    * console.log('USDC→USDT on Ethereum:', usdcToUsdt) // true
+    *
+    * // Check swap using literal and address
+    * const usdcToNative = provider.supportsRoute('USDC', 'NATIVE', Base)
+    * console.log('USDC→NATIVE on Base:', usdcToNative) // true
+    *
+    * // Check EVM token swap with addresses (case-insensitive)
+    * const addressSwap = provider.supportsRoute(
+    *   '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC address
+    *   '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT address
+    *   Ethereum
+    * )
+    * console.log('Address-based swap:', addressSwap) // true
+    *
+    * // Check native token swap using NATIVE
+    * const usdcToNativeBase = provider.supportsRoute(
+    *   '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC address on Base
+    *   'NATIVE', // Native gas token
+    *   Base
+    * )
+    * console.log('USDC→NATIVE on Base:', usdcToNativeBase) // true
+    *
+    * // Check Solana swap (addresses are case-sensitive)
+    * const solanaSwap = provider.supportsRoute(
+    *   'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+    *   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+    *   Solana
+    * )
+    * console.log('USDC→USDT on Solana:', solanaSwap) // true
+    * ```
+    */
+    supportsRoute(tokenInAddress, tokenOutAddress, chain, toChain) {
+      const destinationChain = toChain ?? chain;
+      const isCrossChainSwap = destinationChain.chain !== chain.chain;
+      if (!isSwapSupportedChain(chain)) {
+        return false;
+      }
+      if (!isSwapSupportedChain(destinationChain)) {
+        return false;
+      }
+      const normalizedTokenInAddress = this.normalizeToken(tokenInAddress, chain);
+      const normalizedTokenOutAddress = this.normalizeToken(tokenOutAddress, destinationChain);
+      if (normalizedTokenInAddress === "" || normalizedTokenOutAddress === "") {
+        return false;
+      }
+      if (!isCrossChainSwap && normalizedTokenInAddress === normalizedTokenOutAddress) {
+        return false;
+      }
+      if (isCrossChainSwap) {
+        return true;
+      }
+      return getSwapOkTokenStatus(tokenInAddress, tokenOutAddress, chain, TOKEN_REGISTRY, OK_TOKEN_SYMBOLS$1).hasOkToken;
+    }
+    /**
+    * Estimate swap costs and output amount by delegating to the Stablecoin Service quote API.
+    *
+    * @remarks
+    * This method fetches a quote from Circle's Stablecoin Service API without
+    * executing the actual swap. Unlike on-chain gas estimation, this method
+    * does NOT require the wallet to hold the input token balance—gas limits
+    * are provided by the service response.
+    *
+    * **Important**: The gas fee returned in `fees` is the gas limit (max units),
+    * not the actual gas cost in wei. For precise fee calculations, multiply
+    * by the current gas price.
+    *
+    * Use this to:
+    * - Display expected output amounts to users
+    * - Show fee breakdown before committing to a swap
+    * - Validate that the swap parameters are acceptable
+    *
+    * The estimate includes:
+    * - `stopLimit`: Minimum guaranteed output in base units
+    * - `estimatedOutput`: Expected output in human-readable format
+    * - `fees`: Detailed breakdown of all applicable fees
+    * - `transaction`: Pre-built transaction data for execution
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter.
+    * @param params - The swap parameters containing adapter context, tokens, amount, and config.
+    * @returns A promise resolving to the estimate result with transaction data and fees.
+    * @throws {@link KitError} If validation fails or the service is unavailable.
+    *
+    * @example
+    * ```typescript
+    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2'
+    * import { Ethereum } from '@core/chains'
+    *
+    * const provider = new StablecoinServiceSwapProvider()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY
+    * })
+    *
+    * // Get swap estimate for USDC → USDT
+    * const estimate = await provider.estimate({
+    *   from: { adapter, chain: Ethereum },
+    *   tokenIn: 'USDC',  // Token alias
+    *   tokenOut: 'USDT', // Token alias
+    *   amountIn: '100.00',
+    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    *   config: { slippageBps: 300 } // 3% slippage tolerance
+    * })
+    *
+    * console.log('Stop limit (base units):', estimate.stopLimit)
+    * console.log('Estimated output:', estimate.estimatedOutput)
+    * console.log('Fees:', estimate.fees)
+    * ```
+    *
+    * @example
+    * ```typescript
+    * // Estimate with custom stop limit
+    * const estimateWithStopLimit = await provider.estimate({
+    *   from: { adapter, chain: Ethereum },
+    *   tokenIn: 'USDC',  // Token alias
+    *   tokenOut: 'USDT', // Token alias
+    *   amountIn: '100.00',
+    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+    *   config: {
+    *     slippageBps: 300,
+    *     stopLimit: '99000000' // Minimum 99 USDT output
+    *   }
+    * })
+    * ```
+    */
+    async estimate(params) {
+      validateServiceSwapParams(params);
+      const { chain } = params.from;
+      const destinationChain = params.toChain ?? chain;
+      const serviceParams = await buildServiceParams(params);
+      const serviceResponse = await createSwap(serviceParams);
+      let estimatedGasFee = "0";
+      const evmGasLimit = "gasLimit" in serviceResponse.transaction ? serviceResponse.transaction.gasLimit : void 0;
+      if (chain.type === "evm") {
+        const gasLimitUnits = evmGasLimit === void 0 ? DEFAULT_EVM_SWAP_GAS_LIMIT : BigInt(evmGasLimit);
+        const gasEstimate = await params.from.adapter.calculateTransactionFee(gasLimitUnits, void 0, chain);
+        estimatedGasFee = formatAmount({
+          value: gasEstimate.fee,
+          token: "NATIVE",
+          chain
+        });
+      } else if (chain.type === "solana") {
+        const gasEstimate = await params.from.adapter.calculateTransactionFee(300000n, void 0, chain);
+        estimatedGasFee = formatAmount({
+          value: gasEstimate.fee,
+          token: "NATIVE",
+          chain
+        });
+      }
+      const adapter = params.from.adapter;
+      const formattedFees = await this.buildFormattedFees(serviceResponse.fees, chain, destinationChain, adapter, params.config?.customFee?.recipientAddress);
+      const fees2 = [
+        ...formattedFees,
+        {
+          token: chain.nativeCurrency.symbol,
+          amount: estimatedGasFee,
+          type: "gas"
+        }
+      ];
+      const [formattedStopLimit, formattedEstimatedOutput] = await Promise.all([
+        formatTokenValue(serviceResponse.stopLimit, serviceParams.tokenOutAddress, destinationChain, adapter),
+        formatTokenValue(serviceResponse.estimatedAmount, serviceParams.tokenOutAddress, destinationChain, adapter)
+      ]);
+      const estimateResult = {
+        stopLimit: formattedStopLimit,
+        estimatedOutput: formattedEstimatedOutput,
+        fees: fees2,
+        ...serviceResponse.route !== void 0 && {
+          route: serviceResponse.route
+        }
+      };
+      return estimateResult;
+    }
+    /**
+    * Prepares a token approval transaction for swap operations.
+    *
+    * @remarks
+    * This method creates a prepared transaction that approves the Adapter Contract
+    * to spend a specified amount of tokens. The approval is required before
+    * initiating a swap operation when the token doesn't support EIP-2612 permits.
+    *
+    * This follows the same pattern as CCTPV2BridgingProvider.approve(), ensuring
+    * consistency across the codebase.
+    *
+    * **Approval Strategy:**
+    *
+    * The method intelligently selects the appropriate approval function based on
+    * the token being approved:
+    *
+    * - **USDC**: Uses `usdc.increaseAllowance` (safer, avoids race conditions)
+    *   - OpenZeppelin's ERC20 extension with relative increase
+    *   - Prevents front-running attacks on allowance changes
+    *   - Recommended for USDC by Circle
+    *
+    * - **Other ERC-20 tokens** (USDT, DAI, etc.): Uses `token.approve`
+    *   - Standard ERC-20 approve function
+    *   - Industry standard used by Uniswap, 1inch, and all major DEXs
+    *   - Theoretical race condition is rare in practice
+    *   - Atomic swap execution provides additional safety
+    *
+    * **When is this used?**
+    * - Token doesn't support EIP-2612 (e.g., USDT, some DAI versions)
+    * - Fallback when permit signature generation fails
+    * - User explicitly requests approval strategy via config
+    *
+    * **Flow:**
+    * 1. Detect token type (USDC vs other ERC-20)
+    * 2. Prepare appropriate action (`usdc.increaseAllowance` or `token.approve`)
+    * 3. Return prepared request (caller executes and waits for confirmation)
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter
+    * @param adapter - The adapter for transaction preparation and execution
+    * @param amount - The amount of tokens to approve (as string in base units)
+    * @param tokenAddress - The token contract address to approve
+    * @param spenderAddress - The Adapter Contract address that will spend the tokens
+    * @param resolvedContext - The resolved operation context containing chain and address information
+    * @returns Promise resolving to a prepared chain request ready for execution
+    *
+    * @throws Error when adapter is not provided
+    * @throws Error when amount is invalid (empty, negative, or malformed)
+    *
+    * @example USDC approval (uses increaseAllowance)
+    * ```typescript
+    * // Internal use in swap() method for USDC
+    * const approvalRequest = await this.approve(
+    *   adapter,
+    *   '1000000', // 1 USDC (6 decimals)
+    *   '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC address
+    *   '0xAdapterContract', // Adapter Contract address
+    *   resolvedContext
+    * )
+    * // Uses usdc.increaseAllowance internally
+    *
+    * // Execute and wait for confirmation
+    * const txHash = await approvalRequest.execute()
+    * await adapter.waitForTransaction(txHash, undefined, chain)
+    * ```
+    *
+    * @example USDT approval (uses approve)
+    * ```typescript
+    * // Internal use in swap() method for USDT
+    * const approvalRequest = await this.approve(
+    *   adapter,
+    *   '1000000', // 1 USDT (6 decimals)
+    *   '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT address
+    *   '0xAdapterContract', // Adapter Contract address
+    *   resolvedContext
+    * )
+    * // Uses token.approve internally
+    *
+    * // Execute and wait for confirmation
+    * const txHash = await approvalRequest.execute()
+    * await adapter.waitForTransaction(txHash, undefined, chain)
+    * ```
+    *
+    * @internal
+    */
+    async approve(adapter, amount, tokenAddress, spenderAddress, resolvedContext) {
+      const chain = resolvedContext.chain;
+      const isUsdc = tokenAddress.toLowerCase() === chain.usdcAddress?.toLowerCase();
+      const operationContext = resolvedContext;
+      if (isUsdc) {
+        return await adapter.prepareAction("usdc.increaseAllowance", {
+          amount: BigInt(amount),
+          delegate: spenderAddress
+        }, operationContext);
+      } else {
+        return await adapter.prepareAction("token.approve", {
+          tokenAddress,
+          amount: BigInt(amount),
+          delegate: spenderAddress
+        }, operationContext);
+      }
+    }
+    /**
+    * Handle EVM token approval for swap operations.
+    *
+    * @remarks
+    * Determine whether the swap requires a separate on-chain approval
+    * transaction and, if so, execute it before the swap itself.
+    *
+    * **Decision matrix (in order of precedence):**
+    *
+    * | Condition | Result |
+    * |-----------|--------|
+    * | Native token (ETH, MATIC, …) | Skip — no approval needed |
+    * | `allowanceStrategy === 'approve'` | Force on-chain approval, even when permit is available |
+    * | Token supports EIP-2612 **and** adapter supports EIP-2612 | Skip — permit will be bundled into the swap tx |
+    * | Otherwise | On-chain approval required |
+    *
+    * When on-chain approval **is** required the method delegates to
+    * {@link handleUsdtApproval} (USDT needs a reset-to-zero flow) or
+    * {@link handleStandardApproval} (all other ERC-20 tokens, including
+    * USDC via `increaseAllowance`).
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type
+    * @param adapter - The adapter for transaction execution
+    * @param chain - The chain definition containing contract addresses
+    * @param serviceParams - The swap parameters from the service
+    * @param resolvedContext - The resolved operation context
+    * @param executedTransactions - Array to track executed transactions
+    * @param allowanceStrategy - Optional override for the allowance strategy.
+    *   When set to `'approve'`, the permit flow is bypassed and a standard
+    *   on-chain approval transaction is always sent.  When `'permit'` or
+    *   `undefined` the method follows the default EIP-2612 detection logic.
+    * @returns Promise that resolves when approval is complete (or skipped)
+    * @throws KitError when adapter contract address is missing or approval fails
+    */
+    async handleEvmTokenApproval(adapter, chain, executionCtx, resolvedContext, executedTransactions, allowanceStrategy) {
+      const isNativeToken3 = isNativeEvmAddress(executionCtx.tokenInAddress);
+      const tokenSupportsPermit = supportsEIP2612(executionCtx.tokenInAddress, chain);
+      const canUsePermitFlow = tokenSupportsPermit && adapterSupportsPermit(adapter) && allowanceStrategy !== "approve";
+      const needsApproval = !isNativeToken3 && !canUsePermitFlow;
+      if (!needsApproval) {
+        return;
+      }
+      const adapterContractAddress = chain.kitContracts?.adapter;
+      if (!adapterContractAddress) {
+        throw new KitError({
+          ...InputError.VALIDATION_FAILED,
+          recoverability: "FATAL",
+          message: `Adapter contract not configured for chain ${chain.name}. Swap operations require an adapter contract.`,
+          cause: {
+            trace: {
+              chain: chain.name
+            }
+          }
+        });
+      }
+      const tokenAddress = executionCtx.tokenInAddress.toLowerCase();
+      const usdt = chain.usdtAddress?.toLowerCase();
+      const isTokenUsdt = usdt !== void 0 && tokenAddress === usdt;
+      if (isTokenUsdt) {
+        await this.handleUsdtApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions);
+      } else {
+        await this.handleStandardApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions);
+      }
+    }
+    /**
+    * Handle USDT approval with reset flow
+    *
+    * USDT requires allowance to be reset to 0 before setting a new non-zero value.
+    * This method checks the current allowance and:
+    * - If sufficient, proceeds without changes
+    * - If non-zero but insufficient, resets to 0 then sets new amount
+    * - If zero, sets new amount directly
+    *
+    * @param adapter - The chain adapter instance
+    * @param chain - The chain definition
+    * @param serviceParams - The service parameters containing amount and addresses
+    * @param adapterContractAddress - The adapter contract address to approve
+    * @param resolvedContext - The resolved operation context
+    * @param executedTransactions - Array to track executed approval transactions
+    * @returns A Promise that resolves when approval transactions are complete
+    *
+    * @throws Error if the adapter fails to prepare or execute approval transactions
+    * @throws Error if transaction confirmation fails or times out
+    */
+    async handleUsdtApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions) {
+      const current = await readTokenAllowance(adapter, {
+        tokenAddress: executionCtx.tokenInAddress,
+        delegate: adapterContractAddress
+      }, resolvedContext);
+      const required = BigInt(executionCtx.amount);
+      if (current >= required) {
+        return;
+      }
+      if (current > 0n) {
+        const resetReq = await this.approve(adapter, "0", executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
+        const resetTx = await resetReq.execute();
+        executedTransactions.push({
+          type: "approval",
+          txHash: resetTx
+        });
+        await adapter.waitForTransaction(resetTx, void 0, chain);
+      }
+      const approvalReq = await this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
+      const approvalTx = await approvalReq.execute();
+      executedTransactions.push({
+        type: "approval",
+        txHash: approvalTx
+      });
+      await adapter.waitForTransaction(approvalTx, void 0, chain);
+    }
+    /**
+    * Handle standard ERC-20 token approval
+    *
+    * Execute a standard ERC-20 approve transaction for non-USDT tokens.
+    * This is a straightforward approval without special reset requirements.
+    *
+    * @param adapter - The chain adapter instance
+    * @param chain - The chain definition
+    * @param serviceParams - The service parameters containing amount and addresses
+    * @param adapterContractAddress - The adapter contract address to approve
+    * @param resolvedContext - The resolved operation context
+    * @param executedTransactions - Array to track executed approval transactions
+    * @returns A Promise that resolves when the approval transaction is complete
+    *
+    * @throws Error if the adapter fails to prepare or execute the approval transaction
+    * @throws Error if transaction confirmation fails or times out
+    */
+    async handleStandardApproval(adapter, chain, executionCtx, adapterContractAddress, resolvedContext, executedTransactions) {
+      const approvalReq = await this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext);
+      const approvalTx = await approvalReq.execute();
+      executedTransactions.push({
+        type: "approval",
+        txHash: approvalTx
+      });
+      await adapter.waitForTransaction(approvalTx, void 0, chain);
+    }
+    /**
+    * Execute a token swap operation through the Stablecoin Service.
+    *
+    * @remarks
+    * This method coordinates with the stablecoin-service to prepare and execute swap transactions.
+    * It handles parameter validation, service communication, automatic token approval, transaction
+    * preparation, execution, and confirmation monitoring.
+    *
+    * **Automatic Approval Flow** (similar to BridgeKit):
+    * 1. **Check for EIP-2612 support**: Detects if token supports gasless approvals
+    * 2. **If token supports EIP-2612** (USDC, EURC):
+    *    - Generate permit signature (off-chain, gasless)
+    *    - Execute swap in **single transaction**
+    * 3. **If token doesn't support EIP-2612**:
+    *    - Execute approval transaction (on-chain)
+    *    - Wait for approval confirmation
+    *    - Execute swap transaction
+    *    - Total: **two transactions**
+    *
+    * **EIP-2612 Benefits**:
+    * - Single transaction (lower gas costs)
+    * - Better UX (one wallet interaction)
+    * - No pre-approval required
+    *
+    * **Supported EIP-2612 Tokens**:
+    * - USDC on Ethereum, Base, Arbitrum, Optimism, Polygon, Avalanche, World Chain, Sepolia
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type for the source adapter
+    * @param params - The swap parameters containing adapter context, tokens, amount, destination, and configuration
+    * @returns Promise resolving to SwapResult with transaction hash and details
+    * @throws KitError when validation fails or transaction reverts
+    * @throws Error when service communication or transaction execution fails
+    *
+    * @example Swap with EIP-2612 (single transaction)
+    * ```typescript
+    * import { StablecoinServiceSwapProvider } from '@circle-fin/provider-stablecoin-service-swap'
+    * import { createAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2'
+    * import { Ethereum } from '@core/chains'
+    *
+    * const provider = new StablecoinServiceSwapProvider()
+    *
+    * const adapter = createAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY
+    * })
+    *
+    * // Swap USDC → USDT (supports EIP-2612)
+    * const result = await provider.swap({
+    *   from: { adapter, chain: Ethereum },
+    *   tokenIn: 'USDC',  // Token alias
+    *   tokenOut: 'USDT', // Token alias
+    *   amountIn: '100.00',
+    *   to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'
+    * })
+    * // User signs permit (off-chain) → Swap executes (1 tx total)
+    *
+    * console.log('Swap completed:', result.txHash)
+    * ```
+    *
+    * @example Swap without EIP-2612 (two transactions)
+    * ```typescript
+    * // Swap token that doesn't support EIP-2612
+    * const result = await provider.swap({
+    *   from: { adapter, chain: Ethereum },
+    *   tokenIn: 'USDC',   // Token alias
+    *   tokenOut: 'NATIVE', // Token alias (ETH on Ethereum)
+    *   amountIn: '100.00',
+    *   to: '0xRecipient'
+    * })
+    * // Approval tx executes and confirms → Then swap executes (2 txs total)
+    * ```
+    *
+    * @example Swap with custom configuration
+    * ```typescript
+    * const result = await provider.swap({
+    *   from: { adapter, chain: Ethereum },
+    *   tokenIn: 'USDC', // Alias supported
+    *   tokenOut: 'USDT', // Alias supported
+    *   amountIn: '100.00',
+    *   to: '0xRecipient',
+    *   config: {
+    *     slippageBps: 500, // 5% slippage tolerance
+    *     customFee: {
+    *       value: '1000000', // 1 USDC fee
+    *       recipientAddress: '0xFeeRecipient'
+    *     }
+    *   }
+    * })
+    *
+    * console.log('Transaction hash:', result.txHash)
+    * console.log('Input amount:', result.amountIn)
+    * console.log('Fees:', result.fees)
+    * ```
+    *
+    * @example
+    * ```typescript
+    * // Swap with error handling
+    * import { isKitError, isFatalError, isRetryableError } from '@core/errors'
+    *
+    * try {
+    *   const result = await provider.swap({
+    *     from: { adapter, chain: Ethereum },
+    *     tokenIn: 'USDC',  // Token alias
+    *     tokenOut: 'USDT', // Token alias
+    *     amountIn: '100.00',
+    *     to: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e'
+    *   })
+    *   console.log('Swap completed:', result.txHash)
+    * } catch (error) {
+    *   if (isKitError(error)) {
+    *     if (isFatalError(error)) {
+    *       console.error('Fatal error - check parameters:', error.message)
+    *     } else if (isRetryableError(error)) {
+    *       console.log('Transient error - retrying...')
+    *     }
+    *   }
+    * }
+    * ```
+    *
+    * @example Error handling
+    * ```typescript
+    * try {
+    *   const result = await provider.swap(params)
+    *   console.log('Success:', result.txHash)
+    * } catch (error) {
+    *   if (error instanceof KitError) {
+    *     console.error('Swap failed:', error.message)
+    *     console.error('Recoverability:', error.recoverability)
+    *     console.error('Trace:', error.cause?.trace)
+    *   }
+    * }
+    * ```
+    */
+    async swap(params) {
+      validateServiceSwapParams(params);
+      const { from: from16, tokenIn, tokenOut, config } = params;
+      const { adapter, chain } = from16;
+      const destinationChain = params.toChain ?? chain;
+      const isCrossChainSwap = destinationChain.chain !== chain.chain;
+      const serviceParams = await buildServiceParams(params);
+      const executionCtx = {
+        tokenInAddress: serviceParams.tokenInAddress,
+        tokenOutAddress: serviceParams.tokenOutAddress,
+        amount: serviceParams.amount,
+        fromAddress: serviceParams.fromAddress
+      };
+      const resolvedContext = await resolveOperationContext(adapter, {
+        chain,
+        address: serviceParams.fromAddress
+      });
+      if (chain.type === "solana") {
+        await validateNonNativeBalance({
+          adapter,
+          tokenInAddress: serviceParams.tokenInAddress,
+          tokenInSymbol: tokenIn,
+          amount: serviceParams.amount,
+          walletAddress: serviceParams.fromAddress,
+          context: resolvedContext
+        });
+      }
+      const serviceResponse = await createSwap(serviceParams);
+      const executedTransactions = [];
+      const { preparedAction, batchedSwapPlan } = await this.prepareSwapRequests({
+        adapter,
+        chain,
+        serviceResponse,
+        resolvedContext,
+        executionCtx,
+        config,
+        executedTransactions
+      });
+      let txHash;
+      const evmGasLimit = "gasLimit" in serviceResponse.transaction ? serviceResponse.transaction.gasLimit : void 0;
+      try {
+        if (batchedSwapPlan) {
+          const batched = await executeBatchedApproveAndSwap({
+            adapter,
+            chain,
+            approveRequest: batchedSwapPlan.approveRequest,
+            swapRequest: batchedSwapPlan.swapRequest,
+            fromAddress: executionCtx.fromAddress
+          });
+          txHash = batched.swapTxHash;
+          executedTransactions.push(...batched.executedTransactions);
+        } else if (preparedAction) {
+          txHash = await this.executeSwapTransaction(preparedAction, evmGasLimit);
+          executedTransactions.push({
+            type: "swap",
+            txHash
+          });
+          const txReceipt = await adapter.waitForTransaction(txHash, void 0, chain);
+          if (txReceipt.status === "reverted") {
+            const explorerUrl = buildExplorerUrl(chain, txHash);
+            throw createTransactionRevertedError(chain.name, "Swap transaction reverted on-chain", void 0, txHash, explorerUrl);
+          }
+        } else {
+          throw new KitError({
+            ...InputError.UNSUPPORTED_ACTION,
+            recoverability: "FATAL",
+            message: "No swap execution path was prepared."
+          });
+        }
+      } catch (err2) {
+        handleSwapExecutionError(err2, txHash, chain);
+      }
+      const swapResultFees = serviceResponse.fees ? await this.buildFormattedFees(serviceResponse.fees, chain, destinationChain, adapter, config?.customFee?.recipientAddress) : void 0;
+      const statusSnapshot = await fetchSameChainStatusSnapshot({
+        isCrossChainSwap,
+        txHash,
+        chain,
+        ...serviceParams.apiKey !== void 0 && {
+          apiKey: serviceParams.apiKey
+        }
+      });
+      const correlationId = serviceResponse.correlationId;
+      return {
+        tokenIn,
+        tokenOut,
+        chain,
+        amountIn: serviceParams.amount,
+        fromAddress: serviceParams.fromAddress,
+        toAddress: serviceParams.toAddress,
+        txHash,
+        ...correlationId !== void 0 && {
+          correlationId
+        },
+        executedTransactions,
+        ...config !== void 0 && {
+          config
+        },
+        ...swapResultFees !== void 0 && {
+          fees: swapResultFees
+        },
+        ...serviceResponse.route !== void 0 && {
+          route: serviceResponse.route
+        },
+        progress: statusSnapshot.progress,
+        ...statusSnapshot.amountOut !== void 0 && {
+          amountOut: statusSnapshot.amountOut
+        }
+      };
+    }
+    /**
+    * Prepare the swap execution request(s) for the source wallet's chain.
+    *
+    * Produces either a single {@link PreparedChainRequest} (Solana, or the
+    * sequential EVM approve-then-swap path) or a `batchedSwapPlan` (the EVM
+    * atomic approve+swap path chosen when the adapter supports EIP-5792 atomic
+    * batching). The caller executes whichever field is populated. Any on-chain
+    * approval sent on the sequential path is appended to `executedTransactions`.
+    *
+    * @typeParam TFromAdapterCapabilities - Source-adapter capability set.
+    * @param args - Inputs derived from the validated swap request.
+    * @param args.adapter - Source-chain wallet adapter.
+    * @param args.chain - Source chain definition.
+    * @param args.serviceResponse - Validated createSwap response.
+    * @param args.resolvedContext - Resolved operation context.
+    * @param args.executionCtx - Minimal on-chain execution context.
+    * @param args.config - Optional swap configuration (allowance/batch flags).
+    * @param args.executedTransactions - Array appended with any sent approval.
+    * @returns The prepared action or the batched approve+swap plan.
+    * @throws KitError when the EVM atomic-batch path is selected but the chain
+    *   has no configured adapter contract.
+    */
+    async prepareSwapRequests(args) {
+      const { adapter, chain, serviceResponse, resolvedContext, executionCtx, config, executedTransactions } = args;
+      if (chain.type === "solana") {
+        return {
+          preparedAction: await prepareSolanaSwapAction(adapter, serviceResponse, resolvedContext)
+        };
+      }
+      const useBatch = await shouldUseBatchedSwap({
+        adapter,
+        chain,
+        tokenInAddress: executionCtx.tokenInAddress,
+        allowanceStrategy: config?.allowanceStrategy,
+        batchTransactions: config?.batchTransactions
+      });
+      if (useBatch) {
+        const adapterContractAddress = chain.kitContracts?.adapter;
+        if (!adapterContractAddress) {
+          throw new KitError({
+            ...InputError.VALIDATION_FAILED,
+            recoverability: "FATAL",
+            message: `Adapter contract not configured for chain ${chain.name}. Swap operations require an adapter contract.`,
+            cause: {
+              trace: {
+                chain: chain.name
+              }
+            }
+          });
+        }
+        const [approveRequest, swapRequest] = await Promise.all([
+          this.approve(adapter, executionCtx.amount, executionCtx.tokenInAddress, adapterContractAddress, resolvedContext),
+          prepareEvmSwapAction(adapter, serviceResponse, resolvedContext, "approve")
+        ]);
+        return {
+          batchedSwapPlan: {
+            approveRequest,
+            swapRequest
+          }
+        };
+      }
+      await this.handleEvmTokenApproval(adapter, chain, executionCtx, resolvedContext, executedTransactions, config?.allowanceStrategy);
+      return {
+        preparedAction: await prepareEvmSwapAction(adapter, serviceResponse, resolvedContext, config?.allowanceStrategy)
+      };
+    }
+    /**
+    * Executes a swap transaction with the appropriate gas limit for the chain type.
+    *
+    * For EVM chains, performs a local eth_estimateGas call, applies a 1.3x safety
+    * multiplier for the full adapter execution path (DEX swap, fee split, token sweep),
+    * and uses the greater of (local estimate × 1.3) or the proxy's gasLimit. If local
+    * estimation fails, falls back to the proxy's gasLimit.
+    *
+    * @param preparedAction - The prepared chain request to execute.
+    * @param evmGasLimit - Optional gas limit from the proxy service for EVM transactions.
+    * @returns The transaction hash.
+    */
+    async executeSwapTransaction(preparedAction, evmGasLimit) {
+      if (preparedAction.type === "evm" && evmGasLimit) {
+        const proxyGasLimit = Number(evmGasLimit);
+        let effectiveGasLimit = proxyGasLimit;
+        try {
+          const localEstimate = await preparedAction.estimate();
+          const localGas = Number(localEstimate?.gas);
+          if (Number.isFinite(localGas) && localGas > 0) {
+            const localWithBuffer = Math.ceil(localGas * GAS_SAFETY_MULTIPLIER);
+            if (Number.isFinite(localWithBuffer) && localWithBuffer > 0) {
+              effectiveGasLimit = Math.max(localWithBuffer, proxyGasLimit);
+            }
+          }
+        } catch {
+        }
+        return preparedAction.execute({
+          gasLimit: effectiveGasLimit
+        });
+      }
+      return preparedAction.execute();
+    }
+    /**
+    * Build formatted fee arrays from the service response.
+    *
+    * @remarks
+    * Consolidate provider, swap, and developer fee formatting into a
+    * single call so both {@link estimate} and {@link swap} share the
+    * same logic.
+    *
+    * @param fees - The fee breakdown from the service response.
+    * @param chain - The chain definition for token resolution and formatting.
+    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
+    * @param recipientAddress - Optional developer fee recipient address.
+    * @returns Promise resolving to the combined formatted fee array.
+    */
+    async buildFormattedFees(fees2, chain, destinationChain, adapter, recipientAddress) {
+      if (!fees2) return [];
+      const [providerFees, swapFees, developerFees] = await Promise.all([
+        this.formatServiceFees(fees2.provider, chain, destinationChain, "provider", adapter),
+        this.formatServiceFees(fees2.swap, chain, destinationChain, "swap", adapter),
+        recipientAddress ? this.formatDeveloperFees(fees2.developer, chain, destinationChain, recipientAddress, adapter) : Promise.resolve([])
+      ]);
+      return [
+        ...providerFees,
+        ...swapFees,
+        ...developerFees
+      ];
+    }
+    /**
+    * Resolve a single fee item to its display token and human-readable amount.
+    *
+    * @remarks
+    * Prefer the self-describing metadata the service attaches to each fee:
+    * `decimals` (and `symbol`) come straight from the provider quote, so they
+    * are authoritative even for a token absent from the SDK registry on both
+    * chains. That is the case {@link resolveFeeChain} cannot recover — a
+    * destination-denominated fee token resolves on neither the source registry
+    * nor the source-bound adapter, leaving the amount as raw base units. When
+    * the service omits `decimals` (optional during rollout), fall back to
+    * inferring the fee token's chain and resolving via the registry/adapter.
+    *
+    * Like {@link formatTokenValue}, this never throws: fee display is cosmetic
+    * and must not fail an estimate/swap. A malformed self-describing `decimals`
+    * (e.g. a non-numeric `amount` or invalid decimal count that makes
+    * {@link formatUnits} throw) falls through to chain-based resolution rather
+    * than propagating out of {@link buildFormattedFees}.
+    *
+    * @param fee - The fee item from the service response.
+    * @param chain - The source chain definition.
+    * @param destinationChain - The destination chain definition.
+    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
+    * @returns Promise resolving to the formatted amount and display token.
+    */
+    async formatFeeValue(fee, chain, destinationChain, adapter) {
+      if (fee.decimals != null) {
+        try {
+          return {
+            amount: formatUnits2(fee.amount, fee.decimals),
+            token: fee.symbol ?? fee.token
+          };
+        } catch {
+        }
+      }
+      const feeChain = resolveFeeChain(fee.token, chain, destinationChain);
+      return formatTokenValue(fee.amount, fee.token, feeChain, adapter);
+    }
+    /**
+    * Format service fee items into the SDK's ServiceSwapFee structure.
+    *
+    * @remarks
+    * Transform raw fee data from the service into formatted fees with:
+    * - Resolved token symbols (USDC, USDT, NATIVE) when possible
+    * - Human-readable decimal amounts via {@link formatTokenValue}
+    * - On-chain decimals fallback for unregistered tokens via adapter
+    * - Raw passthrough only when both registry and adapter fail
+    *
+    * @param feeItems - Array of fee items from the service response.
+    * @param chain - The source chain definition for token resolution and formatting.
+    * @param destinationChain - The destination chain, used to resolve fees denominated in the output token.
+    * @param type - The fee type to assign ('provider' or 'swap').
+    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
+    * @returns Promise resolving to formatted ServiceSwapFee array.
+    */
+    async formatServiceFees(feeItems, chain, destinationChain, type2, adapter) {
+      if (!feeItems) return [];
+      return Promise.all(feeItems.map(async (fee) => {
+        const formatted4 = await this.formatFeeValue(fee, chain, destinationChain, adapter);
+        return {
+          token: formatted4.token,
+          amount: formatted4.amount,
+          type: type2,
+          ...fee.type !== void 0 && {
+            component: fee.type
+          },
+          ...fee.chain !== void 0 && {
+            chain: fee.chain
+          }
+        };
+      }));
+    }
+    /**
+    * Format developer fee items into the SDK's ServiceSwapFee structure.
+    *
+    * @param feeItems - Array of developer fee items from the service response.
+    * @param chain - The source chain definition for token resolution and formatting.
+    * @param destinationChain - The destination chain, used to resolve fees denominated in the output token.
+    * @param recipientAddress - The developer's fee recipient address from config.
+    * @param adapter - The adapter for on-chain decimals lookup of unregistered tokens.
+    * @returns Promise resolving to formatted ServiceSwapFee array with developer entries.
+    */
+    async formatDeveloperFees(feeItems, chain, destinationChain, recipientAddress, adapter) {
+      if (!feeItems) return [];
+      return Promise.all(feeItems.map(async (fee) => {
+        const formatted4 = await this.formatFeeValue(fee, chain, destinationChain, adapter);
+        return {
+          token: formatted4.token,
+          amount: formatted4.amount,
+          type: "developer",
+          recipientAddress,
+          ...fee.type !== void 0 && {
+            component: fee.type
+          },
+          ...fee.chain !== void 0 && {
+            chain: fee.chain
+          }
+        };
+      }));
+    }
+  };
+  var TransferSpeed;
+  (function(TransferSpeed3) {
+    TransferSpeed3["FAST"] = "FAST";
+    TransferSpeed3["SLOW"] = "SLOW";
+  })(TransferSpeed || (TransferSpeed = {}));
+  var createDecimalStringValidator = (options) => (schema) => {
+    const capitalizedAttributeName = options.attributeName.charAt(0).toUpperCase() + options.attributeName.slice(1);
+    return schema.regex(/^-?(?:\d+(?:\.\d+)?|\.\d+)$/, options.regexMessage).superRefine((val, ctx) => {
+      const amount = Number.parseFloat(val);
+      if (Number.isNaN(amount)) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: options.regexMessage
+        });
+        return;
+      }
+      if (options.maxDecimals !== void 0) {
+        const decimalPart = val.split(".")[1];
+        if (decimalPart && decimalPart.length > options.maxDecimals) {
+          ctx.addIssue({
+            code: external_exports.ZodIssueCode.custom,
+            message: `Maximum supported decimal places: ${options.maxDecimals.toString()}`
+          });
+          return;
+        }
+      }
+      if (options.allowZero && amount < 0) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `${capitalizedAttributeName} must be non-negative`
+        });
+      } else if (!options.allowZero && amount <= 0) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `${capitalizedAttributeName} must be greater than 0`
+        });
+      }
+    });
+  };
+  var chainDefinitionSchema = external_exports.object({
+    name: external_exports.string().min(1, "Chain name is required"),
+    type: external_exports.string().min(1, "Chain type is required")
+  });
+  var walletContextSchema = external_exports.object({
+    adapter: external_exports.object({
+      prepare: external_exports.function().returns(external_exports.any()),
+      waitForTransaction: external_exports.function().returns(external_exports.any())
+    }),
+    address: external_exports.string().min(1),
+    chain: external_exports.object({
+      name: external_exports.string(),
+      type: external_exports.string(),
+      isTestnet: external_exports.boolean()
+    })
+  });
+  var destinationContextSchema = walletContextSchema.extend({
+    useForwarder: external_exports.boolean().optional(),
+    recipientAddress: external_exports.string().optional()
+  });
+  var forwarderOnlyDestinationSchema = external_exports.object({
+    chain: chainDefinitionSchema.extend({
+      isTestnet: external_exports.boolean()
+    }),
+    recipientAddress: external_exports.string().min(1, "Recipient address is required for forwarder-only destination"),
+    useForwarder: external_exports.literal(true)
+  }).superRefine((data, ctx) => {
+    if (!isValidAddressForChain(data.recipientAddress, data.chain.name)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: `Invalid recipient address format for chain ${data.chain.name}`,
+        path: [
+          "recipientAddress"
+        ]
+      });
+    }
+  });
+  var bridgeDestinationSchema = external_exports.union([
+    destinationContextSchema,
+    forwarderOnlyDestinationSchema
+  ]);
+  var customFeeSchema = external_exports.object({
+    /**
+     * The fee to charge for the transfer as string.
+     * Must be a non-negative value using dot (.) as decimal separator,
+     * with no thousand separators or comma decimals.
+     */
+    value: createDecimalStringValidator({
+      allowZero: true,
+      regexMessage: "Value must be a non-negative numeric string with dot (.) as decimal separator, with no thousand separators or comma decimals.",
+      attributeName: "value"
+    })(external_exports.string()).optional(),
+    /**
+     * The fee recipient address.
+     * Must be a valid address string.
+     */
+    recipientAddress: external_exports.string().trim().min(1, "Fee recipient must be a non-empty string").optional()
+  }).strict();
+  function createBridgeParamsSchema(tokenSchema2, config) {
+    const { maxDecimals } = config;
+    return external_exports.object({
+      amount: external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
+        allowZero: false,
+        regexMessage: AMOUNT_FORMAT_ERROR_MESSAGE,
+        attributeName: "amount",
+        maxDecimals
+      })(external_exports.string())),
+      source: walletContextSchema,
+      destination: bridgeDestinationSchema,
+      token: tokenSchema2,
+      config: external_exports.object({
+        transferSpeed: external_exports.nativeEnum(TransferSpeed).optional(),
+        maxFee: external_exports.string().pipe(createDecimalStringValidator({
+          allowZero: true,
+          regexMessage: MAX_FEE_FORMAT_ERROR_MESSAGE,
+          attributeName: "maxFee",
+          maxDecimals
+        })(external_exports.string())).optional(),
+        customFee: customFeeSchema.optional()
+      })
+    });
+  }
+  createBridgeParamsSchema(external_exports.literal("USDC"), {
+    maxDecimals: 6
+  });
+  var swapChainIdentifierField = external_exports.custom((value) => swapChainIdentifierSchema.safeParse(value).success, {
+    message: "chain must be a supported swap chain"
+  });
+  var optionalSwapChainIdentifierField = swapChainIdentifierField.optional();
+  var adapterContextSchema = external_exports.object({
+    adapter: adapterSchema,
+    chain: swapChainIdentifierField,
+    address: external_exports.string().optional()
+  });
+  var allowanceStrategySchema = external_exports.enum([
+    "permit",
+    "approve"
+  ]);
+  var swapCustomFeeSchema = external_exports.object({
+    /**
+     * Fee percentage in basis points (percentage approach).
+     * 100 bps = 1%, must be > 0 and <= 10000.
+     */
+    percentageBps: external_exports.number().int().positive().max(1e4),
+    /**
+     * Fee recipient address (required).
+     * Must be a valid EVM address or Solana address.
+     */
+    recipientAddress: external_exports.string().refine((value) => evmAddressSchema.safeParse(value).success || solanaAddressSchema.safeParse(value).success, {
+      message: "recipientAddress must be a valid blockchain address: EVM (0x + 40 hex chars) or Solana (base58, 32-44 chars)"
+    })
+  }).strict();
+  var swapConfigSchema = external_exports.object({
+    allowanceStrategy: allowanceStrategySchema.optional(),
+    slippageBps: external_exports.number().int().min(0).optional(),
+    stopLimit: external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
+      allowZero: true,
+      regexMessage: 'Stop limit must be a numeric string with dot (.) as decimal separator (e.g., "0.1", ".1", "10.5", "1000.50"), with no thousand separators or comma decimals.',
+      attributeName: "stopLimit"
+    })(external_exports.string())).optional(),
+    customFee: swapCustomFeeSchema.optional(),
+    apiKey: external_exports.string().optional(),
+    kitKey: external_exports.string().optional(),
+    batchTransactions: external_exports.boolean({
+      invalid_type_error: "batchTransactions must be a boolean"
+    }).optional()
+  });
+  var swapDestinationSchema = external_exports.object({
+    chain: optionalSwapChainIdentifierField,
+    recipientAddress: external_exports.string().refine((value) => evmAddressSchema.safeParse(value).success || solanaAddressSchema.safeParse(value).success, {
+      message: "recipientAddress must be a valid blockchain address: EVM (0x + 40 hex chars) or Solana (base58, 32-44 chars)"
+    }).optional()
+  }).strict();
+  var EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
+  var SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  var BASE58_CHARS_REGEX = /^[1-9A-HJ-NP-Za-km-z]+$/;
+  function looksLikeSolanaAddress(value) {
+    return BASE58_CHARS_REGEX.test(value) && value.length >= 32;
+  }
+  var MAX_DISPLAY_LENGTH = 30;
+  function truncate(value) {
+    return value.length > MAX_DISPLAY_LENGTH ? `${value.slice(0, MAX_DISPLAY_LENGTH)}...` : value;
+  }
+  var _symbolResult;
+  var swapTokenSchema = external_exports.string().superRefine((value, ctx) => {
+    if (value.startsWith("0x")) {
+      if (!EVM_ADDRESS_REGEX.test(value)) {
+        ctx.addIssue({
+          code: external_exports.ZodIssueCode.custom,
+          message: `Invalid EVM token address format. Expected '0x' followed by 40 hexadecimal characters, but received: '${truncate(value)}'`
+        });
+      }
+      return;
+    }
+    _symbolResult = supportedSwapTokenSchema.safeParse(value);
+    if (_symbolResult.success) {
+      return;
+    }
+    if (SOLANA_ADDRESS_REGEX.test(value)) {
+      return;
+    }
+    if (looksLikeSolanaAddress(value)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: `Invalid Solana token address format. Expected 32-44 base58 characters, but received: '${truncate(value)}'`
+      });
+      return;
+    }
+    ctx.addIssue({
+      code: external_exports.ZodIssueCode.custom,
+      message: `Unknown token symbol '${truncate(value)}'. Supported symbols include USDC, USDT, WETH, NATIVE, and others. See SDK documentation for the full list. You can also provide a token contract address (EVM: 0x... or Solana: base58).`
+    });
+  }).transform((value) => _symbolResult?.success ? _symbolResult.data : value);
+  var amountInSchema = external_exports.string().min(1, "Required").pipe(createDecimalStringValidator({
+    allowZero: false,
+    regexMessage: AMOUNT_FORMAT_ERROR_MESSAGE,
+    attributeName: "amountIn",
+    maxDecimals: 18
+  })(external_exports.string())).describe("The amount of the input token to swap, expressed as a human-readable decimal string in token units (e.g., '0.05' for 0.05 USDC or 0.05 ETH).");
+  var swapParamsSchema = external_exports.object({
+    from: adapterContextSchema,
+    tokenIn: swapTokenSchema,
+    tokenOut: swapTokenSchema,
+    amountIn: amountInSchema,
+    to: swapDestinationSchema.optional(),
+    config: swapConfigSchema.optional()
+  });
+  var customFeePolicySchema = external_exports.object({
+    computeFee: external_exports.function().returns(external_exports.string().or(external_exports.promise(external_exports.string()))),
+    resolveFeeRecipientAddress: external_exports.function().returns(external_exports.string().or(external_exports.promise(external_exports.string())))
+  }).strict();
+  var assertCustomFeePolicySymbol = /* @__PURE__ */ Symbol("assertCustomFeePolicy");
+  function assertCustomFeePolicy(config) {
+    validateWithStateTracking(config, customFeePolicySchema, "SwapKit custom fee policy", assertCustomFeePolicySymbol);
+  }
+  var ASSERT_SWAP_PARAMS_SYMBOL = /* @__PURE__ */ Symbol("assertSwapParams");
+  function assertSwapParams(params, schema) {
+    validateWithStateTracking(params, schema, "swap parameters", ASSERT_SWAP_PARAMS_SYMBOL);
+  }
   function canonicalizeNativeStablecoinAlias(token, chain) {
     const nativeStablecoinSymbol = getNativeStablecoinSymbol(chain);
     if (nativeStablecoinSymbol === null) {
@@ -60908,6 +61227,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       ...formattedFees && {
         fees: formattedFees
       },
+      ...result.route !== void 0 && {
+        route: result.route
+      },
       ...formattedConfig && {
         config: formattedConfig
       },
@@ -61064,6 +61386,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       estimatedOutput: providerEstimate.estimatedOutput,
       ...providerEstimate.fees !== void 0 && {
         fees: providerEstimate.fees
+      },
+      ...providerEstimate.route !== void 0 && {
+        route: providerEstimate.route
       }
     };
   }
@@ -77013,6 +77338,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return redactErrorMessage(String(error));
   }
+  function describeObjectValue2(value) {
+    try {
+      return JSON.stringify(value, (_key, entry) => typeof entry === "bigint" ? entry.toString() : entry);
+    } catch {
+      return "[unserializable object]";
+    }
+  }
   function createNetworkMismatchError(sourceChain, destChain) {
     const sourceNetworkType = sourceChain.isTestnet ? "testnet" : "mainnet";
     const destNetworkType = destChain.isTestnet ? "testnet" : "mainnet";
@@ -77077,6 +77409,20 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       ...InputError2.UNSUPPORTED_ROUTE,
       recoverability: "FATAL",
       message: `Earn ${operation} on ${chain} is not supported by any available provider.`,
+      cause: {
+        trace: {
+          operation,
+          chain
+        }
+      }
+    };
+    return new KitError2(errorDetails);
+  }
+  function createUnsupportedBorrowRouteError(operation, chain) {
+    const errorDetails = {
+      ...InputError2.UNSUPPORTED_ROUTE,
+      recoverability: "FATAL",
+      message: `Borrow ${operation} on ${chain} is not supported by any available provider.`,
       cause: {
         trace: {
           operation,
@@ -77161,7 +77507,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (typeof value === "string") {
       valueString = `'${value}'`;
     } else if (typeof value === "object" && value !== null) {
-      valueString = JSON.stringify(value);
+      valueString = describeObjectValue2(value);
     } else {
       valueString = String(value);
     }
@@ -77178,6 +77524,18 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     };
     return new KitError2(errorDetails);
+  }
+  function assertExecutionDeadlineNotExpired(deadline, options) {
+    let deadlineSeconds;
+    try {
+      deadlineSeconds = BigInt(deadline);
+    } catch {
+      throw createValidationFailedError$12(options.field, deadline, "deadline must be a Unix-seconds integer");
+    }
+    const nowSeconds = BigInt(Math.floor(Date.now() / 1e3));
+    if (deadlineSeconds <= nowSeconds) {
+      throw createValidationFailedError$12(options.field, deadline, options.message);
+    }
   }
   function createValidationErrorFromZod2(zodError, context) {
     const validationErrors = zodError.issues.map((issue) => {
@@ -77506,11 +77864,43 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     "0x9147d463": "Final balance is less than the initial balance",
     "0xf4b3b1bc": "Native token transfer to the beneficiary failed"
   };
-  function extractErrorSelector2(msg, error) {
-    if (error !== null && typeof error === "object" && "data" in error) {
-      if (typeof error.data === "string" && /^0x[0-9a-f]{8}$/i.test(error.data)) {
-        return error.data.toLowerCase();
+  var REVERT_DATA_PATTERN2 = /^0x[0-9a-f]{8}(?:[0-9a-f]{2})*$/i;
+  function getRevertData2(link) {
+    if ("raw" in link && typeof link.raw === "string" && REVERT_DATA_PATTERN2.test(link.raw)) {
+      return link.raw;
+    }
+    if (!("data" in link)) {
+      return void 0;
+    }
+    const { data } = link;
+    if (typeof data === "string") {
+      return data;
+    }
+    if (data !== null && typeof data === "object" && "data" in data && typeof data.data === "string") {
+      return data.data;
+    }
+    return void 0;
+  }
+  function findRevertData2(error, accept) {
+    const seen = /* @__PURE__ */ new Set();
+    let current = error;
+    while (current !== null && typeof current === "object" && !seen.has(current)) {
+      seen.add(current);
+      const data = getRevertData2(current);
+      if (data !== void 0 && accept(data)) {
+        return data;
       }
+      current = "cause" in current ? current.cause : void 0;
+    }
+    return void 0;
+  }
+  function extractRevertData(error) {
+    return findRevertData2(error, (data) => REVERT_DATA_PATTERN2.test(data))?.toLowerCase();
+  }
+  function extractErrorSelector2(msg, error) {
+    const data = findRevertData2(error, (value) => /^0x[0-9a-f]{8}$/i.test(value));
+    if (data !== void 0) {
+      return data.toLowerCase();
     }
     const match = /custom error (0x[0-9a-f]{8})\b/i.exec(msg);
     const selector = match?.[1];
@@ -77688,7 +78078,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     } else if (typeof error === "string") {
       errorMessage = error;
     } else {
-      errorMessage = JSON.stringify(error);
+      errorMessage = describeObjectValue2(error);
     }
     const lowerMessage = errorMessage.toLowerCase();
     const cancellationPatterns = [
@@ -77713,6 +78103,59 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     }
     return false;
+  }
+  function extractHttpStatusCode2(msg) {
+    const patterns = [
+      /HTTP (\d{3})/i,
+      /Status:\s*(\d{3})/i,
+      /^(\d{3}) -/
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(msg);
+      const codeStr = match?.at(1);
+      if (codeStr !== void 0) {
+        const code = Number.parseInt(codeStr, 10);
+        if (code >= 100 && code < 600) {
+          return code;
+        }
+      }
+    }
+    return null;
+  }
+  function hasResponseBody2(error) {
+    return typeof error === "object" && error !== null && "responseBody" in error && typeof error["responseBody"] === "object" && error["responseBody"] !== null;
+  }
+  function isRecord2(value) {
+    return typeof value === "object" && value !== null;
+  }
+  function extractResponseBody$12(error) {
+    if (!hasResponseBody2(error)) {
+      return void 0;
+    }
+    const body = error.responseBody;
+    const response = body["response"];
+    if (isRecord2(response)) {
+      const status = response["status"];
+      if (isRecord2(status)) {
+        return status;
+      }
+    }
+    return body;
+  }
+  function getOptionalString(value) {
+    return typeof value === "string" ? value : void 0;
+  }
+  function getExtendedErrorConstraints(body) {
+    const errors = body?.["errors"];
+    if (!Array.isArray(errors) || errors.length === 0) {
+      return void 0;
+    }
+    const first = errors[0];
+    if (!isRecord2(first)) {
+      return void 0;
+    }
+    const constraints = first["constraints"];
+    return isRecord2(constraints) ? constraints : void 0;
   }
   var ProxyErrorCode2 = {
     /** Swap amount outside the upstream provider's accepted bounds (HTTP 400) */
@@ -77905,14 +78348,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
   }
-  function hasResponseBody$1(error) {
-    return typeof error === "object" && error !== null && "responseBody" in error && typeof error["responseBody"] === "object" && error["responseBody"] !== null;
-  }
   function extractResponseBody2(error) {
-    if (!hasResponseBody$1(error)) {
-      return void 0;
-    }
-    return error.responseBody;
+    return extractResponseBody$12(error);
   }
   function extractFieldName2(entry) {
     if (typeof entry.field === "string" && entry.field.length > 0) {
@@ -77967,24 +78404,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return topMessage ?? fieldDetail;
   }
-  function extractHttpStatusCode2(msg) {
-    const patterns = [
-      /HTTP (\d{3})/i,
-      /Status:\s*(\d{3})/i,
-      /^(\d{3}) -/
-    ];
-    for (const pattern of patterns) {
-      const match = pattern.exec(msg);
-      const codeStr = match?.at(1);
-      if (codeStr !== void 0) {
-        const code = Number.parseInt(codeStr, 10);
-        if (code >= 100 && code < 600) {
-          return code;
-        }
-      }
-    }
-    return null;
-  }
   var EarnError = {
     /** The requested vault does not exist for the provided chain. */
     VAULT_NOT_FOUND: {
@@ -78035,6 +78454,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       name: "EARN_BRIDGE_QUOTE_EXPIRED",
       type: "INPUT"
     },
+    /**
+    * The wallet's vault shares are inside the vault's share lock period, which
+    * starts at deposit. Surfaced as FATAL rather than RETRYABLE because the
+    * lock can last hours, so an immediate retry fails the same way.
+    */
+    SHARES_LOCKED: {
+      code: 1107,
+      name: "EARN_SHARES_LOCKED",
+      type: "INPUT"
+    },
     /** The proxy signing call failed — retryable. */
     SIGNING_FAILED: {
       code: 8100,
@@ -78072,18 +78501,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       type: "SERVICE"
     }
   };
-  function hasResponseBody2(error) {
-    return typeof error === "object" && error !== null && "responseBody" in error && typeof error["responseBody"] === "object" && error["responseBody"] !== null;
-  }
-  function extractEarnResponseBody(error) {
-    if (!hasResponseBody2(error)) {
-      return void 0;
-    }
-    return error.responseBody;
-  }
-  function getOptionalString(value) {
-    return typeof value === "string" ? value : void 0;
-  }
   var EARN_CODE_MAP = /* @__PURE__ */ new Map([
     // Common (380_0XX)
     [
@@ -78326,7 +78743,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (error instanceof KitError2) {
       return error;
     }
-    const responseBody = extractEarnResponseBody(error);
+    const responseBody = extractResponseBody$12(error);
     const earnServiceCode = typeof responseBody?.["code"] === "number" ? responseBody["code"] : void 0;
     if (earnServiceCode !== void 0) {
       const mapping = EARN_CODE_MAP.get(earnServiceCode);
@@ -78348,6 +78765,581 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return parseApiError2(error, {
       ...context,
       service: context.service ?? "Earn Service"
+    });
+  }
+  var BorrowError = {
+    /** `loanId` does not exist (including a hidden wound-down loan). */
+    LOAN_NOT_FOUND: {
+      code: 1200,
+      name: "BORROW_LOAN_NOT_FOUND",
+      type: "INPUT"
+    },
+    /**
+    * The owner EIP-712/EIP-1271 signature is missing, expired, invalid, or
+    * does not bind the exact request (webhook registration or another
+    * owner-signed intent).
+    */
+    INVALID_OWNER_SIGNATURE: {
+      code: 1201,
+      name: "BORROW_INVALID_OWNER_SIGNATURE",
+      type: "INPUT"
+    },
+    /** The connected wallet address does not match the loan's owner. */
+    OWNER_MISMATCH: {
+      code: 1202,
+      name: "BORROW_OWNER_MISMATCH",
+      type: "INPUT"
+    },
+    /**
+    * The provided webhook URL is missing or malformed, or the endpoint
+    * behind it did not answer Circle's verification request with a 2xx.
+    */
+    INVALID_WEBHOOK_URL: {
+      code: 1203,
+      name: "BORROW_INVALID_WEBHOOK_URL",
+      type: "INPUT"
+    },
+    /**
+    * General input validation failure (malformed request body, out-of-range
+    * value, etc.) that does not match a more specific `BorrowError` code.
+    */
+    INVALID_INPUT: {
+      code: 1204,
+      name: "BORROW_INVALID_INPUT",
+      type: "INPUT"
+    },
+    /** The requested blockchain is not supported for Borrow operations. */
+    UNSUPPORTED_CHAIN: {
+      code: 1205,
+      name: "BORROW_UNSUPPORTED_CHAIN",
+      type: "INPUT"
+    },
+    /**
+    * The caller has no integrator configuration yet. Expected before the first
+    * `setIntegratorConfig` call, so it is a state to branch on rather than a
+    * failure to report.
+    */
+    CONFIG_NOT_FOUND: {
+      code: 1206,
+      name: "BORROW_CONFIG_NOT_FOUND",
+      type: "INPUT"
+    },
+    /** Requested market does not exist (backend MARKET_NOT_FOUND / 380620). */
+    MARKET_NOT_FOUND: {
+      code: 1207,
+      name: "BORROW_MARKET_NOT_FOUND",
+      type: "INPUT"
+    },
+    /**
+    * The Adapter Contract already holds a manager authorization on Morpho Blue
+    * for this owner. Borrow Kit grants and revokes authorization within a single
+    * batch, so a standing grant is a state it will not borrow through.
+    */
+    STANDING_AUTHORIZATION: {
+      code: 1208,
+      name: "BORROW_STANDING_AUTHORIZATION",
+      type: "INPUT"
+    },
+    /** The requested `marketId` + `chain` pair is not in the supported set. */
+    UNKNOWN_MARKET: {
+      code: 1209,
+      name: "BORROW_UNKNOWN_MARKET",
+      type: "INPUT"
+    },
+    /** An `idempotencyKey` was reused with different request parameters. */
+    IDEMPOTENCY_MISMATCH: {
+      code: 1210,
+      name: "BORROW_IDEMPOTENCY_MISMATCH",
+      type: "INPUT"
+    },
+    /** The operation would push the position's health factor below 1.0. */
+    WOULD_BE_UNHEALTHY: {
+      code: 1211,
+      name: "BORROW_WOULD_BE_UNHEALTHY",
+      type: "INPUT"
+    },
+    /** The position is already liquidatable and cannot take on more debt. */
+    ALREADY_UNHEALTHY: {
+      code: 1212,
+      name: "BORROW_ALREADY_UNHEALTHY",
+      type: "INPUT"
+    },
+    /**
+    * An `idempotencyKey` was replayed after its signed execution's deadline
+    * passed. The cached execution can no longer be submitted, so the request
+    * needs a new key rather than another replay — retryable.
+    */
+    SIGNED_BUNDLE_EXPIRED: {
+      code: 1213,
+      name: "BORROW_SIGNED_BUNDLE_EXPIRED",
+      type: "INPUT"
+    },
+    /**
+    * A first-open request named a market where the wallet already has a loan.
+    * The loan exists, so it grows by naming its `loanId` instead.
+    */
+    LOAN_ALREADY_EXISTS: {
+      code: 1214,
+      name: "BORROW_LOAN_ALREADY_EXISTS",
+      type: "INPUT"
+    },
+    /**
+    * An `idempotencyKey` was replayed after its execution had already settled
+    * on-chain. The original write succeeded, so resubmitting cannot add to it —
+    * resolve the outcome from the prior execution rather than retrying.
+    */
+    IDEMPOTENCY_ALREADY_EXECUTED: {
+      code: 1215,
+      name: "BORROW_IDEMPOTENCY_ALREADY_EXECUTED",
+      type: "INPUT"
+    },
+    /**
+    * A collateral withdrawal asked for more than the loan has posted. Read the
+    * position's `collateral` and withdraw at most that, or close the loan to
+    * release all of it.
+    */
+    WITHDRAWAL_EXCEEDS_COLLATERAL: {
+      code: 1216,
+      name: "BORROW_WITHDRAWAL_EXCEEDS_COLLATERAL",
+      type: "INPUT"
+    },
+    /**
+    * A repayment asked for more than the loan owes. Read the position's
+    * `borrowed` amount and repay at most that, or use `closeLoan` to settle the
+    * debt in full including interest accrued at execution.
+    */
+    REPAY_EXCEEDS_DEBT: {
+      code: 1217,
+      name: "BORROW_REPAY_EXCEEDS_DEBT",
+      type: "INPUT"
+    },
+    /**
+    * A `listLoans` `pageAfter` cursor fails to decode. Fetch a fresh first
+    * page rather than retrying the same cursor.
+    */
+    INVALID_PAGE_CURSOR: {
+      code: 1218,
+      name: "BORROW_INVALID_PAGE_CURSOR",
+      type: "INPUT"
+    },
+    /**
+    * Opening this loan would exceed the configured maximum number of active
+    * loans, per wallet or in total.
+    */
+    MAX_LOANS_EXCEEDED: {
+      code: 1219,
+      name: "BORROW_MAX_LOANS_EXCEEDED",
+      type: "INPUT"
+    },
+    /**
+    * The market's on-chain data snapshot is not in a valid state for this
+    * calculation (missing oracle price, LLTV, or borrow totals).
+    */
+    INVALID_MARKET_SNAPSHOT: {
+      code: 1220,
+      name: "BORROW_INVALID_MARKET_SNAPSHOT",
+      type: "INPUT"
+    },
+    /** The requested integrator fee rate is outside the permitted range. */
+    INVALID_INTEGRATOR_FEE: {
+      code: 1221,
+      name: "BORROW_INVALID_INTEGRATOR_FEE",
+      type: "INPUT"
+    },
+    /**
+    * The wallet's existing on-chain loan in this market cannot have its prior
+    * history read on this chain, so opening it here is refused outright.
+    * Retrying will not help.
+    */
+    UNSUPPORTED_EXISTING_LOAN: {
+      code: 1222,
+      name: "BORROW_UNSUPPORTED_EXISTING_LOAN",
+      type: "INPUT"
+    },
+    /**
+    * The loan carries no debt, either because it was repaid or because it
+    * never borrowed. Borrow against it to open it before repaying, closing,
+    * or adding collateral.
+    */
+    LOAN_NOT_OPEN: {
+      code: 1223,
+      name: "BORROW_LOAN_NOT_OPEN",
+      type: "INPUT"
+    },
+    /**
+    * The wallet holds less collateral than the borrow needs. Post more
+    * collateral, or reduce the requested borrow amount, before retrying.
+    */
+    INSUFFICIENT_COLLATERAL: {
+      code: 1224,
+      name: "BORROW_INSUFFICIENT_COLLATERAL",
+      type: "INPUT"
+    },
+    /**
+    * A `registerWebhook` signature's `deadline` has already passed, or is
+    * further in the future than the service's accepted window. Distinct from
+    * `INVALID_OWNER_SIGNATURE`: the signature itself may be entirely valid,
+    * and the remedy is a deadline inside the window rather than a different
+    * signer.
+    */
+    WEBHOOK_DEADLINE_OUT_OF_RANGE: {
+      code: 1225,
+      name: "BORROW_WEBHOOK_DEADLINE_OUT_OF_RANGE",
+      type: "INPUT"
+    },
+    /** An internal Borrow service error occurred — retryable. */
+    INTERNAL_ERROR: {
+      code: 8200,
+      name: "BORROW_INTERNAL_ERROR",
+      type: "SERVICE"
+    },
+    /**
+    * The Borrow service response referenced a chain this SDK version cannot
+    * map — a server/SDK version skew, not a caller-actionable input. Retrying
+    * the same request returns the same unmappable chain, so it is surfaced as
+    * FATAL at the throw site.
+    */
+    UNRECOGNIZED_RESPONSE_CHAIN: {
+      code: 8201,
+      name: "BORROW_UNRECOGNIZED_RESPONSE_CHAIN",
+      type: "SERVICE"
+    },
+    /** Failed to fetch reward data — retryable. */
+    REWARDS_FETCH_FAILED: {
+      code: 8202,
+      name: "BORROW_REWARDS_FETCH_FAILED",
+      type: "SERVICE"
+    },
+    /** Required loan data is still being repaired. Retry shortly. */
+    LOAN_DATA_PENDING: {
+      code: 8203,
+      name: "BORROW_LOAN_DATA_PENDING",
+      type: "SERVICE"
+    },
+    /** A Borrow service dependency is temporarily unavailable. Retry shortly. */
+    UPSTREAM_UNAVAILABLE: {
+      code: 8204,
+      name: "BORROW_UPSTREAM_UNAVAILABLE",
+      type: "SERVICE"
+    }
+  };
+  var BORROW_CODE_MAP = /* @__PURE__ */ new Map([
+    [
+      380507,
+      {
+        errorDef: BorrowError.INVALID_OWNER_SIGNATURE,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380508,
+      {
+        errorDef: BorrowError.LOAN_NOT_FOUND,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380509,
+      {
+        errorDef: BorrowError.OWNER_MISMATCH,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380510,
+      {
+        errorDef: BorrowError.INVALID_WEBHOOK_URL,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380511,
+      {
+        errorDef: BorrowError.INTERNAL_ERROR,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380512,
+      {
+        errorDef: BorrowError.INVALID_INPUT,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380600,
+      {
+        errorDef: BorrowError.LOAN_NOT_FOUND,
+        recoverability: "FATAL"
+      }
+    ],
+    // Zenith BorrowKit codes are iota + 380600 (internal/app/zerrors/errors.go).
+    // 380615 is INVALID_OWNER_SIGNATURE: neither ECDSA recovery nor the owner's
+    // on-chain EIP-1271 accepted the signature.
+    [
+      380615,
+      {
+        errorDef: BorrowError.INVALID_OWNER_SIGNATURE,
+        recoverability: "FATAL"
+      }
+    ],
+    // 380616 is INVALID_WEBHOOK_URL, raised two ways: a SET whose URL fails
+    // Zenith's SSRF guard (non-HTTPS, or a private/loopback/link-local/metadata
+    // address), or one whose URL clears that guard and is then refused by the
+    // verification probe Circle sends before it will deliver to a new endpoint.
+    // Both are FATAL and the remedy differs, so the response names which one
+    // happened in its message and in `cause.trace.constraints.reason`.
+    [
+      380616,
+      {
+        errorDef: BorrowError.INVALID_WEBHOOK_URL,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380601,
+      {
+        errorDef: BorrowError.INTERNAL_ERROR,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380602,
+      {
+        errorDef: BorrowError.IDEMPOTENCY_MISMATCH,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380603,
+      {
+        errorDef: BorrowError.WOULD_BE_UNHEALTHY,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380604,
+      {
+        errorDef: BorrowError.ALREADY_UNHEALTHY,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380605,
+      {
+        errorDef: BorrowError.UNKNOWN_MARKET,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380606,
+      {
+        errorDef: BorrowError.SIGNED_BUNDLE_EXPIRED,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380620,
+      {
+        errorDef: BorrowError.MARKET_NOT_FOUND,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380623,
+      {
+        errorDef: BorrowError.CONFIG_NOT_FOUND,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380632,
+      {
+        errorDef: BorrowError.WEBHOOK_DEADLINE_OUT_OF_RANGE,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380607,
+      {
+        errorDef: BorrowError.UNSUPPORTED_CHAIN,
+        recoverability: "FATAL"
+      }
+    ],
+    // 380400 is EarnKit's unsupported-chain code, not BorrowKit's, but it reaches
+    // BorrowKit callers: `claimRewards` and `getClaimRewardsQuote` do not call a
+    // BorrowKit route at all — they call the shared kits endpoint
+    // `POST /v1/kits/claimRewards/quote`, which is gated by EarnKit's per-entity
+    // chain allowlist and answers 380400 ("chain X is not available for this
+    // entity") when the chain is not enabled for the caller's integrator.
+    // Unmapped, it surfaced as an opaque generic service error carrying only the
+    // message, which is why the borrow e2e suites could not assert a typed
+    // rejection. Same meaning as 380607 from the caller's point of view, so it
+    // maps to the same definition.
+    [
+      380400,
+      {
+        errorDef: BorrowError.UNSUPPORTED_CHAIN,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380608,
+      {
+        errorDef: BorrowError.LOAN_ALREADY_EXISTS,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380609,
+      {
+        errorDef: BorrowError.INSUFFICIENT_COLLATERAL,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380612,
+      {
+        errorDef: BalanceError2.INSUFFICIENT_TOKEN,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380611,
+      {
+        errorDef: BorrowError.WITHDRAWAL_EXCEEDS_COLLATERAL,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380613,
+      {
+        errorDef: BorrowError.INVALID_INPUT,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380614,
+      {
+        errorDef: BorrowError.REPAY_EXCEEDS_DEBT,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380618,
+      {
+        errorDef: BorrowError.INVALID_PAGE_CURSOR,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380619,
+      {
+        errorDef: BorrowError.MAX_LOANS_EXCEEDED,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380621,
+      {
+        errorDef: BorrowError.INVALID_MARKET_SNAPSHOT,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380622,
+      {
+        errorDef: BorrowError.INVALID_INTEGRATOR_FEE,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380624,
+      {
+        errorDef: BorrowError.LOAN_DATA_PENDING,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380625,
+      {
+        errorDef: BorrowError.UNSUPPORTED_EXISTING_LOAN,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380627,
+      {
+        errorDef: BorrowError.IDEMPOTENCY_ALREADY_EXECUTED,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380629,
+      {
+        errorDef: BorrowError.UPSTREAM_UNAVAILABLE,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380630,
+      {
+        errorDef: BorrowError.LOAN_NOT_OPEN,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380001,
+      {
+        errorDef: BorrowError.INVALID_INPUT,
+        recoverability: "FATAL"
+      }
+    ],
+    [
+      380002,
+      {
+        errorDef: RateLimitError2.RATE_LIMIT_EXCEEDED,
+        recoverability: "RETRYABLE"
+      }
+    ],
+    [
+      380402,
+      {
+        errorDef: BorrowError.REWARDS_FETCH_FAILED,
+        recoverability: "RETRYABLE"
+      }
+    ]
+  ]);
+  function parseBorrowApiError(error, context) {
+    if (error instanceof KitError2) {
+      return error;
+    }
+    const responseBody = extractResponseBody$12(error);
+    const borrowServiceCode = typeof responseBody?.["code"] === "number" ? responseBody["code"] : void 0;
+    if (borrowServiceCode !== void 0) {
+      const mapping = BORROW_CODE_MAP.get(borrowServiceCode);
+      if (mapping !== void 0) {
+        const constraints = getExtendedErrorConstraints(responseBody);
+        const message = getOptionalString(responseBody?.["externalMessage"]) ?? getOptionalString(responseBody?.["message"]) ?? `Borrow Service ${context.operation ?? "API"} failed`;
+        return new KitError2({
+          ...mapping.errorDef,
+          recoverability: mapping.recoverability,
+          message,
+          cause: {
+            trace: {
+              borrowServiceCode,
+              ...constraints === void 0 ? {} : {
+                constraints
+              },
+              originalError: error
+            }
+          }
+        });
+      }
+    }
+    return parseApiError2(error, {
+      ...context,
+      service: context.service ?? "Borrow Service"
     });
   }
   var Blockchain2;
@@ -78445,6 +79437,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     SwapChain4["HyperEVM"] = "HyperEVM";
     SwapChain4["Monad"] = "Monad";
     SwapChain4["Arc"] = "Arc";
+    SwapChain4["Cronos"] = "Cronos";
+    SwapChain4["Morph"] = "Morph";
     SwapChain4["Arc_Testnet"] = "Arc_Testnet";
   })(SwapChain2 || (SwapChain2 = {}));
   var BridgeChain2;
@@ -78548,6 +79542,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     "Arc",
     "Arc_Testnet"
   ];
+  var BorrowChain2;
+  (function(BorrowChain4) {
+    BorrowChain4["Arc"] = "Arc";
+    BorrowChain4["Arc_Testnet"] = "Arc_Testnet";
+  })(BorrowChain2 || (BorrowChain2 = {}));
   function defineChain3(chain) {
     return chain;
   }
@@ -78759,6 +79758,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var BRIDGE_CONTRACT_EVM_MAINNET2 = "0xB3FA262d0fB521cc93bE83d87b322b8A23DAf3F0";
   var ADAPTER_CONTRACT_EVM_MAINNET2 = "0x7FB8c7260b63934d8da38aF902f87ae6e284a845";
   var ADAPTER_CONTRACT_EVM_TESTNET2 = "0xBBD70b01a1CAbc96d5b7b129Ae1AAabdf50dd40b";
+  var BATCHER_CONTRACT_ARC_TESTNET2 = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
+  var BATCHER_CONTRACT_ARC_MAINNET2 = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
   var GATEWAY_WALLET_EVM_MAINNET2 = "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE";
   var GATEWAY_MINTER_EVM_MAINNET2 = "0x2222222d7164433c4C09B0b0D809a9b52C04C205";
   var GATEWAY_WALLET_EVM_TESTNET2 = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
@@ -78818,7 +79819,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_MAINNET2,
-      adapter: ADAPTER_CONTRACT_EVM_MAINNET2
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET2,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_MAINNET2
     },
     gateway: {
       domain: 26,
@@ -78880,7 +79884,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_TESTNET2,
-      adapter: ADAPTER_CONTRACT_EVM_TESTNET2
+      adapter: ADAPTER_CONTRACT_EVM_TESTNET2,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_TESTNET2
     },
     gateway: {
       domain: 26,
@@ -79439,7 +80446,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET2
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET2,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET2
     }
   });
   var CronosTestnet2 = defineChain3({
@@ -80198,7 +81206,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET2
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET2,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET2
     }
   });
   var MorphTestnet2 = defineChain3({
@@ -81869,7 +82878,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return SOURCE_FEE_SUPPORTED_ALLOWLIST.has(chain.chain);
   }
-  function hasCustomContractSupport(chain, contractType) {
+  function hasCustomContractSupport2(chain, contractType) {
     const contractAddress = chain.kitContracts?.[contractType];
     return typeof contractAddress === "string" && contractAddress.trim().length > 0;
   }
@@ -81976,7 +82985,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     cctpx: external_exports.any().optional(),
     kitContracts: external_exports.object({
       bridge: external_exports.string().optional(),
-      adapter: external_exports.string().optional()
+      adapter: external_exports.string().optional(),
+      senderPreservingBatcher: external_exports.string().optional()
     }).optional(),
     gateway: gatewayConfigSchema2.optional()
   });
@@ -82039,6 +83049,15 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       message: `"${chain.chain}" is not a supported earn chain. Supported chains: ${Object.values(EarnChain2).join(", ")}`
     }))
   ]);
+  var borrowChainIdentifierSchema = external_exports.union([
+    external_exports.string().refine((val) => val in BorrowChain2, (val) => ({
+      message: `"${val}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain2).join(", ")}`
+    })),
+    external_exports.nativeEnum(BorrowChain2),
+    chainDefinitionSchema$22.refine((chain) => chain.chain in BorrowChain2, (chain) => ({
+      message: `"${chain.chain}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain2).join(", ")}`
+    }))
+  ]);
   var EARN_BRIDGE_SOURCE_CHAIN_VALUES2 = EARN_BRIDGE_SOURCE_BLOCKCHAINS2;
   var EARN_BRIDGE_DESTINATION_CHAIN_VALUES2 = EARN_BRIDGE_DESTINATION_BLOCKCHAINS2;
   var earnBridgeSourceChainIdentifierSchema = external_exports.union([
@@ -82098,8 +83117,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function resolveChainName2(value) {
     if (value == null) return void 0;
     if (typeof value === "string") return value;
-    if (typeof value === "object" && "chain" in value && typeof value.chain === "string") {
-      return value.chain;
+    try {
+      if (typeof value === "object" && "chain" in value) {
+        const chain = value.chain;
+        if (typeof chain === "string") return chain;
+      }
+    } catch {
+      return void 0;
     }
     return void 0;
   }
@@ -82115,7 +83139,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return upper === NATIVE_TOKEN2 || upper in SWAP_TOKEN_REGISTRY2;
   }
   var resolveCCTPV2ContractAddress = (chain, contractType) => {
-    if (contractType === "tokenMessenger" && hasCustomContractSupport(chain, "bridge") && chain.kitContracts?.bridge !== void 0) {
+    if (contractType === "tokenMessenger" && hasCustomContractSupport2(chain, "bridge") && chain.kitContracts?.bridge !== void 0) {
       return chain.kitContracts.bridge;
     }
     const cctpConfig = chain.cctp;
@@ -82202,7 +83226,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (!(chain.chain in SwapChain2)) {
       return false;
     }
-    if (!isCCTPV2Supported2(chain)) {
+    if (!isCCTPV2Supported2(chain) && !hasCustomContractSupport2(chain, "adapter")) {
       return false;
     }
     return true;
@@ -82332,7 +83356,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const chainInfo = extractChainInfo2(chain);
     return createInvalidAddressError2(address, chainInfo.displayName, chainInfo.expectedAddressFormat);
   }
-  var DEFAULT_CONFIG$3 = {
+  var DEFAULT_CONFIG$4 = {
     timeout: 2e3,
     maxRetries: 10,
     retryDelay: 200,
@@ -82402,10 +83426,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   };
   var pollApiWithValidation2 = async (url, method, isValidType, config = {}, body) => {
     const effectiveConfig = {
-      ...DEFAULT_CONFIG$3,
+      ...DEFAULT_CONFIG$4,
       ...config,
       headers: {
-        ...DEFAULT_CONFIG$3.headers,
+        ...DEFAULT_CONFIG$4.headers,
         ...config.headers ?? {},
         // Browsers forbid setting a user-agent request header, and the custom
         // fallback header the SDK used instead trips CORS preflight against the
@@ -82421,7 +83445,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         return await makeApiRequest2(url, method, isValidType, effectiveConfig, body);
       } catch (err2) {
         const error = err2 instanceof Error ? err2 : new Error(String(err2));
-        if (!isRetryableError2(error)) {
+        if (effectiveConfig.isTerminalError?.(error) === true || !isRetryableError2(error)) {
           throw error;
         }
         lastError = error;
@@ -82444,7 +83468,24 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return pollApiWithValidation2(url, "POST", isValidType, config, body);
   };
   function validate9(value, schema, context) {
-    const result = schema.safeParse(value);
+    let result;
+    try {
+      result = schema.safeParse(value);
+    } catch (error) {
+      throw new KitError2({
+        ...InputError2.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid ${context}: reading a property threw`,
+        cause: {
+          trace: {
+            validationErrors: [
+              "Reading a property of the value threw"
+            ],
+            originalError: error
+          }
+        }
+      });
+    }
     if (!result.success) {
       throw createValidationErrorFromZod2(result.error, context);
     }
@@ -82763,11 +83804,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain2.Arbitrum]: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
       [Blockchain2.Avalanche]: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
       [Blockchain2.Celo]: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+      [Blockchain2.Cronos]: "0x66e428c3f67a68878562e79A0234c1F83c208770",
       [Blockchain2.Ethereum]: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
       [Blockchain2.HyperEVM]: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
       [Blockchain2.Ink]: "0x0200C29006150606B650577BBE7B6248F58470c1",
       [Blockchain2.Linea]: "0xA219439258ca9da29E9Cc4cE5596924745e12B93",
       [Blockchain2.Monad]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
+      [Blockchain2.Morph]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
       [Blockchain2.NEAR]: "usdt.tether-token.near",
       [Blockchain2.Optimism]: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
       [Blockchain2.Polkadot_Asset_Hub]: "1984",
@@ -82812,6 +83855,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain2.Arbitrum]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
       [Blockchain2.Avalanche]: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70",
       [Blockchain2.Base]: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      [Blockchain2.Cronos]: "0xF2001B145b43032AAF5Ee2884e456CCd805F677D",
       [Blockchain2.Ethereum]: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
       [Blockchain2.Linea]: "0x4AF15ec2A0BD43Db75dd04E62FAA3B8EF36b00d5",
       [Blockchain2.Optimism]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
@@ -82853,7 +83897,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain2.Arbitrum]: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
       [Blockchain2.Avalanche]: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB",
       [Blockchain2.Base]: "0x4200000000000000000000000000000000000006",
+      [Blockchain2.Cronos]: "0xe44Fd7fCb2b1581822D0c862B68222998a0c299a",
       [Blockchain2.Ethereum]: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      [Blockchain2.Morph]: "0x5300000000000000000000000000000000000011",
       [Blockchain2.Optimism]: "0x4200000000000000000000000000000000000006",
       [Blockchain2.Polygon]: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
       [Blockchain2.Solana]: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"
@@ -82865,6 +83911,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     locators: {
       [Blockchain2.Ethereum]: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
       [Blockchain2.Arbitrum]: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      [Blockchain2.Cronos]: "0x062E66477Faf219F25D27dCED647BF57C3107d52",
       [Blockchain2.Avalanche]: "0x50b7545627a5162F82A992c33b87aDc75187B218"
     }
   };
@@ -83111,7 +84158,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }, {
     message: "Invalid token registry"
   });
-  var formatAmount$2 = (params) => {
+  var formatAmount$1 = (params) => {
     const { value, token, tokens: tokens2 } = params;
     if (params.decimals !== void 0) {
       return formatUnits4(value, params.decimals);
@@ -83703,11 +84750,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
     void emitAnalyticsLog2(buildPayload$1(config, stepEntry?.[1] ?? fallbackEventType, errorDetails, context));
   }
-  var name$4 = "@circle-fin/bridge-kit";
-  var version$5 = "1.15.0";
-  var pkg$5 = {
-    name: name$4,
-    version: version$5
+  var name$5 = "@circle-fin/bridge-kit";
+  var version$6 = "1.15.3";
+  var pkg$6 = {
+    name: name$5,
+    version: version$6
   };
   var assertCustomFeePolicySymbol$2 = /* @__PURE__ */ Symbol("assertCustomFeePolicy");
   var customFeePolicySchema$2 = external_exports.object({
@@ -83855,11 +84902,27 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return request.execute();
   }
+  async function executeAdapterContractRead(adapter, input, ctx) {
+    const runtimeAdapter = adapter;
+    if (typeof runtimeAdapter.read === "function") {
+      return runtimeAdapter.read(input, {
+        chain: ctx.chain
+      });
+    }
+    const request = await adapter.prepare(input, ctx);
+    return request.execute();
+  }
   async function readTokenAllowance2(adapter, params, ctx) {
     return parseAllowanceResponse2(await executeAdapterReadAction2(adapter, "token.allowance", params, ctx));
   }
+  async function readTokenBalance(adapter, params, ctx) {
+    return parseTokenAmountResponse2("token.balanceOf", await executeAdapterReadAction2(adapter, "token.balanceOf", params, ctx));
+  }
   function parseAllowanceResponse2(allowanceRaw) {
-    let value = allowanceRaw;
+    return parseTokenAmountResponse2("token.allowance", allowanceRaw);
+  }
+  function parseTokenAmountResponse2(action, amountRaw) {
+    let value = amountRaw;
     if (typeof value === "object" && value !== null && "amount" in value) {
       const amount = value.amount;
       if (typeof amount === "object" && amount !== null && "raw" in amount) {
@@ -83869,20 +84932,20 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (value === void 0 || value === null) {
       return 0n;
     }
-    let allowance2;
+    let parsed;
     if (typeof value === "bigint") {
-      allowance2 = value;
+      parsed = value;
     } else if (typeof value === "string") {
       try {
-        allowance2 = BigInt(value);
+        parsed = BigInt(value);
       } catch {
-        allowance2 = void 0;
+        parsed = void 0;
       }
     }
-    if (allowance2 === void 0 || allowance2 < 0n) {
-      throw createValidationFailedError$12("token.allowance", value, "token.allowance response must be a non-negative bigint-compatible string or bigint");
+    if (parsed === void 0 || parsed < 0n) {
+      throw createValidationFailedError$12(action, value, `${action} response must be a non-negative bigint-compatible string or bigint`);
     }
-    return allowance2;
+    return parsed;
   }
   var hexStringSchema2 = external_exports.string().min(1, "Hex string is required").refine((value) => value.trim().length > 0, "Hex string cannot be empty").refine((value) => value.startsWith("0x"), "Hex string must start with 0x prefix").refine((value) => {
     const hexPattern = /^0x[0-9a-fA-F]+$/;
@@ -83922,6 +84985,167 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     PermitType4[PermitType4["NONE"] = 0] = "NONE";
     PermitType4[PermitType4["EIP2612"] = 1] = "EIP2612";
   })(PermitType2 || (PermitType2 = {}));
+  var BorrowPermitType2;
+  (function(BorrowPermitType4) {
+    BorrowPermitType4[BorrowPermitType4["NONE"] = 0] = "NONE";
+    BorrowPermitType4[BorrowPermitType4["EIP2612"] = 1] = "EIP2612";
+  })(BorrowPermitType2 || (BorrowPermitType2 = {}));
+  async function resolveAdapterAddress(from16, chain) {
+    if (from16.address !== void 0 && from16.address !== "") {
+      return from16.address;
+    }
+    return from16.adapter.getAddress(chain);
+  }
+  var GAS_SAFETY_MULTIPLIER_NUMERATOR = 13n;
+  var GAS_SAFETY_MULTIPLIER_DENOMINATOR = 10n;
+  function applyEarnGasSafetyBuffer(gas) {
+    if (gas <= 0n) {
+      return 0n;
+    }
+    return (gas * GAS_SAFETY_MULTIPLIER_NUMERATOR + GAS_SAFETY_MULTIPLIER_DENOMINATOR - 1n) / GAS_SAFETY_MULTIPLIER_DENOMINATOR;
+  }
+  function bufferEstimatedGas(estimate3) {
+    const gas = applyEarnGasSafetyBuffer(estimate3.gas);
+    return {
+      ...estimate3,
+      gas,
+      fee: (gas * estimate3.gasPrice).toString()
+    };
+  }
+  async function estimateBufferedGasLimit(prepared) {
+    try {
+      const estimate3 = await prepared.estimate();
+      const bufferedEstimate = bufferEstimatedGas(estimate3);
+      const estimatedGas = Number(bufferedEstimate.gas);
+      if (Number.isFinite(estimatedGas) && estimatedGas > 0) {
+        return estimatedGas;
+      }
+    } catch {
+    }
+    return void 0;
+  }
+  function assertHexAddress(field, value, message = `${field} must be a 0x-prefixed 20-byte hex address`) {
+    const result = evmAddressSchema$1.safeParse(value);
+    if (!result.success) {
+      throw createValidationFailedError$12(field, value, message);
+    }
+    return result.data;
+  }
+  function requireAdapterContract(chain) {
+    const adapterContractAddress = chain.kitContracts?.adapter;
+    if (adapterContractAddress === void 0) {
+      throw createValidationFailedError$12("chain.kitContracts.adapter", adapterContractAddress, `Adapter contract not configured for chain ${chain.name}. This operation requires an adapter contract.`);
+    }
+    return assertHexAddress("chain.kitContracts.adapter", adapterContractAddress, `Adapter contract for chain ${chain.name} must be a 0x-prefixed 20-byte hex address.`);
+  }
+  async function executeAdapterAction(params) {
+    const { adapter, chain, address, actionKey, actionParams, authorization, revertMessage } = params;
+    const prepared = authorization === void 0 ? await adapter.prepareAction(actionKey, actionParams, {
+      chain,
+      address
+    }) : await adapter.prepareAction(actionKey, actionParams, {
+      chain,
+      address
+    }, {
+      authorization
+    });
+    const gasLimitOverride = await estimateBufferedGasLimit(prepared);
+    const txHash = prepared.type === "evm" && gasLimitOverride !== void 0 ? await prepared.execute({
+      gasLimit: gasLimitOverride
+    }) : await prepared.execute();
+    const explorerUrl = buildExplorerUrl2(chain, txHash);
+    const receipt = await adapter.waitForTransaction(txHash, {
+      confirmations: 1
+    }, chain);
+    if (receipt.status === "reverted") {
+      throw createTransactionRevertedError2(chain.name, revertMessage, void 0, txHash, explorerUrl);
+    }
+    return {
+      txHash,
+      explorerUrl,
+      ...receipt.gasUsed !== void 0 && {
+        gasUsed: receipt.gasUsed
+      },
+      ...receipt.effectiveGasPrice !== void 0 && {
+        effectiveGasPrice: receipt.effectiveGasPrice
+      }
+    };
+  }
+  var BORROWKIT_SENDER_PRESERVING_BATCHER_GAS_BUFFER_RATIO = [
+    3n,
+    2n
+  ];
+  function isNativeBalanceReadableAdapter(adapter) {
+    const candidate = adapter;
+    return typeof candidate.readNativeBalance === "function";
+  }
+  function isBatchCapableBorrowAdapter(adapter) {
+    const candidate = adapter;
+    return typeof candidate.supportsAtomicBatch === "function" && typeof candidate.batchExecute === "function";
+  }
+  function requireEvmAddress(path, value) {
+    if (typeof value !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+      throw createValidationFailedError$12(path, value, `${path} must be a 0x-prefixed 20-byte EVM address`);
+    }
+    return value;
+  }
+  var HEX_ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
+  var HEX_DATA_PATTERN = /^0x([0-9a-fA-F]{2})*$/;
+  function isHexAddress(value) {
+    return typeof value === "string" && HEX_ADDRESS_PATTERN.test(value);
+  }
+  function isHexData(value) {
+    return typeof value === "string" && HEX_DATA_PATTERN.test(value);
+  }
+  function asRawBuiltTransaction(value) {
+    if (typeof value !== "object" || value === null) return void 0;
+    const { to, data, value: nativeValue } = value;
+    if (!isHexAddress(to) || !isHexData(data)) return void 0;
+    if (nativeValue !== void 0 && typeof nativeValue !== "bigint") {
+      return void 0;
+    }
+    return {
+      to,
+      data,
+      ...nativeValue !== void 0 && {
+        value: nativeValue
+      }
+    };
+  }
+  function extractNextAdapterBuilt(value) {
+    if (typeof value !== "object" || value === null) return void 0;
+    const record = value;
+    let prepared;
+    if (typeof record.single === "function") {
+      prepared = record.single();
+    } else if (Array.isArray(record.transactions)) {
+      prepared = record.transactions[0];
+    } else {
+      prepared = value;
+    }
+    if (typeof prepared !== "object" || prepared === null) return void 0;
+    const built = prepared.built;
+    return asRawBuiltTransaction(built);
+  }
+  function getCallData(prepared, action) {
+    const legacy = prepared;
+    if (legacy.type === "evm" && legacy.getCallData !== void 0) {
+      return legacy.getCallData();
+    }
+    const built = extractNextAdapterBuilt(prepared);
+    if (built !== void 0) {
+      return {
+        to: built.to,
+        data: built.data,
+        value: built.value
+      };
+    }
+    throw new KitError2({
+      ...InputError2.UNSUPPORTED_ACTION,
+      recoverability: "FATAL",
+      message: `${action} requires an EVM prepared request with getCallData() support.`
+    });
+  }
   var BridgingProvider = class {
     /**
     * The action dispatcher for this provider.
@@ -84162,7 +85386,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var IRIS_API_BASE_URL$2 = "https://iris-api.circle.com";
   var IRIS_API_SANDBOX_BASE_URL$2 = "https://iris-api-sandbox.circle.com";
   var CCTPX_TOKENS_PATH = "/v2/cctpx/tokens";
-  var CCTPX_FEE_QUOTE_PATH = "/v1/quote/cctpx/{tokenId}/{sourceDomain}/{destinationDomain}";
+  var CCTPX_FEE_QUOTE_PATH = "/v2/quote/cctpx/{tokenId}/{sourceDomain}/{destinationDomain}";
   var CCTPX_ALLOWANCES_PATH = "/v2/cctpx/allowances";
   var CCTPX_MESSAGES_PATH = "/v2/messages/{sourceDomain}";
   var CCTPX_REATTEST_PATH = "/v2/reattest/{nonce}";
@@ -84773,7 +85997,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     tokenId: bytes32Hex,
     domainId: nonNegativeInteger,
     tokenAddress: external_exports.string(),
-    tokenManagerAddress: external_exports.string()
+    tokenManagerAddress: external_exports.string(),
+    // Operator-controlled per-chain kill switch (CCTPE-3979). Optional for
+    // back-compat with older IRIS versions that do not surface it. Downstream
+    // consumers in `findCCTPXDeployment` treat a missing value as `true`.
+    enabled: external_exports.boolean().optional()
   });
   var tokenSchema = external_exports.object({
     tokenId: bytes32Hex,
@@ -84998,7 +86226,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return registry.tokens.find((token) => token.tokenId.toLowerCase() === target);
   }
   function findCCTPXDeployment(token, domain) {
-    return token.deployments.find((deployment) => deployment.domainId === domain);
+    return token.deployments.find((deployment) => deployment.domainId === domain && deployment.enabled !== false);
   }
   function assertCCTPXTokenDeployments(registry, tokenId, sourceDomain, destinationDomain) {
     const token = findCCTPXToken(registry, tokenId);
@@ -85047,6 +86275,24 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         ...InputError2.UNSUPPORTED_ROUTE,
         recoverability: "FATAL",
         message: "CCTPx fee quote rejected the route: IRIS does not recognize the source or destination domain for this request.",
+        cause: {
+          trace: {
+            sourceDomain,
+            destinationDomain
+          }
+        }
+      })
+    ],
+    // The token is not deployed on one of the route chains, or an operator has
+    // flipped the per-chain `enabled` kill switch on the IRIS deployment row.
+    // Either way the route is permanently unavailable until the operator intervenes;
+    // a retry at the same source/destination will keep returning this error.
+    [
+      "TOKEN_NOT_SUPPORTED_ON_ROUTE",
+      ({ sourceDomain, destinationDomain }) => new KitError2({
+        ...InputError2.UNSUPPORTED_ROUTE,
+        recoverability: "FATAL",
+        message: "CCTPx fee quote rejected the route: the token is not supported on the source or destination chain (missing deployment or operator-disabled).",
         cause: {
           trace: {
             sourceDomain,
@@ -87576,16 +88822,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     ]),
     external_exports.string().regex(/^0x[0-9a-fA-F]{64}$/, "Token id must be a bytes32 (0x-prefixed, 64 hex chars)")
   ]);
-  var adapterContextSchema$7 = external_exports.object({
+  var adapterContextSchema$8 = external_exports.object({
     adapter: adapterSchema$1,
     chain: bridgeChainIdentifierSchema,
     address: external_exports.string().optional()
   });
-  var bridgeDestinationWithAddressSchema = adapterContextSchema$7.extend({
+  var bridgeDestinationWithAddressSchema = adapterContextSchema$8.extend({
     recipientAddress: external_exports.string().min(1, "Recipient address is required"),
     useForwarder: external_exports.boolean().optional()
   }).superRefine(createRecipientAddressValidator());
-  var adapterContextWithForwarderSchema = adapterContextSchema$7.extend({
+  var adapterContextWithForwarderSchema = adapterContextSchema$8.extend({
     useForwarder: external_exports.boolean().optional()
   });
   var forwarderDestinationSchema = external_exports.object({
@@ -87599,7 +88845,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     adapterContextWithForwarderSchema.strict()
   ]);
   var bridgeParamsWithChainIdentifierSchema = external_exports.object({
-    from: adapterContextSchema$7.strict(),
+    from: adapterContextSchema$8.strict(),
     to: bridgeDestinationSchema2,
     amount: external_exports.string().min(1, "Required").pipe(createDecimalStringValidator2({
       allowZero: false,
@@ -87667,7 +88913,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const bridgeKitCaller = {
       type: "kit",
       name: "BridgeKit",
-      version: pkg$5.version
+      version: pkg$6.version
     };
     const defaults = {
       runtime: createRuntime(),
@@ -87811,7 +89057,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       });
     }
     const url = buildFastBurnFeeUrl(sourceDomain, destinationDomain, isTestnet);
-    const response = await pollApiGet2(url, isFastBurnFeeResponse, DEFAULT_CONFIG$3);
+    const response = await pollApiGet2(url, isFastBurnFeeResponse, DEFAULT_CONFIG$4);
     if (response.length === 0) {
       throw new KitError2({
         ...InputError2.VALIDATION_FAILED,
@@ -88082,7 +89328,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       });
     }
     const url = buildForwardingFeeUrl(sourceDomain, destinationDomain, isTestnet);
-    const response = await pollApiGet2(url, isForwardingFeeResponse, DEFAULT_CONFIG$3);
+    const response = await pollApiGet2(url, isForwardingFeeResponse, DEFAULT_CONFIG$4);
     if (response.length === 0) {
       throw new KitError2({
         ...InputError2.VALIDATION_FAILED,
@@ -88511,7 +89757,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return step;
   }
-  var DEFAULT_CONFIG$2 = {
+  var DEFAULT_CONFIG$3 = {
     timeout: 2e3,
     maxRetries: 30 * 20,
     retryDelay: 2e3,
@@ -88520,11 +89766,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   };
   var mergeAttestationConfig = (config, internalDefaults = {}) => ({
-    ...DEFAULT_CONFIG$2,
+    ...DEFAULT_CONFIG$3,
     ...internalDefaults,
     ...config,
     headers: {
-      ...DEFAULT_CONFIG$2.headers,
+      ...DEFAULT_CONFIG$3.headers,
       ...internalDefaults.headers,
       ...config.headers
     }
@@ -88746,7 +89992,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const destinationAddressForMint = params.destination.recipientAddress ?? params.destination.address;
     const mintRecipient = await getMintRecipientAccount(params.destination.chain.type, destinationAddressForMint, params.destination.chain.usdcAddress);
     let sender;
-    if (hasCustomContractSupport(params.source.chain, "bridge")) {
+    if (hasCustomContractSupport2(params.source.chain, "bridge")) {
       if (params.source.chain.type === "solana") {
         sender = params.source.address;
       } else {
@@ -89217,14 +90463,14 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return step;
   }
-  var version$4 = "1.14.0";
-  var pkg$4 = {
-    version: version$4
+  var version$5 = "1.14.2";
+  var pkg$5 = {
+    version: version$5
   };
   var BRIDGE_CALLER = {
     type: "provider",
     name: "CCTPV2BridgingProvider.bridge",
-    version: pkg$4.version
+    version: pkg$5.version
   };
   function resolveBridgeInvocation(invocationMeta) {
     const defaults = {
@@ -89425,7 +90671,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var RETRY_CALLER = {
     type: "provider",
     name: "CCTPV2BridgingProvider.retry",
-    version: pkg$4.version
+    version: pkg$5.version
   };
   function resolveRetryInvocation(invocationMeta) {
     const defaults = {
@@ -89549,7 +90795,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return true;
   }
-  async function retry$1(result, context, provider, invocationMeta) {
+  async function retry$2(result, context, provider, invocationMeta) {
     const analysis = analyzeSteps(result);
     const resolvedInvocation = resolveRetryInvocation(invocationMeta);
     if (!analysis.isActionable) {
@@ -89619,7 +90865,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         result.state = "success";
         return result;
       }
-      return await retry$1(result, context, provider);
+      return await retry$2(result, context, provider);
     } catch (error) {
       if (isFatalError(error)) {
         throw error;
@@ -89811,7 +91057,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     async retry(result, context, invocationMeta) {
-      return retry$1(result, context, this, invocationMeta);
+      return retry$2(result, context, this, invocationMeta);
     }
     /**
     * Estimate the cost and fees for a CCTP v2 cross-chain bridge operation.
@@ -89872,7 +91118,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const priceSourceGas = priceGasFor(source);
       const priceDestinationGas = priceGasFor(destination);
       const estimateApprove = async () => await quoteReservedGas(await this.approve(source, amount), BRIDGE_STEP_GAS_FLOORS_EVM.approve, priceSourceGas);
-      const estimateBurn = async () => await quoteReservedGas(await this.burn(params), BRIDGE_STEP_GAS_FLOORS_EVM.burn, priceSourceGas, () => hasCustomContractSupport(source.chain, "bridge") ? CUSTOM_BURN_GAS_ESTIMATE_EVM : DEPOSIT_FOR_BURN_GAS_ESTIMATE_EVM);
+      const estimateBurn = async () => await quoteReservedGas(await this.burn(params), BRIDGE_STEP_GAS_FLOORS_EVM.burn, priceSourceGas, () => hasCustomContractSupport2(source.chain, "bridge") ? CUSTOM_BURN_GAS_ESTIMATE_EVM : DEPOSIT_FOR_BURN_GAS_ESTIMATE_EVM);
       const useForwarder = destination.useForwarder === true;
       const estimateMint = async () => {
         if (useForwarder) {
@@ -90582,7 +91828,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       } catch (error) {
         throw new Error(`Failed to resolve operation context: ${error instanceof Error ? error.message : String(error)}`);
       }
-      const useCustomBurn = hasCustomContractSupport(source.chain, "bridge");
+      const useCustomBurn = hasCustomContractSupport2(source.chain, "bridge");
       const useForwarder = destination.useForwarder === true;
       const hookData = useForwarder ? await getForwarderHookData(destination.chain.type, destinationAddressForMint) : void 0;
       if (useCustomBurn) {
@@ -90824,7 +92070,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       return adapter.waitForTransaction(txHash, config, chain);
     }
   };
-  var getDefaultProviders$3 = (config = {}) => [
+  var getDefaultProviders$4 = (config = {}) => [
     new CCTPV2BridgingProvider(config.headers ? {
       headers: config.headers
     } : {}),
@@ -90832,7 +92078,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       headers: config.headers
     } : {})
   ];
-  var getAmountTransformer = (formatDirection) => formatDirection === "to-human-readable" ? (params) => formatAmount$2(params) : (params) => parseAmount(params).toString();
+  var getAmountTransformer = (formatDirection) => formatDirection === "to-human-readable" ? (params) => formatAmount$1(params) : (params) => parseAmount(params).toString();
   var formatBridgeResult = async (result, formatDirection, provider) => {
     const token = result.token;
     const decimals = typeof provider?.getTokenDecimals === "function" ? await provider.getTokenDecimals(token, resolveChainIdentifier2(result.source.chain)) : void 0;
@@ -90913,7 +92159,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     maxRetries: 1,
     retryDelay: 200
   };
-  var positiveAmountSchema = external_exports.string().regex(/^\d+$/, "must be a non-negative integer string").refine((value) => /^\d+$/.test(value) && BigInt(value) > 0n, "must be greater than zero");
+  var positiveAmountSchema$1 = external_exports.string().regex(/^\d+$/, "must be a non-negative integer string").refine((value) => /^\d+$/.test(value) && BigInt(value) > 0n, "must be greater than zero");
   var evmAddressSchema2 = external_exports.string().regex(/^0x[a-fA-F0-9]{40}$/, "must be a 20-byte 0x address");
   var hexSchema = external_exports.string().regex(/^0x([a-fA-F0-9]{2})*$/, "must be even-length 0x hex");
   var nonEmptyHexSchema = external_exports.string().regex(/^0x([a-fA-F0-9]{2})+$/, "must be non-empty 0x hex");
@@ -90956,7 +92202,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var fetchFeeQuoteInputSchema = external_exports.object({
     sourceDomain: external_exports.number().int().nonnegative(),
     destinationDomain: external_exports.number().int().nonnegative(),
-    amount: positiveAmountSchema,
+    amount: positiveAmountSchema$1,
     feeToken: evmAddressSchema2.optional(),
     requests: feeQuoteRequestsSchema,
     isTestnet: external_exports.boolean(),
@@ -91613,7 +92859,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   var MAX_TOKEN_DECIMALS = 255;
-  var SDK_NAME$3 = resolveKitSdkName2(pkg$5.name);
+  var SDK_NAME$4 = resolveKitSdkName2(pkg$6.name);
   function pickErrorTxHash(steps, failedStep) {
     if (failedStep?.txHash != null && failedStep.state !== "noop") {
       return failedStep.txHash;
@@ -91629,7 +92875,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var BRIDGE_KIT_CALLER = {
     type: "kit",
     name: "BridgeKit",
-    version: pkg$5.version
+    version: pkg$6.version
   };
   function mergeRetryInvocationMeta(invocationMeta) {
     const existingCallers = invocationMeta?.callers ?? [];
@@ -91685,7 +92931,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     constructor(config = {}) {
-      const defaultProviders = getDefaultProviders$3(config.headers ? {
+      const defaultProviders = getDefaultProviders$4(config.headers ? {
         headers: config.headers
       } : {});
       this.providers = [
@@ -91695,8 +92941,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       this.actionDispatcher = new Actionable();
       this.disableErrorReporting = config.disableErrorReporting === true;
       this.telemetryConfig = {
-        sdkName: SDK_NAME$3,
-        sdkVersion: pkg$5.version,
+        sdkName: SDK_NAME$4,
+        sdkVersion: pkg$6.version,
         disabled: this.disableErrorReporting
       };
       for (const provider of this.providers) {
@@ -92269,12 +93515,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       this.customFeePolicy = void 0;
     }
   };
-  registerKit2(`${pkg$5.name}/${pkg$5.version}`);
-  var name$3 = "@circle-fin/swap-kit";
-  var version$3 = "1.7.0";
-  var pkg$3 = {
-    name: name$3,
-    version: version$3
+  registerKit2(`${pkg$6.name}/${pkg$6.version}`);
+  var name$4 = "@circle-fin/swap-kit";
+  var version$4 = "1.8.0";
+  var pkg$4 = {
+    name: name$4,
+    version: version$4
   };
   var chainIdentifierField2 = external_exports.custom((value) => chainIdentifierSchema2.safeParse(value).success, {
     message: "chain must be a valid chain identifier"
@@ -92325,13 +93571,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       invalid_type_error: "batchTransactions must be a boolean"
     }).optional()
   });
-  var adapterContextSchema$6 = external_exports.object({
+  var adapterContextSchema$7 = external_exports.object({
     adapter: adapterSchema$1,
     chain: chainIdentifierField2,
     address: external_exports.string().optional()
   });
   var serviceSwapParamsSchema2 = external_exports.object({
-    from: adapterContextSchema$6,
+    from: adapterContextSchema$7,
     tokenIn: external_exports.string({
       required_error: "tokenIn is required",
       invalid_type_error: "tokenIn must be a string"
@@ -92466,7 +93712,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       });
     }
   };
-  var DEFAULT_CONFIG$12 = {
+  var DEFAULT_CONFIG$2 = {
     timeout: 3e4,
     maxRetries: 3,
     retryDelay: 200,
@@ -92509,6 +93755,50 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }, {
     message: "fee amount must be non-negative (>= 0)"
+  });
+  var withFallback2 = (schema, fallback2) => external_exports.preprocess((value) => schema.safeParse(value).success ? value : fallback2, schema);
+  var swapRouteTokenSchema2 = external_exports.object({
+    symbol: external_exports.string(),
+    address: external_exports.string(),
+    decimals: external_exports.number()
+  });
+  var swapRouteMetadataSchema2 = external_exports.record(external_exports.unknown()).optional();
+  var swapRouteStepSchema2 = external_exports.object({
+    type: external_exports.string(),
+    tool: external_exports.string(),
+    toolName: external_exports.string(),
+    fromToken: swapRouteTokenSchema2,
+    toToken: swapRouteTokenSchema2,
+    estimate: external_exports.object({
+      fromAmount: external_exports.string(),
+      toAmount: external_exports.string(),
+      gasCostUSD: external_exports.string().optional()
+    }),
+    metadata: swapRouteMetadataSchema2
+  });
+  var swapRouteSchema2 = external_exports.object({
+    provider: external_exports.string().min(1, "provider must be a non-empty string"),
+    steps: external_exports.array(swapRouteStepSchema2),
+    metadata: swapRouteMetadataSchema2
+  });
+  var responseSwapRouteSchema2 = swapRouteSchema2.extend({
+    steps: withFallback2(swapRouteSchema2.shape.steps, []),
+    metadata: withFallback2(swapRouteMetadataSchema2, void 0)
+  });
+  var createSwapFeeItemSchema2 = external_exports.object({
+    token: external_exports.string({
+      required_error: "fee token is required",
+      invalid_type_error: "fee token must be a string"
+    }).min(1, "fee token must be a non-empty string"),
+    amount: feeAmountSchema2,
+    decimals: external_exports.number().int("fee token decimals must be an integer").nonnegative("fee token decimals must be a non-negative integer").optional(),
+    symbol: external_exports.string({
+      invalid_type_error: "fee token symbol must be a string"
+    }).min(1, "fee token symbol must be a non-empty string").optional(),
+    // Descriptive metadata: a value the SDK cannot use is dropped rather than
+    // failing the response that carries the fee.
+    type: withFallback2(external_exports.string().min(1).optional(), void 0),
+    chain: withFallback2(external_exports.string().min(1).optional(), void 0)
   });
   var apiKeySchema2 = external_exports.string({
     required_error: "API key is required",
@@ -92556,10 +93846,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       /** Guaranteed minimum output amount (base units) */
       minAmount: external_exports.string().min(1, "minAmount must be a non-empty string").regex(/^\d+$/, "minAmount must be a numeric string"),
       /** Route information from DEX aggregator */
-      route: external_exports.object({
-        provider: external_exports.string().min(1, "provider must be a non-empty string"),
-        steps: external_exports.array(external_exports.unknown())
-      })
+      route: responseSwapRouteSchema2
     }),
     /** Fee context indicating where fees should be collected */
     feeContext: quoteFeeContextSchema2
@@ -92746,17 +94033,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }).min(1, "toChain must be a non-empty string if provided").optional(),
     apiKey: apiKeySchema2.optional()
   });
-  var createSwapFeeItemSchema2 = external_exports.object({
-    token: external_exports.string({
-      required_error: "fee token is required",
-      invalid_type_error: "fee token must be a string"
-    }).min(1, "fee token must be a non-empty string"),
-    amount: feeAmountSchema2,
-    decimals: external_exports.number().int("fee token decimals must be an integer").nonnegative("fee token decimals must be a non-negative integer").optional(),
-    symbol: external_exports.string({
-      invalid_type_error: "fee token symbol must be a string"
-    }).min(1, "fee token symbol must be a non-empty string").optional()
-  });
   var createSwapDeveloperFeeItemSchema2 = createSwapFeeItemSchema2.extend({
     basis: external_exports.enum([
       "inputAmount",
@@ -92851,9 +94127,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     correlationId: external_exports.preprocess((value) => external_exports.string().uuid().safeParse(value).success ? value : void 0, external_exports.string().optional()),
     config: createSwapRequestBaseSchema2.shape.config.optional(),
     fees: createSwapFeesSchema2.optional(),
+    // A route the SDK cannot parse is dropped instead of failing the swap.
+    route: withFallback2(responseSwapRouteSchema2.optional(), void 0),
     transaction: createSwapTransactionSchema2
   });
   var isGetQuoteResponse2 = (obj) => getQuoteResponseSchema2.safeParse(obj).success;
+  var parseGetQuoteResponse2 = (obj) => getQuoteResponseSchema2.parse(obj);
   var isCreateSwapResponse2 = (obj) => createSwapResponseSchema2.safeParse(obj).success;
   var parseCreateSwapResponse2 = (obj) => createSwapResponseSchema2.parse(obj);
   var isGetSwapStatusResponse2 = (obj) => getSwapStatusResponseSchema2.safeParse(obj).success;
@@ -92887,9 +94166,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const { apiKey, ...requestBody } = validatedParams;
     assertBrowserSafeApiKey2(apiKey);
     const effectiveConfig = {
-      ...DEFAULT_CONFIG$12,
+      ...DEFAULT_CONFIG$2,
       headers: {
-        ...DEFAULT_CONFIG$12.headers,
+        ...DEFAULT_CONFIG$2.headers,
         // Permissionless mode: no Authorization header when the credential is absent.
         ...apiKey !== void 0 && {
           Authorization: `Bearer ${apiKey}`
@@ -92938,16 +94217,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assertBrowserSafeApiKey2(validatedParams.apiKey);
     const url = buildQuoteUrl2(validatedParams);
     const effectiveConfig = {
-      ...DEFAULT_CONFIG$12,
+      ...DEFAULT_CONFIG$2,
       headers: {
-        ...DEFAULT_CONFIG$12.headers,
+        ...DEFAULT_CONFIG$2.headers,
         // Permissionless mode: no Authorization header when the credential is absent.
         ...validatedParams.apiKey !== void 0 && {
           Authorization: `Bearer ${validatedParams.apiKey}`
         }
       }
     };
-    return pollApiGet2(url, isGetQuoteResponse2, effectiveConfig);
+    const rawResponse = await pollApiGet2(url, isGetQuoteResponse2, effectiveConfig);
+    return parseGetQuoteResponse2(rawResponse);
   };
   var buildSwapStatusUrl2 = (params) => {
     const url = new URL("/v1/stablecoinKits/swap/status", STABLECOIN_SERVICE_BASE_URL2);
@@ -92980,9 +94260,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assertBrowserSafeApiKey2(validatedParams.apiKey);
     const url = buildSwapStatusUrl2(validatedParams);
     const effectiveConfig = {
-      ...DEFAULT_CONFIG$12,
+      ...DEFAULT_CONFIG$2,
       headers: {
-        ...DEFAULT_CONFIG$12.headers,
+        ...DEFAULT_CONFIG$2.headers,
         // Permissionless mode: no Authorization header when the credential is absent.
         ...validatedParams.apiKey !== void 0 && {
           Authorization: `Bearer ${validatedParams.apiKey}`
@@ -93016,9 +94296,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assertBrowserSafeApiKey2(validatedParams.apiKey);
     const url = buildTokenRatesUrl2(validatedParams);
     const effectiveConfig = {
-      ...DEFAULT_CONFIG$12,
+      ...DEFAULT_CONFIG$2,
       headers: {
-        ...DEFAULT_CONFIG$12.headers,
+        ...DEFAULT_CONFIG$2.headers,
         // Permissionless mode: no Authorization header when the credential is absent.
         ...validatedParams.apiKey !== void 0 && {
           Authorization: `Bearer ${validatedParams.apiKey}`
@@ -93027,6 +94307,942 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
     return pollApiGet2(url, isGetTokenRatesResponse2, effectiveConfig);
   };
+  function createAmountError2(reason, message, context, cause) {
+    const trace = {
+      reason
+    };
+    if (context !== void 0) {
+      trace.context = context;
+    }
+    return new KitError2({
+      ...InputError2.INVALID_AMOUNT,
+      recoverability: "FATAL",
+      message,
+      cause: {
+        trace
+      }
+    });
+  }
+  var MAX_DECIMALS2 = 77;
+  var scaleCache2 = /* @__PURE__ */ new Map();
+  function getScale2(decimals) {
+    if (decimals < 0 || decimals > MAX_DECIMALS2) {
+      throw createAmountError2("INVALID_DECIMALS", `Decimals must be between 0 and ${String(MAX_DECIMALS2)}, got ${String(decimals)}`, {
+        decimals
+      });
+    }
+    let scale = scaleCache2.get(decimals);
+    if (scale === void 0) {
+      scale = 10n ** BigInt(decimals);
+      scaleCache2.set(decimals, scale);
+    }
+    return scale;
+  }
+  function validateDecimals2(decimals, context) {
+    if (!Number.isInteger(decimals) || decimals < 0 || decimals > MAX_DECIMALS2) {
+      throw createAmountError2("INVALID_DECIMALS", `${context}: decimals must be an integer between 0 and ${String(MAX_DECIMALS2)}, got ${String(decimals)}`, {
+        decimals,
+        context
+      });
+    }
+  }
+  function assertSameDecimals2(a, b, operation) {
+    if (a.decimals !== b.decimals) {
+      throw createAmountError2("DECIMAL_MISMATCH", `${operation}: cannot operate on amounts with different decimals (${String(a.decimals)} vs ${String(b.decimals)})`, {
+        aDecimals: a.decimals,
+        bDecimals: b.decimals,
+        operation
+      });
+    }
+  }
+  function assertDecimalConfig2(inputDecimals, configDecimals, context) {
+    if (configDecimals !== void 0 && configDecimals !== inputDecimals) {
+      throw createAmountError2("DECIMAL_MISMATCH", `${context}: Amount has ${String(inputDecimals)} decimals but config specifies ${String(configDecimals)}`, {
+        inputDecimals,
+        configDecimals
+      });
+    }
+  }
+  function parse3(input, options, ctx) {
+    validateDecimals2(options.decimals, ctx);
+    const { decimals, allowNegative = false } = options;
+    const str2 = typeof input === "number" ? input.toString() : input;
+    if (typeof str2 !== "string" || str2.trim() === "") {
+      throw createAmountError2("PARSE_ERROR", `${ctx}: input must be a non-empty string or number`, {
+        input
+      });
+    }
+    let normalized = str2.trim();
+    const isNegative = normalized.startsWith("-");
+    if (isNegative) {
+      if (!allowNegative) {
+        throw createAmountError2("NEGATIVE_NOT_ALLOWED", `${ctx}: negative values not allowed`, {
+          input
+        });
+      }
+      normalized = normalized.slice(1);
+    }
+    if (normalized.length > 1 && normalized.startsWith("0") && normalized[1] !== ".") {
+      normalized = normalized.replace(/^0+/, "") || "0";
+    }
+    const parts = normalized.split(".");
+    if (parts.length > 2) {
+      throw createAmountError2("PARSE_ERROR", `${ctx}: invalid number format (multiple decimal points)`, {
+        input
+      });
+    }
+    let integerPart = parts[0] ?? "";
+    const decimalPart = parts[1] ?? "";
+    if (integerPart === "" && decimalPart !== "") {
+      integerPart = "0";
+    }
+    if (!/^\d+$/.test(integerPart) || decimalPart && !/^\d+$/.test(decimalPart)) {
+      throw createAmountError2("PARSE_ERROR", `${ctx}: input contains non-numeric characters`, {
+        input
+      });
+    }
+    const truncatedDecimal = decimalPart.slice(0, decimals).padEnd(decimals, "0");
+    const rawString = integerPart + truncatedDecimal;
+    let raw = BigInt(rawString);
+    if (isNegative) {
+      raw = -raw;
+    }
+    return {
+      raw,
+      decimals
+    };
+  }
+  function compare2(a, b, ctx) {
+    assertSameDecimals2(a, b, ctx);
+    if (a.raw < b.raw) return -1;
+    if (a.raw > b.raw) return 1;
+    return 0;
+  }
+  function eq2(a, b, ctx) {
+    return compare2(a, b, ctx) === 0;
+  }
+  function lt2(a, b, ctx) {
+    return compare2(a, b, ctx) === -1;
+  }
+  function lte2(a, b, ctx) {
+    return compare2(a, b, ctx) <= 0;
+  }
+  function gt2(a, b, ctx) {
+    return compare2(a, b, ctx) === 1;
+  }
+  function gte2(a, b, ctx) {
+    return compare2(a, b, ctx) >= 0;
+  }
+  var PRECISION2 = 10n ** 18n;
+  function add2(a, b, ctx) {
+    assertSameDecimals2(a, b, ctx);
+    return {
+      raw: a.raw + b.raw,
+      decimals: a.decimals
+    };
+  }
+  function sub2(a, b, ctx) {
+    assertSameDecimals2(a, b, ctx);
+    return {
+      raw: a.raw - b.raw,
+      decimals: a.decimals
+    };
+  }
+  function mul2(amount, multiplier) {
+    let raw;
+    if (typeof multiplier === "bigint") {
+      raw = amount.raw * multiplier;
+    } else {
+      const multiplierBigInt = BigInt(Math.round(multiplier * Number(PRECISION2)));
+      raw = amount.raw * multiplierBigInt / PRECISION2;
+    }
+    return {
+      raw,
+      decimals: amount.decimals
+    };
+  }
+  function div2(amount, divisor, ctx) {
+    let raw;
+    if (typeof divisor === "bigint") {
+      if (divisor === 0n) {
+        throw createAmountError2("INVALID_INPUT", `${ctx}: division by zero`);
+      }
+      raw = amount.raw / divisor;
+    } else {
+      if (divisor === 0) {
+        throw createAmountError2("INVALID_INPUT", `${ctx}: division by zero`);
+      }
+      const divisorBigInt = BigInt(Math.round(divisor * Number(PRECISION2)));
+      raw = amount.raw * PRECISION2 / divisorBigInt;
+    }
+    return {
+      raw,
+      decimals: amount.decimals
+    };
+  }
+  function abs2(amount) {
+    return {
+      raw: amount.raw < 0n ? -amount.raw : amount.raw,
+      decimals: amount.decimals
+    };
+  }
+  function neg2(amount) {
+    return {
+      raw: -amount.raw,
+      decimals: amount.decimals
+    };
+  }
+  function trimTrailingZeros2(str2, minDigits) {
+    let end = str2.length;
+    while (end > minDigits && str2[end - 1] === "0") {
+      end--;
+    }
+    return str2.slice(0, end);
+  }
+  function formatted2(amount, options = {}) {
+    const { locale = "en-US", minimumFractionDigits = 0, maximumFractionDigits = amount.decimals, useGrouping = true } = options;
+    if (minimumFractionDigits > maximumFractionDigits) {
+      throw new RangeError(`minimumFractionDigits (${String(minimumFractionDigits)}) cannot be greater than maximumFractionDigits (${String(maximumFractionDigits)})`);
+    }
+    const scale = getScale2(amount.decimals);
+    const isNegative = amount.raw < 0n;
+    const absRaw = isNegative ? -amount.raw : amount.raw;
+    const integerPart = absRaw / scale;
+    const decimalPart = absRaw % scale;
+    const formattedInteger = useGrouping ? integerPart.toLocaleString(locale) : integerPart.toString();
+    let formattedDecimal = "";
+    if (maximumFractionDigits > 0) {
+      const fullDecimal = decimalPart.toString().padStart(amount.decimals, "0");
+      let trimmed = fullDecimal.slice(0, maximumFractionDigits);
+      if (minimumFractionDigits < trimmed.length) {
+        trimmed = trimTrailingZeros2(trimmed, minimumFractionDigits);
+      }
+      if (trimmed.length > 0) {
+        formattedDecimal = "." + trimmed;
+      }
+    }
+    return (isNegative ? "-" : "") + formattedInteger + formattedDecimal;
+  }
+  function toString4(amount) {
+    return formatted2(amount);
+  }
+  function toJSON2(amount) {
+    return {
+      raw: amount.raw.toString(),
+      decimals: amount.decimals,
+      formatted: formatted2(amount)
+    };
+  }
+  function toDecimals2(amount, newDecimals, ctx) {
+    validateDecimals2(newDecimals, ctx);
+    if (amount.decimals === newDecimals) {
+      return {
+        raw: amount.raw,
+        decimals: amount.decimals
+      };
+    }
+    let raw;
+    if (newDecimals > amount.decimals) {
+      const scaleDiff = getScale2(newDecimals - amount.decimals);
+      raw = amount.raw * scaleDiff;
+    } else {
+      const scaleDiff = getScale2(amount.decimals - newDecimals);
+      raw = amount.raw / scaleDiff;
+    }
+    return {
+      raw,
+      decimals: newDecimals
+    };
+  }
+  var Amount2 = class _Amount {
+    /** The raw value in smallest units (e.g., wei for ETH, micro-units for USDC). */
+    raw;
+    /** Number of decimal places for this token. */
+    decimals;
+    // ==========================================================================
+    // Constructor (private - use static factories)
+    // ==========================================================================
+    constructor(raw, decimals) {
+      this.raw = raw;
+      this.decimals = decimals;
+      Object.freeze(this);
+    }
+    // ==========================================================================
+    // Static Factory Methods
+    // ==========================================================================
+    /**
+    * Create an Amount from a raw bigint value.
+    *
+    * @param raw - The raw value in smallest units.
+    * @param config - Configuration with decimals.
+    * @returns A new immutable Amount instance.
+    * @throws KitError If raw is not a bigint or decimals is invalid.
+    *
+    * @example
+    * ```typescript
+    * // Get decimals from token registry
+    * const amount = Amount.of(1_000_000n, { decimals: 6 })
+    * ```
+    */
+    static of(raw, config) {
+      validateDecimals2(config.decimals, "Amount.of");
+      if (typeof raw !== "bigint") {
+        throw createAmountError2("INVALID_INPUT", `Amount.of: expected bigint, got ${typeof raw}`, {
+          input: raw
+        });
+      }
+      return new _Amount(raw, config.decimals);
+    }
+    /**
+    * Parse a human-readable string or number into an Amount.
+    *
+    * @param input - The input to parse (e.g., "100.50" or 100.5).
+    * @param options - Parse options including decimals.
+    * @returns A new immutable Amount instance.
+    * @throws KitError If input is invalid or parsing fails.
+    *
+    * @example
+    * ```typescript
+    * const amount = Amount.parse('100.50', { decimals: 6 })
+    * ```
+    */
+    static parse(input, options) {
+      const result = parse3(input, options, "Amount.parse");
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Convert any AmountLike value to an Amount.
+    *
+    * @param input - The input (bigint, string, number, or existing Amount).
+    * @param config - Configuration (required for non-Amount inputs).
+    * @returns A new immutable Amount instance.
+    * @throws KitError If conversion fails or config is missing.
+    *
+    * @remarks
+    * When providing a `number` input, very large or small values may be
+    * converted to exponential notation (e.g., `1e21`), which is not supported.
+    * For such values, provide a `string` representation instead.
+    *
+    * @example
+    * ```typescript
+    * Amount.from(1_000_000n, { decimals: 6 })  // from bigint
+    * Amount.from('1.00', { decimals: 6 })      // from string
+    * Amount.from(existingAmount)               // pass-through
+    * ```
+    */
+    static from(input, config) {
+      if (input instanceof _Amount) {
+        assertDecimalConfig2(input.decimals, config?.decimals, "Amount.from");
+        return input;
+      }
+      if (_Amount.isAmount(input)) {
+        assertDecimalConfig2(input.decimals, config?.decimals, "Amount.from");
+        return new _Amount(input.raw, input.decimals);
+      }
+      if (config === void 0) {
+        throw createAmountError2("INVALID_INPUT", "Amount.from: config with decimals is required for non-Amount inputs", {
+          input
+        });
+      }
+      if (typeof input === "bigint") {
+        return _Amount.of(input, config);
+      }
+      return _Amount.parse(input, config);
+    }
+    /**
+    * Create a zero Amount with the given configuration.
+    *
+    * @param config - Configuration with decimals.
+    * @returns A zero Amount instance.
+    *
+    * @example
+    * ```typescript
+    * const zero = Amount.zero({ decimals: 6 })
+    * ```
+    */
+    static zero(config) {
+      return _Amount.of(0n, config);
+    }
+    /**
+    * Check if a value is an Amount-like object.
+    *
+    * @param value - The value to check.
+    * @returns True if the value has Amount shape (raw: bigint, decimals: number).
+    *
+    * @example
+    * ```typescript
+    * Amount.isAmount({ raw: 1000000n, decimals: 6 }) // true
+    * Amount.isAmount({ value: 100 })                 // false
+    * ```
+    */
+    static isAmount(value) {
+      return typeof value === "object" && value !== null && "raw" in value && typeof value.raw === "bigint" && "decimals" in value && typeof value.decimals === "number";
+    }
+    /**
+    * Sum an array of Amounts.
+    *
+    * @param amounts - The amounts to sum (must have same decimals).
+    * @returns A new Amount with the total sum.
+    * @throws KitError If amounts array is empty or decimals don't match.
+    *
+    * @example
+    * ```typescript
+    * const fee1 = Amount.parse('0.10', { decimals: 6 })
+    * const fee2 = Amount.parse('0.25', { decimals: 6 })
+    * const fee3 = Amount.parse('0.15', { decimals: 6 })
+    *
+    * const total = Amount.sum([fee1, fee2, fee3])
+    * total.toString() // "0.5"
+    * ```
+    */
+    static sum(amounts) {
+      const first = amounts[0];
+      if (first === void 0) {
+        throw createAmountError2("INVALID_INPUT", "Amount.sum: cannot sum an empty array");
+      }
+      if (amounts.length === 1) {
+        return first;
+      }
+      const totalRaw = amounts.slice(1).reduce((sum, amount, index2) => {
+        if (amount.decimals !== first.decimals) {
+          throw createAmountError2("DECIMAL_MISMATCH", `Amount.sum: all amounts must have the same decimals (expected ${String(first.decimals)}, got ${String(amount.decimals)} at index ${String(index2 + 1)})`, {
+            expectedDecimals: first.decimals,
+            actualDecimals: amount.decimals
+          });
+        }
+        return sum + amount.raw;
+      }, first.raw);
+      return new _Amount(totalRaw, first.decimals);
+    }
+    /**
+    * Deserialize an Amount from a JSON object.
+    *
+    * @param json - The JSON object (e.g., from `JSON.parse()`).
+    * @returns A new Amount instance.
+    * @throws KitError If the JSON structure is invalid.
+    *
+    * @example
+    * ```typescript
+    * const json = JSON.parse('{"raw":"1500000","decimals":6}')
+    * const amount = Amount.fromJSON(json)
+    * ```
+    */
+    static fromJSON(json) {
+      if (typeof json !== "object" || json === null || !("raw" in json) || typeof json.raw !== "string" || !("decimals" in json) || typeof json.decimals !== "number") {
+        throw createAmountError2("INVALID_INPUT", "Amount.fromJSON: invalid JSON structure", {
+          json
+        });
+      }
+      const { raw, decimals } = json;
+      return _Amount.of(BigInt(raw), {
+        decimals
+      });
+    }
+    // ==========================================================================
+    // Comparison Methods
+    // ==========================================================================
+    /**
+    * Compare this Amount with another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns -1 if this is less than other, 0 if equal, 1 if this is greater.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * const b = Amount.parse('2.0', { decimals: 6 })
+    * a.compare(b) // -1
+    * ```
+    */
+    compare(other) {
+      return compare2(this, other, "Amount.compare");
+    }
+    /**
+    * Check if this Amount equals another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns True if the raw values are equal.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * const b = Amount.parse('1.5', { decimals: 6 })
+    * a.eq(b) // true
+    * ```
+    */
+    eq(other) {
+      return eq2(this, other, "Amount.eq");
+    }
+    /**
+    * Check if this Amount is less than another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns True if this.raw is less than other.raw.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.0', { decimals: 6 })
+    * const b = Amount.parse('2.0', { decimals: 6 })
+    * a.lt(b) // true
+    * ```
+    */
+    lt(other) {
+      return lt2(this, other, "Amount.lt");
+    }
+    /**
+    * Check if this Amount is less than or equal to another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns True if this.raw is less than or equal to other.raw.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * const b = Amount.parse('1.5', { decimals: 6 })
+    * a.lte(b) // true
+    * ```
+    */
+    lte(other) {
+      return lte2(this, other, "Amount.lte");
+    }
+    /**
+    * Check if this Amount is greater than another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns True if this.raw is greater than other.raw.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('2.0', { decimals: 6 })
+    * const b = Amount.parse('1.0', { decimals: 6 })
+    * a.gt(b) // true
+    * ```
+    */
+    gt(other) {
+      return gt2(this, other, "Amount.gt");
+    }
+    /**
+    * Check if this Amount is greater than or equal to another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns True if this.raw is greater than or equal to other.raw.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('2.0', { decimals: 6 })
+    * const b = Amount.parse('2.0', { decimals: 6 })
+    * a.gte(b) // true
+    * ```
+    */
+    gte(other) {
+      return gte2(this, other, "Amount.gte");
+    }
+    /**
+    * Return the minimum of this Amount and another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns The smaller of the two amounts.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.0', { decimals: 6 })
+    * const b = Amount.parse('2.0', { decimals: 6 })
+    * a.min(b).toString() // "1"
+    * ```
+    */
+    min(other) {
+      return this.lt(other) ? this : other;
+    }
+    /**
+    * Return the maximum of this Amount and another.
+    *
+    * @param other - The Amount to compare with.
+    * @returns The larger of the two amounts.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.0', { decimals: 6 })
+    * const b = Amount.parse('2.0', { decimals: 6 })
+    * a.max(b).toString() // "2"
+    * ```
+    */
+    max(other) {
+      return this.gt(other) ? this : other;
+    }
+    // ==========================================================================
+    // Math Methods
+    // ==========================================================================
+    /**
+    * Add another Amount to this one.
+    *
+    * @param other - The Amount to add.
+    * @returns A new Amount with the sum.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * const b = Amount.parse('0.5', { decimals: 6 })
+    * a.add(b).toString() // "2"
+    * ```
+    */
+    add(other) {
+      const result = add2(this, other, "Amount.add");
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Subtract another Amount from this one.
+    *
+    * @param other - The Amount to subtract.
+    * @returns A new Amount with the difference.
+    * @throws KitError If amounts have different decimals.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('2.0', { decimals: 6 })
+    * const b = Amount.parse('0.5', { decimals: 6 })
+    * a.sub(b).toString() // "1.5"
+    * ```
+    */
+    sub(other) {
+      const result = sub2(this, other, "Amount.sub");
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Multiply this Amount by a scalar.
+    *
+    * @param multiplier - The scalar to multiply by (bigint or integer number).
+    * @returns A new Amount with the product.
+    *
+    * @remarks
+    * When using a `number` as a multiplier, precision is limited by standard
+    * JavaScript floating-point capabilities (~15-17 significant digits). For
+    * high-precision calculations, provide the multiplier as a `bigint`.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * a.mul(2n).toString() // "3"
+    * a.mul(3).toString()  // "4.5"
+    * ```
+    */
+    mul(multiplier) {
+      const result = mul2(this, multiplier);
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Divide this Amount by a scalar.
+    *
+    * @param divisor - The scalar to divide by (bigint or integer number).
+    * @returns A new Amount with the quotient (integer division).
+    * @throws KitError If divisor is zero.
+    *
+    * @remarks
+    * When using a `number` as a divisor, precision is limited by standard
+    * JavaScript floating-point capabilities (~15-17 significant digits). For
+    * high-precision calculations, provide the divisor as a `bigint`.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('6.0', { decimals: 6 })
+    * a.div(2n).toString() // "3"
+    * a.div(4).toString()  // "1.5"
+    * ```
+    */
+    div(divisor) {
+      const result = div2(this, divisor, "Amount.div");
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Get the absolute value of this Amount.
+    *
+    * @returns A new Amount with the absolute value.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.of(-1_500_000n, { decimals: 6 })
+    * a.abs().toString() // "1.5"
+    * ```
+    */
+    abs() {
+      const result = abs2(this);
+      return new _Amount(result.raw, result.decimals);
+    }
+    /**
+    * Negate this Amount.
+    *
+    * @returns A new Amount with the negated value.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * a.neg().raw // -1_500_000n
+    * ```
+    */
+    neg() {
+      const result = neg2(this);
+      return new _Amount(result.raw, result.decimals);
+    }
+    // ==========================================================================
+    // Predicate Methods
+    // ==========================================================================
+    /**
+    * Check if this Amount is zero.
+    *
+    * @returns True if the raw value is 0n.
+    *
+    * @example
+    * ```typescript
+    * Amount.zero({ decimals: 6 }).isZero() // true
+    * Amount.parse('0.001', { decimals: 6 }).isZero() // false
+    * ```
+    */
+    isZero() {
+      return this.raw === 0n;
+    }
+    /**
+    * Check if this Amount is positive.
+    *
+    * @returns True if the raw value is greater than 0n.
+    *
+    * @example
+    * ```typescript
+    * Amount.parse('1.0', { decimals: 6 }).isPositive() // true
+    * Amount.zero({ decimals: 6 }).isPositive() // false
+    * ```
+    */
+    isPositive() {
+      return this.raw > 0n;
+    }
+    /**
+    * Check if this Amount is negative.
+    *
+    * @returns True if the raw value is less than 0n.
+    *
+    * @example
+    * ```typescript
+    * Amount.of(-1_000_000n, { decimals: 6 }).isNegative() // true
+    * Amount.parse('1.0', { decimals: 6 }).isNegative() // false
+    * ```
+    */
+    isNegative() {
+      return this.raw < 0n;
+    }
+    // ==========================================================================
+    // Conversion Methods
+    // ==========================================================================
+    /**
+    * Convert this Amount to a different decimal precision.
+    *
+    * @param newDecimals - The target number of decimal places.
+    * @returns A new Amount with adjusted precision (or this if same precision).
+    * @throws KitError If newDecimals is invalid.
+    *
+    * @example
+    * ```typescript
+    * // Scale up: 6 decimals → 18 decimals
+    * const usdc = Amount.parse('1.5', { decimals: 6 })
+    * const scaled = usdc.toDecimals(18)
+    * scaled.raw // 1_500_000_000_000_000_000n
+    *
+    * // Scale down: 18 decimals → 6 decimals (truncates)
+    * const eth = Amount.of(1_500_000_000_000_000_000n, { decimals: 18 })
+    * eth.toDecimals(6).raw // 1_500_000n
+    * ```
+    */
+    toDecimals(newDecimals) {
+      if (this.decimals === newDecimals) {
+        return this;
+      }
+      const result = toDecimals2(this, newDecimals, "Amount.toDecimals");
+      return new _Amount(result.raw, result.decimals);
+    }
+    // ==========================================================================
+    // Formatting Methods
+    // ==========================================================================
+    /**
+    * Format this Amount as a human-readable string.
+    *
+    * @param options - Formatting options (locale, fraction digits, grouping).
+    * @returns A formatted string (e.g., "1,000.50").
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1000.5', { decimals: 6 })
+    * a.formatted()                              // "1,000.5"
+    * a.formatted({ minimumFractionDigits: 2 }) // "1,000.50"
+    * a.formatted({ useGrouping: false })       // "1000.5"
+    * ```
+    */
+    formatted(options = {}) {
+      return formatted2(this, options);
+    }
+    /**
+    * Convert to a human-readable string.
+    *
+    * @returns A formatted string like "1.5".
+    *
+    * @remarks
+    * For display with a token symbol, combine with the token registry:
+    * ```typescript
+    * `${amount.toString()} ${token.symbol}`
+    * ```
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * a.toString() // "1.5"
+    * ```
+    */
+    toString() {
+      return toString4(this);
+    }
+    /**
+    * Convert to a JSON-serializable object.
+    *
+    * @returns An object with raw (as string), decimals, and formatted value.
+    *
+    * @example
+    * ```typescript
+    * const a = Amount.parse('1.5', { decimals: 6 })
+    * a.toJSON()
+    * // { raw: "1500000", decimals: 6, formatted: "1.5" }
+    * ```
+    */
+    toJSON() {
+      return toJSON2(this);
+    }
+  };
+  function toClaimedAmount$1(reward) {
+    return {
+      address: reward.token,
+      symbol: reward.symbol,
+      amount: Amount2.fromJSON(reward.amount)
+    };
+  }
+  function formatAmountValue(amount) {
+    return formatUnits4(amount.raw.toString(), amount.decimals);
+  }
+  function formatClaimedAmount(claimedAmount) {
+    const { amount, ...rest } = claimedAmount;
+    const formatted4 = {
+      ...rest,
+      amount: formatAmountValue(amount)
+    };
+    return formatted4;
+  }
+  function formatClaimRewardsResult(result) {
+    if (result.status === "no_rewards") {
+      return result;
+    }
+    return {
+      ...result,
+      rewards: result.rewards.map((reward) => formatClaimedAmount(reward))
+    };
+  }
+  function isBigIntLike$1(value) {
+    try {
+      BigInt(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function isNonNegativeBigIntLike$3(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var hexBytesSchema$3 = external_exports.union([
+    hexStringSchema2,
+    external_exports.literal("0x")
+  ]).refine((value) => value.length % 2 === 0, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  });
+  var uint256LikeSchema$3 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike$3, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var amountJsonSchema$2 = external_exports.object({
+    raw: external_exports.string().refine(isBigIntLike$1, {
+      message: "raw must be a bigint-compatible string"
+    }),
+    decimals: external_exports.number().int().nonnegative()
+  });
+  var claimRewardsInstructionSchema2 = external_exports.object({
+    target: evmAddressSchema$1,
+    data: hexBytesSchema$3,
+    value: uint256LikeSchema$3,
+    tokenIn: evmAddressSchema$1,
+    amountToApprove: uint256LikeSchema$3,
+    tokenOut: evmAddressSchema$1,
+    minTokenOut: uint256LikeSchema$3
+  }).passthrough();
+  var claimRewardsTokenSchema2 = external_exports.object({
+    token: evmAddressSchema$1,
+    beneficiary: evmAddressSchema$1
+  }).passthrough();
+  var claimRewardsExecutionParamsSchema2 = external_exports.object({
+    instructions: external_exports.tuple([
+      claimRewardsInstructionSchema2
+    ]).rest(claimRewardsInstructionSchema2),
+    tokens: external_exports.tuple([
+      claimRewardsTokenSchema2
+    ]).rest(claimRewardsTokenSchema2),
+    execId: uint256LikeSchema$3,
+    deadline: uint256LikeSchema$3,
+    metadata: hexBytesSchema$3
+  }).passthrough();
+  var claimedAmountSchema2 = external_exports.object({
+    token: evmAddressSchema$1,
+    symbol: external_exports.string(),
+    amount: amountJsonSchema$2
+  });
+  var claimRewardsPayloadSchema2 = external_exports.object({
+    rewards: external_exports.array(claimedAmountSchema2),
+    executionParams: claimRewardsExecutionParamsSchema2.optional(),
+    signature: evmSignatureSchema2.optional()
+  }).refine((data) => {
+    const signedFieldCount = (data.executionParams === void 0 ? 0 : 1) + (data.signature === void 0 ? 0 : 1);
+    if (data.rewards.length > 0) {
+      return signedFieldCount === 2;
+    }
+    return signedFieldCount === 0;
+  }, {
+    message: "claim rewards response must include executionParams and signature only when rewards are claimable"
+  });
+  var claimRewardsResponseSchema = external_exports.object({
+    data: claimRewardsPayloadSchema2
+  });
+  var claimRewardsQuoteRewardSchema2 = external_exports.object({
+    token: external_exports.string(),
+    symbol: external_exports.string(),
+    amount: amountJsonSchema$2
+  });
+  var claimRewardsQuotePayloadSchema2 = external_exports.object({
+    rewards: external_exports.array(claimRewardsQuoteRewardSchema2)
+  });
+  var claimRewardsQuoteResponseSchema = external_exports.object({
+    data: claimRewardsQuotePayloadSchema2
+  });
+  function isClaimRewardsResponse(value) {
+    return claimRewardsResponseSchema.safeParse(value).success;
+  }
+  function isClaimRewardsQuoteResponse(value) {
+    return claimRewardsQuoteResponseSchema.safeParse(value).success;
+  }
   var adapterContractAbi = [
     {
       type: "function",
@@ -93150,6 +95366,216 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       stateMutability: "payable"
     }
   ];
+  var erc20Abi2 = [
+    {
+      constant: true,
+      inputs: [],
+      name: "name",
+      outputs: [
+        {
+          name: "",
+          type: "string"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      constant: false,
+      inputs: [
+        {
+          name: "_spender",
+          type: "address"
+        },
+        {
+          name: "_value",
+          type: "uint256"
+        }
+      ],
+      name: "approve",
+      outputs: [],
+      payable: false,
+      stateMutability: "nonpayable",
+      type: "function"
+    },
+    {
+      constant: true,
+      inputs: [],
+      name: "totalSupply",
+      outputs: [
+        {
+          name: "",
+          type: "uint256"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      constant: false,
+      inputs: [
+        {
+          name: "_from",
+          type: "address"
+        },
+        {
+          name: "_to",
+          type: "address"
+        },
+        {
+          name: "_value",
+          type: "uint256"
+        }
+      ],
+      name: "transferFrom",
+      outputs: [],
+      payable: false,
+      stateMutability: "nonpayable",
+      type: "function"
+    },
+    {
+      constant: true,
+      inputs: [],
+      name: "decimals",
+      outputs: [
+        {
+          name: "",
+          type: "uint8"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      constant: true,
+      inputs: [
+        {
+          name: "_owner",
+          type: "address"
+        }
+      ],
+      name: "balanceOf",
+      outputs: [
+        {
+          name: "balance",
+          type: "uint256"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      constant: true,
+      inputs: [],
+      name: "symbol",
+      outputs: [
+        {
+          name: "",
+          type: "string"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      constant: false,
+      inputs: [
+        {
+          name: "_to",
+          type: "address"
+        },
+        {
+          name: "_value",
+          type: "uint256"
+        }
+      ],
+      name: "transfer",
+      outputs: [],
+      payable: false,
+      stateMutability: "nonpayable",
+      type: "function"
+    },
+    {
+      constant: true,
+      inputs: [
+        {
+          name: "_owner",
+          type: "address"
+        },
+        {
+          name: "_spender",
+          type: "address"
+        }
+      ],
+      name: "allowance",
+      outputs: [
+        {
+          name: "",
+          type: "uint256"
+        }
+      ],
+      payable: false,
+      stateMutability: "view",
+      type: "function"
+    },
+    {
+      payable: true,
+      stateMutability: "payable",
+      type: "fallback"
+    },
+    {
+      anonymous: false,
+      inputs: [
+        {
+          indexed: true,
+          name: "owner",
+          type: "address"
+        },
+        {
+          indexed: true,
+          name: "spender",
+          type: "address"
+        },
+        {
+          indexed: false,
+          name: "value",
+          type: "uint256"
+        }
+      ],
+      name: "Approval",
+      type: "event"
+    },
+    {
+      anonymous: false,
+      inputs: [
+        {
+          indexed: true,
+          name: "from",
+          type: "address"
+        },
+        {
+          indexed: true,
+          name: "to",
+          type: "address"
+        },
+        {
+          indexed: false,
+          name: "value",
+          type: "uint256"
+        }
+      ],
+      name: "Transfer",
+      type: "event"
+    }
+  ];
+  var erc20EventTopics = {
+    transfer: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+  };
   var usdcAbi = [
     {
       anonymous: false,
@@ -96626,6 +99052,270 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       outputs: []
     }
   ];
+  var morphoBlueAbi = [
+    {
+      type: "function",
+      name: "isAuthorized",
+      inputs: [
+        {
+          name: "authorizer",
+          type: "address",
+          internalType: "address"
+        },
+        {
+          name: "authorized",
+          type: "address",
+          internalType: "address"
+        }
+      ],
+      outputs: [
+        {
+          name: "",
+          type: "bool",
+          internalType: "bool"
+        }
+      ],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "setAuthorization",
+      inputs: [
+        {
+          name: "authorized",
+          type: "address",
+          internalType: "address"
+        },
+        {
+          name: "newIsAuthorized",
+          type: "bool",
+          internalType: "bool"
+        }
+      ],
+      outputs: [],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "borrow",
+      inputs: [
+        {
+          name: "marketParams",
+          type: "tuple",
+          internalType: "struct MarketParams",
+          components: [
+            {
+              name: "loanToken",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "collateralToken",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "oracle",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "irm",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "lltv",
+              type: "uint256",
+              internalType: "uint256"
+            }
+          ]
+        },
+        {
+          name: "assets",
+          type: "uint256",
+          internalType: "uint256"
+        },
+        {
+          name: "shares",
+          type: "uint256",
+          internalType: "uint256"
+        },
+        {
+          name: "onBehalf",
+          type: "address",
+          internalType: "address"
+        },
+        {
+          name: "receiver",
+          type: "address",
+          internalType: "address"
+        }
+      ],
+      outputs: [
+        {
+          name: "assetsBorrowed",
+          type: "uint256",
+          internalType: "uint256"
+        },
+        {
+          name: "sharesBorrowed",
+          type: "uint256",
+          internalType: "uint256"
+        }
+      ],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "supplyCollateral",
+      inputs: [
+        {
+          name: "marketParams",
+          type: "tuple",
+          internalType: "struct MarketParams",
+          components: [
+            {
+              name: "loanToken",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "collateralToken",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "oracle",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "irm",
+              type: "address",
+              internalType: "address"
+            },
+            {
+              name: "lltv",
+              type: "uint256",
+              internalType: "uint256"
+            }
+          ]
+        },
+        {
+          name: "assets",
+          type: "uint256",
+          internalType: "uint256"
+        },
+        {
+          name: "onBehalf",
+          type: "address",
+          internalType: "address"
+        },
+        {
+          name: "data",
+          type: "bytes",
+          internalType: "bytes"
+        }
+      ],
+      outputs: [],
+      stateMutability: "nonpayable"
+    },
+    {
+      type: "function",
+      name: "position",
+      inputs: [
+        {
+          name: "id",
+          type: "bytes32",
+          internalType: "Id"
+        },
+        {
+          name: "user",
+          type: "address",
+          internalType: "address"
+        }
+      ],
+      outputs: [
+        {
+          name: "supplyShares",
+          type: "uint256",
+          internalType: "uint256"
+        },
+        {
+          name: "borrowShares",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "collateral",
+          type: "uint128",
+          internalType: "uint128"
+        }
+      ],
+      stateMutability: "view"
+    },
+    {
+      type: "function",
+      name: "market",
+      inputs: [
+        {
+          name: "id",
+          type: "bytes32",
+          internalType: "Id"
+        }
+      ],
+      outputs: [
+        {
+          name: "totalSupplyAssets",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "totalSupplyShares",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "totalBorrowAssets",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "totalBorrowShares",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "lastUpdate",
+          type: "uint128",
+          internalType: "uint128"
+        },
+        {
+          name: "fee",
+          type: "uint128",
+          internalType: "uint128"
+        }
+      ],
+      stateMutability: "view"
+    }
+  ];
+  var morphoAuthorizationAbi = [
+    morphoBlueAbi[0],
+    morphoBlueAbi[1]
+  ];
+  var morphoBlueFunctionSelectors = {
+    borrow: "0x50d8cd4b",
+    supplyCollateral: "0x238d6579",
+    repay: "0x20b76e81",
+    withdrawCollateral: "0x8720316d"
+  };
+  var morphoBlueEventTopics = {
+    repay: "0x52acb05cebbd3cd39715469f22afbf5a17496295ef3bc9bb5944056c63ccaa09",
+    withdrawCollateral: "0xe80ebd7cc9223d7382aab2e0d1d6155c65651f83d53c8b9b06901d167e321142",
+    borrow: "0x570954540bed6b1304a87dfe815a5eda4a648f7097a16240dcd85c9b5fd42a43",
+    supplyCollateral: "0xa3b9472a1399e17e123f3c2e6586c23e504184d504de59cdaa2b375e880c6184"
+  };
   external_exports.object({
     /**
      * Defines who controls the address used in operations.
@@ -96772,7 +99462,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     })
   });
   external_exports.object({
-    type: external_exports.literal("evm"),
+    type: external_exports.literal("evm").optional(),
     abi: abiSchema2,
     address: evmAddressSchema$1,
     functionName: external_exports.string({
@@ -97541,7 +100231,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   var ZERO_ADDRESS2 = "0x0000000000000000000000000000000000000000";
   var NATIVE_TOKEN_ADDRESS$12 = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
-  var hexBytesSchema$1 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+  var hexBytesSchema$22 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
     message: "value must be a 0x-prefixed even-length hex string"
   }).transform((value) => value);
   external_exports.object({
@@ -97553,7 +100243,53 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       amount: external_exports.bigint().refine((value) => value >= 0n, {
         message: "amount must be a non-negative bigint"
       }),
-      permitCalldata: hexBytesSchema$1
+      permitCalldata: hexBytesSchema$22
+    }))
+  }).passthrough();
+  var hexBytesSchema$12 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  }).transform((value) => value);
+  function isNonNegativeBigIntLike$2(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var uint256LikeSchema$2 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike$2, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var borrowExecutionParamsSchema$1 = external_exports.object({
+    instructions: external_exports.array(external_exports.object({
+      target: evmAddressSchema$1,
+      data: hexBytesSchema$12,
+      value: uint256LikeSchema$2,
+      tokenIn: evmAddressSchema$1,
+      amountToApprove: uint256LikeSchema$2,
+      tokenOut: evmAddressSchema$1,
+      minTokenOut: uint256LikeSchema$2
+    }).passthrough()).min(1),
+    tokens: external_exports.array(external_exports.object({
+      token: evmAddressSchema$1,
+      beneficiary: evmAddressSchema$1
+    }).passthrough()),
+    execId: uint256LikeSchema$2,
+    deadline: uint256LikeSchema$2,
+    metadata: hexBytesSchema$12
+  }).passthrough();
+  external_exports.object({
+    executeParams: borrowExecutionParamsSchema$1,
+    signature: evmSignatureSchema2,
+    tokenInputs: external_exports.array(external_exports.object({
+      permitType: external_exports.nativeEnum(BorrowPermitType2),
+      token: evmAddressSchema$1,
+      amount: external_exports.bigint().refine((value) => value >= 0n, {
+        message: "amount must be a non-negative bigint"
+      }),
+      permitCalldata: hexBytesSchema$12
     }))
   }).passthrough();
   var SOLANA_DEFAULT_PUBLIC_KEY2 = "11111111111111111111111111111111";
@@ -97814,7 +100550,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     provider: solanaWalletProviderSchema2,
     chain: solanaChainIdentifierSchema2
   });
-  function assertApiKey2(apiKey) {
+  function assertApiKey$1(apiKey) {
     if (!apiKey) {
       return;
     }
@@ -97969,7 +100705,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     validateResolvedAddress2(resolvedTokenOutAddress, destinationChain);
     validateResolvedAddress2(to, destinationChain);
     const apiKey = resolveApiKey2(config ?? {});
-    assertApiKey2(apiKey);
+    assertApiKey$1(apiKey);
     const customFee = config?.customFee;
     if (customFee !== void 0) {
       const feePayoutChain = resolveFeePayoutChain2(tokenIn, tokenOut, chain, destinationChain);
@@ -98103,6 +100839,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     },
     Arc: {
       chainId: Arc2.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Cronos: {
+      chainId: Cronos2.chainId,
+      name: "USDC",
+      version: "2"
+    },
+    Morph: {
+      chainId: Morph2.chainId,
       name: "USDC",
       version: "2"
     },
@@ -98316,7 +101062,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       permitCalldata: "0x"
     };
   }
-  async function buildTokenInputs2({ adapter, context, tokenInAddress, inputAmount, allowanceStrategy }) {
+  async function buildTokenInputs$1({ adapter, context, tokenInAddress, inputAmount, allowanceStrategy }) {
     const adapterContractAddress = context.chain.kitContracts?.adapter;
     if (adapterContractAddress === void 0 || adapterContractAddress === "") {
       console.warn(`No adapter contract configured for chain ${context.chain.name}. TokenInput generation skipped - swap will require pre-approved tokens.`);
@@ -98452,7 +101198,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       metadata: transaction.executionParams.metadata
     };
     const signature = transaction.signature;
-    const tokenInputs = await buildTokenInputs2({
+    const tokenInputs = await buildTokenInputs$1({
       adapter,
       context,
       tokenInAddress,
@@ -98591,17 +101337,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const resolvedSymbol = resolveTokenSymbol2(tokenSymbol, chain);
     const canFormat = resolvedSymbol !== null && isSwapToken2(resolvedSymbol);
     const displaySymbol = resolvedSymbol ?? tokenSymbol;
-    const currentFormatted = canFormat ? formatAmount$2({
+    const currentFormatted = canFormat ? formatAmount$1({
       value: currentBalance.toString(),
       token: resolvedSymbol,
       chain
     }) : null;
-    const requiredFormatted = canFormat ? formatAmount$2({
+    const requiredFormatted = canFormat ? formatAmount$1({
       value: requiredAmount.toString(),
       token: resolvedSymbol,
       chain
     }) : null;
-    const shortfallFormatted = canFormat ? formatAmount$2({
+    const shortfallFormatted = canFormat ? formatAmount$1({
       value: shortfall.toString(),
       token: resolvedSymbol,
       chain
@@ -98644,7 +101390,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (resolvedSymbol) {
       if (isSwapToken2(resolvedSymbol)) {
         return {
-          amount: formatAmount$2({
+          amount: formatAmount$1({
             value,
             token: resolvedSymbol,
             chain,
@@ -98764,6 +101510,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   var GAS_SAFETY_MULTIPLIER2 = 1.3;
+  var DEFAULT_EVM_SWAP_GAS_LIMIT2 = 500000n;
   var TOKEN_REGISTRY$12 = createTokenRegistry2();
   function enhanceKitErrorWithTxDetails2(err2, txHash, explorerUrl) {
     const existingTrace = typeof err2.cause?.trace === "object" && err2.cause.trace !== null ? err2.cause.trace : {};
@@ -99075,17 +101822,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const serviceResponse = await createSwap2(serviceParams);
       let estimatedGasFee = "0";
       const evmGasLimit = "gasLimit" in serviceResponse.transaction ? serviceResponse.transaction.gasLimit : void 0;
-      if (chain.type === "evm" && evmGasLimit !== void 0) {
-        const gasLimitUnits = BigInt(evmGasLimit);
+      if (chain.type === "evm") {
+        const gasLimitUnits = evmGasLimit === void 0 ? DEFAULT_EVM_SWAP_GAS_LIMIT2 : BigInt(evmGasLimit);
         const gasEstimate = await params.from.adapter.calculateTransactionFee(gasLimitUnits, void 0, chain);
-        estimatedGasFee = formatAmount$2({
+        estimatedGasFee = formatAmount$1({
           value: gasEstimate.fee,
           token: "NATIVE",
           chain
         });
       } else if (chain.type === "solana") {
         const gasEstimate = await params.from.adapter.calculateTransactionFee(300000n, void 0, chain);
-        estimatedGasFee = formatAmount$2({
+        estimatedGasFee = formatAmount$1({
           value: gasEstimate.fee,
           token: "NATIVE",
           chain
@@ -99108,7 +101855,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const estimateResult = {
         stopLimit: formattedStopLimit,
         estimatedOutput: formattedEstimatedOutput,
-        fees: fees2
+        fees: fees2,
+        ...serviceResponse.route !== void 0 && {
+          route: serviceResponse.route
+        }
       };
       return estimateResult;
     }
@@ -99482,6 +102232,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     async swap(params) {
+      validateServiceSwapParams2(params);
       const { from: from16, tokenIn, tokenOut, config } = params;
       const { adapter, chain } = from16;
       const destinationChain = params.toChain ?? chain;
@@ -99579,6 +102330,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         },
         ...swapResultFees !== void 0 && {
           fees: swapResultFees
+        },
+        ...serviceResponse.route !== void 0 && {
+          route: serviceResponse.route
         },
         progress: statusSnapshot.progress,
         ...statusSnapshot.amountOut !== void 0 && {
@@ -99774,7 +102528,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         return {
           token: formatted4.token,
           amount: formatted4.amount,
-          type: type2
+          type: type2,
+          ...fee.type !== void 0 && {
+            component: fee.type
+          },
+          ...fee.chain !== void 0 && {
+            chain: fee.chain
+          }
         };
       }));
     }
@@ -99796,7 +102556,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
           token: formatted4.token,
           amount: formatted4.amount,
           type: "developer",
-          recipientAddress
+          recipientAddress,
+          ...fee.type !== void 0 && {
+            component: fee.type
+          },
+          ...fee.chain !== void 0 && {
+            chain: fee.chain
+          }
         };
       }));
     }
@@ -99805,7 +102571,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     message: "chain must be a supported swap chain"
   });
   var optionalSwapChainIdentifierField2 = swapChainIdentifierField2.optional();
-  var adapterContextSchema$5 = external_exports.object({
+  var adapterContextSchema$6 = external_exports.object({
     adapter: adapterSchema$1,
     chain: swapChainIdentifierField2,
     address: external_exports.string().optional()
@@ -99838,7 +102604,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     })(external_exports.string())).optional(),
     customFee: swapCustomFeeSchema2.optional(),
     apiKey: external_exports.string().optional(),
-    kitKey: external_exports.string().optional()
+    kitKey: external_exports.string().optional(),
+    batchTransactions: external_exports.boolean({
+      invalid_type_error: "batchTransactions must be a boolean"
+    }).optional()
   });
   var swapDestinationSchema2 = external_exports.object({
     chain: optionalSwapChainIdentifierField2,
@@ -99846,7 +102615,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       message: "recipientAddress must be a valid blockchain address: EVM (0x + 40 hex chars) or Solana (base58, 32-44 chars)"
     }).optional()
   }).strict();
-  var EVM_ADDRESS_REGEX2 = /^0x[a-fA-F0-9]{40}$/;
+  var EVM_ADDRESS_REGEX$1 = /^0x[a-fA-F0-9]{40}$/;
   var SOLANA_ADDRESS_REGEX2 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
   var BASE58_CHARS_REGEX2 = /^[1-9A-HJ-NP-Za-km-z]+$/;
   function looksLikeSolanaAddress2(value) {
@@ -99859,7 +102628,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var _symbolResult2;
   var swapTokenSchema2 = external_exports.string().superRefine((value, ctx) => {
     if (value.startsWith("0x")) {
-      if (!EVM_ADDRESS_REGEX2.test(value)) {
+      if (!EVM_ADDRESS_REGEX$1.test(value)) {
         ctx.addIssue({
           code: external_exports.ZodIssueCode.custom,
           message: `Invalid EVM token address format. Expected '0x' followed by 40 hexadecimal characters, but received: '${truncate2(value)}'`
@@ -99893,7 +102662,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     maxDecimals: 18
   })(external_exports.string())).describe("The amount of the input token to swap, expressed as a human-readable decimal string in token units (e.g., '0.05' for 0.05 USDC or 0.05 ETH).");
   var swapParamsSchema2 = external_exports.object({
-    from: adapterContextSchema$5,
+    from: adapterContextSchema$6,
     tokenIn: swapTokenSchema2,
     tokenOut: swapTokenSchema2,
     amountIn: amountInSchema2,
@@ -99912,820 +102681,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function assertSwapParams2(params, schema) {
     validateWithStateTracking2(params, schema, "swap parameters", ASSERT_SWAP_PARAMS_SYMBOL2);
   }
-  function createAmountError2(reason, message, context, cause) {
-    const trace = {
-      reason
-    };
-    if (context !== void 0) {
-      trace.context = context;
-    }
-    return new KitError2({
-      ...InputError2.INVALID_AMOUNT,
-      recoverability: "FATAL",
-      message,
-      cause: {
-        trace
-      }
-    });
-  }
-  var MAX_DECIMALS2 = 77;
-  var scaleCache2 = /* @__PURE__ */ new Map();
-  function getScale2(decimals) {
-    if (decimals < 0 || decimals > MAX_DECIMALS2) {
-      throw createAmountError2("INVALID_DECIMALS", `Decimals must be between 0 and ${String(MAX_DECIMALS2)}, got ${String(decimals)}`, {
-        decimals
-      });
-    }
-    let scale = scaleCache2.get(decimals);
-    if (scale === void 0) {
-      scale = 10n ** BigInt(decimals);
-      scaleCache2.set(decimals, scale);
-    }
-    return scale;
-  }
-  function validateDecimals2(decimals, context) {
-    if (!Number.isInteger(decimals) || decimals < 0 || decimals > MAX_DECIMALS2) {
-      throw createAmountError2("INVALID_DECIMALS", `${context}: decimals must be an integer between 0 and ${String(MAX_DECIMALS2)}, got ${String(decimals)}`, {
-        decimals,
-        context
-      });
-    }
-  }
-  function assertSameDecimals2(a, b, operation) {
-    if (a.decimals !== b.decimals) {
-      throw createAmountError2("DECIMAL_MISMATCH", `${operation}: cannot operate on amounts with different decimals (${String(a.decimals)} vs ${String(b.decimals)})`, {
-        aDecimals: a.decimals,
-        bDecimals: b.decimals,
-        operation
-      });
-    }
-  }
-  function assertDecimalConfig2(inputDecimals, configDecimals, context) {
-    if (configDecimals !== void 0 && configDecimals !== inputDecimals) {
-      throw createAmountError2("DECIMAL_MISMATCH", `${context}: Amount has ${String(inputDecimals)} decimals but config specifies ${String(configDecimals)}`, {
-        inputDecimals,
-        configDecimals
-      });
-    }
-  }
-  function parse3(input, options, ctx) {
-    validateDecimals2(options.decimals, ctx);
-    const { decimals, allowNegative = false } = options;
-    const str2 = typeof input === "number" ? input.toString() : input;
-    if (typeof str2 !== "string" || str2.trim() === "") {
-      throw createAmountError2("PARSE_ERROR", `${ctx}: input must be a non-empty string or number`, {
-        input
-      });
-    }
-    let normalized = str2.trim();
-    const isNegative = normalized.startsWith("-");
-    if (isNegative) {
-      if (!allowNegative) {
-        throw createAmountError2("NEGATIVE_NOT_ALLOWED", `${ctx}: negative values not allowed`, {
-          input
-        });
-      }
-      normalized = normalized.slice(1);
-    }
-    if (normalized.length > 1 && normalized.startsWith("0") && normalized[1] !== ".") {
-      normalized = normalized.replace(/^0+/, "") || "0";
-    }
-    const parts = normalized.split(".");
-    if (parts.length > 2) {
-      throw createAmountError2("PARSE_ERROR", `${ctx}: invalid number format (multiple decimal points)`, {
-        input
-      });
-    }
-    let integerPart = parts[0] ?? "";
-    const decimalPart = parts[1] ?? "";
-    if (integerPart === "" && decimalPart !== "") {
-      integerPart = "0";
-    }
-    if (!/^\d+$/.test(integerPart) || decimalPart && !/^\d+$/.test(decimalPart)) {
-      throw createAmountError2("PARSE_ERROR", `${ctx}: input contains non-numeric characters`, {
-        input
-      });
-    }
-    const truncatedDecimal = decimalPart.slice(0, decimals).padEnd(decimals, "0");
-    const rawString = integerPart + truncatedDecimal;
-    let raw = BigInt(rawString);
-    if (isNegative) {
-      raw = -raw;
-    }
-    return {
-      raw,
-      decimals
-    };
-  }
-  function compare2(a, b, ctx) {
-    assertSameDecimals2(a, b, ctx);
-    if (a.raw < b.raw) return -1;
-    if (a.raw > b.raw) return 1;
-    return 0;
-  }
-  function eq2(a, b, ctx) {
-    return compare2(a, b, ctx) === 0;
-  }
-  function lt2(a, b, ctx) {
-    return compare2(a, b, ctx) === -1;
-  }
-  function lte2(a, b, ctx) {
-    return compare2(a, b, ctx) <= 0;
-  }
-  function gt2(a, b, ctx) {
-    return compare2(a, b, ctx) === 1;
-  }
-  function gte2(a, b, ctx) {
-    return compare2(a, b, ctx) >= 0;
-  }
-  var PRECISION2 = 10n ** 18n;
-  function add2(a, b, ctx) {
-    assertSameDecimals2(a, b, ctx);
-    return {
-      raw: a.raw + b.raw,
-      decimals: a.decimals
-    };
-  }
-  function sub2(a, b, ctx) {
-    assertSameDecimals2(a, b, ctx);
-    return {
-      raw: a.raw - b.raw,
-      decimals: a.decimals
-    };
-  }
-  function mul2(amount, multiplier) {
-    let raw;
-    if (typeof multiplier === "bigint") {
-      raw = amount.raw * multiplier;
-    } else {
-      const multiplierBigInt = BigInt(Math.round(multiplier * Number(PRECISION2)));
-      raw = amount.raw * multiplierBigInt / PRECISION2;
-    }
-    return {
-      raw,
-      decimals: amount.decimals
-    };
-  }
-  function div2(amount, divisor, ctx) {
-    let raw;
-    if (typeof divisor === "bigint") {
-      if (divisor === 0n) {
-        throw createAmountError2("INVALID_INPUT", `${ctx}: division by zero`);
-      }
-      raw = amount.raw / divisor;
-    } else {
-      if (divisor === 0) {
-        throw createAmountError2("INVALID_INPUT", `${ctx}: division by zero`);
-      }
-      const divisorBigInt = BigInt(Math.round(divisor * Number(PRECISION2)));
-      raw = amount.raw * PRECISION2 / divisorBigInt;
-    }
-    return {
-      raw,
-      decimals: amount.decimals
-    };
-  }
-  function abs2(amount) {
-    return {
-      raw: amount.raw < 0n ? -amount.raw : amount.raw,
-      decimals: amount.decimals
-    };
-  }
-  function neg2(amount) {
-    return {
-      raw: -amount.raw,
-      decimals: amount.decimals
-    };
-  }
-  function trimTrailingZeros2(str2, minDigits) {
-    let end = str2.length;
-    while (end > minDigits && str2[end - 1] === "0") {
-      end--;
-    }
-    return str2.slice(0, end);
-  }
-  function formatted2(amount, options = {}) {
-    const { locale = "en-US", minimumFractionDigits = 0, maximumFractionDigits = amount.decimals, useGrouping = true } = options;
-    if (minimumFractionDigits > maximumFractionDigits) {
-      throw new RangeError(`minimumFractionDigits (${String(minimumFractionDigits)}) cannot be greater than maximumFractionDigits (${String(maximumFractionDigits)})`);
-    }
-    const scale = getScale2(amount.decimals);
-    const isNegative = amount.raw < 0n;
-    const absRaw = isNegative ? -amount.raw : amount.raw;
-    const integerPart = absRaw / scale;
-    const decimalPart = absRaw % scale;
-    const formattedInteger = useGrouping ? integerPart.toLocaleString(locale) : integerPart.toString();
-    let formattedDecimal = "";
-    if (maximumFractionDigits > 0) {
-      const fullDecimal = decimalPart.toString().padStart(amount.decimals, "0");
-      let trimmed = fullDecimal.slice(0, maximumFractionDigits);
-      if (minimumFractionDigits < trimmed.length) {
-        trimmed = trimTrailingZeros2(trimmed, minimumFractionDigits);
-      }
-      if (trimmed.length > 0) {
-        formattedDecimal = "." + trimmed;
-      }
-    }
-    return (isNegative ? "-" : "") + formattedInteger + formattedDecimal;
-  }
-  function toString4(amount) {
-    return formatted2(amount);
-  }
-  function toJSON2(amount) {
-    return {
-      raw: amount.raw.toString(),
-      decimals: amount.decimals,
-      formatted: formatted2(amount)
-    };
-  }
-  function toDecimals2(amount, newDecimals, ctx) {
-    validateDecimals2(newDecimals, ctx);
-    if (amount.decimals === newDecimals) {
-      return {
-        raw: amount.raw,
-        decimals: amount.decimals
-      };
-    }
-    let raw;
-    if (newDecimals > amount.decimals) {
-      const scaleDiff = getScale2(newDecimals - amount.decimals);
-      raw = amount.raw * scaleDiff;
-    } else {
-      const scaleDiff = getScale2(amount.decimals - newDecimals);
-      raw = amount.raw / scaleDiff;
-    }
-    return {
-      raw,
-      decimals: newDecimals
-    };
-  }
-  var Amount2 = class _Amount {
-    /** The raw value in smallest units (e.g., wei for ETH, micro-units for USDC). */
-    raw;
-    /** Number of decimal places for this token. */
-    decimals;
-    // ==========================================================================
-    // Constructor (private - use static factories)
-    // ==========================================================================
-    constructor(raw, decimals) {
-      this.raw = raw;
-      this.decimals = decimals;
-      Object.freeze(this);
-    }
-    // ==========================================================================
-    // Static Factory Methods
-    // ==========================================================================
-    /**
-    * Create an Amount from a raw bigint value.
-    *
-    * @param raw - The raw value in smallest units.
-    * @param config - Configuration with decimals.
-    * @returns A new immutable Amount instance.
-    * @throws KitError If raw is not a bigint or decimals is invalid.
-    *
-    * @example
-    * ```typescript
-    * // Get decimals from token registry
-    * const amount = Amount.of(1_000_000n, { decimals: 6 })
-    * ```
-    */
-    static of(raw, config) {
-      validateDecimals2(config.decimals, "Amount.of");
-      if (typeof raw !== "bigint") {
-        throw createAmountError2("INVALID_INPUT", `Amount.of: expected bigint, got ${typeof raw}`, {
-          input: raw
-        });
-      }
-      return new _Amount(raw, config.decimals);
-    }
-    /**
-    * Parse a human-readable string or number into an Amount.
-    *
-    * @param input - The input to parse (e.g., "100.50" or 100.5).
-    * @param options - Parse options including decimals.
-    * @returns A new immutable Amount instance.
-    * @throws KitError If input is invalid or parsing fails.
-    *
-    * @example
-    * ```typescript
-    * const amount = Amount.parse('100.50', { decimals: 6 })
-    * ```
-    */
-    static parse(input, options) {
-      const result = parse3(input, options, "Amount.parse");
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Convert any AmountLike value to an Amount.
-    *
-    * @param input - The input (bigint, string, number, or existing Amount).
-    * @param config - Configuration (required for non-Amount inputs).
-    * @returns A new immutable Amount instance.
-    * @throws KitError If conversion fails or config is missing.
-    *
-    * @remarks
-    * When providing a `number` input, very large or small values may be
-    * converted to exponential notation (e.g., `1e21`), which is not supported.
-    * For such values, provide a `string` representation instead.
-    *
-    * @example
-    * ```typescript
-    * Amount.from(1_000_000n, { decimals: 6 })  // from bigint
-    * Amount.from('1.00', { decimals: 6 })      // from string
-    * Amount.from(existingAmount)               // pass-through
-    * ```
-    */
-    static from(input, config) {
-      if (input instanceof _Amount) {
-        assertDecimalConfig2(input.decimals, config?.decimals, "Amount.from");
-        return input;
-      }
-      if (_Amount.isAmount(input)) {
-        assertDecimalConfig2(input.decimals, config?.decimals, "Amount.from");
-        return new _Amount(input.raw, input.decimals);
-      }
-      if (config === void 0) {
-        throw createAmountError2("INVALID_INPUT", "Amount.from: config with decimals is required for non-Amount inputs", {
-          input
-        });
-      }
-      if (typeof input === "bigint") {
-        return _Amount.of(input, config);
-      }
-      return _Amount.parse(input, config);
-    }
-    /**
-    * Create a zero Amount with the given configuration.
-    *
-    * @param config - Configuration with decimals.
-    * @returns A zero Amount instance.
-    *
-    * @example
-    * ```typescript
-    * const zero = Amount.zero({ decimals: 6 })
-    * ```
-    */
-    static zero(config) {
-      return _Amount.of(0n, config);
-    }
-    /**
-    * Check if a value is an Amount-like object.
-    *
-    * @param value - The value to check.
-    * @returns True if the value has Amount shape (raw: bigint, decimals: number).
-    *
-    * @example
-    * ```typescript
-    * Amount.isAmount({ raw: 1000000n, decimals: 6 }) // true
-    * Amount.isAmount({ value: 100 })                 // false
-    * ```
-    */
-    static isAmount(value) {
-      return typeof value === "object" && value !== null && "raw" in value && typeof value.raw === "bigint" && "decimals" in value && typeof value.decimals === "number";
-    }
-    /**
-    * Sum an array of Amounts.
-    *
-    * @param amounts - The amounts to sum (must have same decimals).
-    * @returns A new Amount with the total sum.
-    * @throws KitError If amounts array is empty or decimals don't match.
-    *
-    * @example
-    * ```typescript
-    * const fee1 = Amount.parse('0.10', { decimals: 6 })
-    * const fee2 = Amount.parse('0.25', { decimals: 6 })
-    * const fee3 = Amount.parse('0.15', { decimals: 6 })
-    *
-    * const total = Amount.sum([fee1, fee2, fee3])
-    * total.toString() // "0.5"
-    * ```
-    */
-    static sum(amounts) {
-      const first = amounts[0];
-      if (first === void 0) {
-        throw createAmountError2("INVALID_INPUT", "Amount.sum: cannot sum an empty array");
-      }
-      if (amounts.length === 1) {
-        return first;
-      }
-      const totalRaw = amounts.slice(1).reduce((sum, amount, index2) => {
-        if (amount.decimals !== first.decimals) {
-          throw createAmountError2("DECIMAL_MISMATCH", `Amount.sum: all amounts must have the same decimals (expected ${String(first.decimals)}, got ${String(amount.decimals)} at index ${String(index2 + 1)})`, {
-            expectedDecimals: first.decimals,
-            actualDecimals: amount.decimals
-          });
-        }
-        return sum + amount.raw;
-      }, first.raw);
-      return new _Amount(totalRaw, first.decimals);
-    }
-    /**
-    * Deserialize an Amount from a JSON object.
-    *
-    * @param json - The JSON object (e.g., from `JSON.parse()`).
-    * @returns A new Amount instance.
-    * @throws KitError If the JSON structure is invalid.
-    *
-    * @example
-    * ```typescript
-    * const json = JSON.parse('{"raw":"1500000","decimals":6}')
-    * const amount = Amount.fromJSON(json)
-    * ```
-    */
-    static fromJSON(json) {
-      if (typeof json !== "object" || json === null || !("raw" in json) || typeof json.raw !== "string" || !("decimals" in json) || typeof json.decimals !== "number") {
-        throw createAmountError2("INVALID_INPUT", "Amount.fromJSON: invalid JSON structure", {
-          json
-        });
-      }
-      const { raw, decimals } = json;
-      return _Amount.of(BigInt(raw), {
-        decimals
-      });
-    }
-    // ==========================================================================
-    // Comparison Methods
-    // ==========================================================================
-    /**
-    * Compare this Amount with another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns -1 if this is less than other, 0 if equal, 1 if this is greater.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * const b = Amount.parse('2.0', { decimals: 6 })
-    * a.compare(b) // -1
-    * ```
-    */
-    compare(other) {
-      return compare2(this, other, "Amount.compare");
-    }
-    /**
-    * Check if this Amount equals another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns True if the raw values are equal.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * const b = Amount.parse('1.5', { decimals: 6 })
-    * a.eq(b) // true
-    * ```
-    */
-    eq(other) {
-      return eq2(this, other, "Amount.eq");
-    }
-    /**
-    * Check if this Amount is less than another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns True if this.raw is less than other.raw.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.0', { decimals: 6 })
-    * const b = Amount.parse('2.0', { decimals: 6 })
-    * a.lt(b) // true
-    * ```
-    */
-    lt(other) {
-      return lt2(this, other, "Amount.lt");
-    }
-    /**
-    * Check if this Amount is less than or equal to another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns True if this.raw is less than or equal to other.raw.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * const b = Amount.parse('1.5', { decimals: 6 })
-    * a.lte(b) // true
-    * ```
-    */
-    lte(other) {
-      return lte2(this, other, "Amount.lte");
-    }
-    /**
-    * Check if this Amount is greater than another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns True if this.raw is greater than other.raw.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('2.0', { decimals: 6 })
-    * const b = Amount.parse('1.0', { decimals: 6 })
-    * a.gt(b) // true
-    * ```
-    */
-    gt(other) {
-      return gt2(this, other, "Amount.gt");
-    }
-    /**
-    * Check if this Amount is greater than or equal to another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns True if this.raw is greater than or equal to other.raw.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('2.0', { decimals: 6 })
-    * const b = Amount.parse('2.0', { decimals: 6 })
-    * a.gte(b) // true
-    * ```
-    */
-    gte(other) {
-      return gte2(this, other, "Amount.gte");
-    }
-    /**
-    * Return the minimum of this Amount and another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns The smaller of the two amounts.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.0', { decimals: 6 })
-    * const b = Amount.parse('2.0', { decimals: 6 })
-    * a.min(b).toString() // "1"
-    * ```
-    */
-    min(other) {
-      return this.lt(other) ? this : other;
-    }
-    /**
-    * Return the maximum of this Amount and another.
-    *
-    * @param other - The Amount to compare with.
-    * @returns The larger of the two amounts.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.0', { decimals: 6 })
-    * const b = Amount.parse('2.0', { decimals: 6 })
-    * a.max(b).toString() // "2"
-    * ```
-    */
-    max(other) {
-      return this.gt(other) ? this : other;
-    }
-    // ==========================================================================
-    // Math Methods
-    // ==========================================================================
-    /**
-    * Add another Amount to this one.
-    *
-    * @param other - The Amount to add.
-    * @returns A new Amount with the sum.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * const b = Amount.parse('0.5', { decimals: 6 })
-    * a.add(b).toString() // "2"
-    * ```
-    */
-    add(other) {
-      const result = add2(this, other, "Amount.add");
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Subtract another Amount from this one.
-    *
-    * @param other - The Amount to subtract.
-    * @returns A new Amount with the difference.
-    * @throws KitError If amounts have different decimals.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('2.0', { decimals: 6 })
-    * const b = Amount.parse('0.5', { decimals: 6 })
-    * a.sub(b).toString() // "1.5"
-    * ```
-    */
-    sub(other) {
-      const result = sub2(this, other, "Amount.sub");
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Multiply this Amount by a scalar.
-    *
-    * @param multiplier - The scalar to multiply by (bigint or integer number).
-    * @returns A new Amount with the product.
-    *
-    * @remarks
-    * When using a `number` as a multiplier, precision is limited by standard
-    * JavaScript floating-point capabilities (~15-17 significant digits). For
-    * high-precision calculations, provide the multiplier as a `bigint`.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * a.mul(2n).toString() // "3"
-    * a.mul(3).toString()  // "4.5"
-    * ```
-    */
-    mul(multiplier) {
-      const result = mul2(this, multiplier);
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Divide this Amount by a scalar.
-    *
-    * @param divisor - The scalar to divide by (bigint or integer number).
-    * @returns A new Amount with the quotient (integer division).
-    * @throws KitError If divisor is zero.
-    *
-    * @remarks
-    * When using a `number` as a divisor, precision is limited by standard
-    * JavaScript floating-point capabilities (~15-17 significant digits). For
-    * high-precision calculations, provide the divisor as a `bigint`.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('6.0', { decimals: 6 })
-    * a.div(2n).toString() // "3"
-    * a.div(4).toString()  // "1.5"
-    * ```
-    */
-    div(divisor) {
-      const result = div2(this, divisor, "Amount.div");
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Get the absolute value of this Amount.
-    *
-    * @returns A new Amount with the absolute value.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.of(-1_500_000n, { decimals: 6 })
-    * a.abs().toString() // "1.5"
-    * ```
-    */
-    abs() {
-      const result = abs2(this);
-      return new _Amount(result.raw, result.decimals);
-    }
-    /**
-    * Negate this Amount.
-    *
-    * @returns A new Amount with the negated value.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * a.neg().raw // -1_500_000n
-    * ```
-    */
-    neg() {
-      const result = neg2(this);
-      return new _Amount(result.raw, result.decimals);
-    }
-    // ==========================================================================
-    // Predicate Methods
-    // ==========================================================================
-    /**
-    * Check if this Amount is zero.
-    *
-    * @returns True if the raw value is 0n.
-    *
-    * @example
-    * ```typescript
-    * Amount.zero({ decimals: 6 }).isZero() // true
-    * Amount.parse('0.001', { decimals: 6 }).isZero() // false
-    * ```
-    */
-    isZero() {
-      return this.raw === 0n;
-    }
-    /**
-    * Check if this Amount is positive.
-    *
-    * @returns True if the raw value is greater than 0n.
-    *
-    * @example
-    * ```typescript
-    * Amount.parse('1.0', { decimals: 6 }).isPositive() // true
-    * Amount.zero({ decimals: 6 }).isPositive() // false
-    * ```
-    */
-    isPositive() {
-      return this.raw > 0n;
-    }
-    /**
-    * Check if this Amount is negative.
-    *
-    * @returns True if the raw value is less than 0n.
-    *
-    * @example
-    * ```typescript
-    * Amount.of(-1_000_000n, { decimals: 6 }).isNegative() // true
-    * Amount.parse('1.0', { decimals: 6 }).isNegative() // false
-    * ```
-    */
-    isNegative() {
-      return this.raw < 0n;
-    }
-    // ==========================================================================
-    // Conversion Methods
-    // ==========================================================================
-    /**
-    * Convert this Amount to a different decimal precision.
-    *
-    * @param newDecimals - The target number of decimal places.
-    * @returns A new Amount with adjusted precision (or this if same precision).
-    * @throws KitError If newDecimals is invalid.
-    *
-    * @example
-    * ```typescript
-    * // Scale up: 6 decimals → 18 decimals
-    * const usdc = Amount.parse('1.5', { decimals: 6 })
-    * const scaled = usdc.toDecimals(18)
-    * scaled.raw // 1_500_000_000_000_000_000n
-    *
-    * // Scale down: 18 decimals → 6 decimals (truncates)
-    * const eth = Amount.of(1_500_000_000_000_000_000n, { decimals: 18 })
-    * eth.toDecimals(6).raw // 1_500_000n
-    * ```
-    */
-    toDecimals(newDecimals) {
-      if (this.decimals === newDecimals) {
-        return this;
-      }
-      const result = toDecimals2(this, newDecimals, "Amount.toDecimals");
-      return new _Amount(result.raw, result.decimals);
-    }
-    // ==========================================================================
-    // Formatting Methods
-    // ==========================================================================
-    /**
-    * Format this Amount as a human-readable string.
-    *
-    * @param options - Formatting options (locale, fraction digits, grouping).
-    * @returns A formatted string (e.g., "1,000.50").
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1000.5', { decimals: 6 })
-    * a.formatted()                              // "1,000.5"
-    * a.formatted({ minimumFractionDigits: 2 }) // "1,000.50"
-    * a.formatted({ useGrouping: false })       // "1000.5"
-    * ```
-    */
-    formatted(options = {}) {
-      return formatted2(this, options);
-    }
-    /**
-    * Convert to a human-readable string.
-    *
-    * @returns A formatted string like "1.5".
-    *
-    * @remarks
-    * For display with a token symbol, combine with the token registry:
-    * ```typescript
-    * `${amount.toString()} ${token.symbol}`
-    * ```
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * a.toString() // "1.5"
-    * ```
-    */
-    toString() {
-      return toString4(this);
-    }
-    /**
-    * Convert to a JSON-serializable object.
-    *
-    * @returns An object with raw (as string), decimals, and formatted value.
-    *
-    * @example
-    * ```typescript
-    * const a = Amount.parse('1.5', { decimals: 6 })
-    * a.toJSON()
-    * // { raw: "1500000", decimals: 6, formatted: "1.5" }
-    * ```
-    */
-    toJSON() {
-      return toJSON2(this);
-    }
-  };
   function canonicalizeNativeStablecoinAlias2(token, chain) {
     const nativeStablecoinSymbol = getNativeStablecoinSymbol2(chain);
     if (nativeStablecoinSymbol === null) {
@@ -101046,6 +103001,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       ...formattedFees && {
         fees: formattedFees
       },
+      ...result.route !== void 0 && {
+        route: result.route
+      },
       ...formattedConfig && {
         config: formattedConfig
       },
@@ -101202,6 +103160,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       estimatedOutput: providerEstimate.estimatedOutput,
       ...providerEstimate.fees !== void 0 && {
         fees: providerEstimate.fees
+      },
+      ...providerEstimate.route !== void 0 && {
+        route: providerEstimate.route
       }
     };
   }
@@ -101496,7 +103457,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
   }
-  function getSupportedChains$4(context) {
+  function getSupportedChains$5(context) {
     const swapChains = new Set(Object.values(SwapChain2));
     const allChains = context.providers.flatMap((p) => p.supportedChains ?? []).filter((chain) => chain !== void 0 && swapChains.has(chain.chain));
     return Array.from(new Map(allChains.map((chain) => [
@@ -101552,11 +103513,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       customFeePolicy: void 0
     };
   }
-  var getDefaultProviders$2 = () => [
+  var getDefaultProviders$3 = () => [
     new StablecoinServiceSwapProvider2()
   ];
   function createSwapKitContext2(config = {}) {
-    const defaultProviders = getDefaultProviders$2();
+    const defaultProviders = getDefaultProviders$3();
     const providers = [
       ...defaultProviders,
       ...config.providers ?? []
@@ -101575,7 +103536,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     SWAP: "swap_swap",
     ESTIMATE: "swap_estimate"
   };
-  var SDK_NAME$2 = resolveKitSdkName2(pkg$3.name);
+  var SDK_NAME$3 = resolveKitSdkName2(pkg$4.name);
   var SwapKit2 = class {
     context;
     /** Whether error telemetry is disabled. */
@@ -101639,13 +103600,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       this.context = createSwapKitContext2(config);
       this.disableErrorReporting = config.disableErrorReporting === true;
       this.telemetryConfig = {
-        sdkName: SDK_NAME$2,
-        sdkVersion: pkg$3.version,
+        sdkName: SDK_NAME$3,
+        sdkVersion: pkg$4.version,
         disabled: this.disableErrorReporting
       };
       this.analyticsTelemetryConfig = {
-        sdkName: SDK_NAME$2,
-        sdkVersion: pkg$3.version,
+        sdkName: SDK_NAME$3,
+        sdkVersion: pkg$4.version,
         disabled: config.disableAnalytics === true
       };
     }
@@ -102011,7 +103972,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     getSupportedChains() {
-      return getSupportedChains$4(this.context);
+      return getSupportedChains$5(this.context);
     }
     /**
     * Set a custom fee policy for all swap operations.
@@ -102126,13 +104087,14 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       this.context = removeCustomFeePolicy2(this.context);
     }
   };
-  registerKit2(`${pkg$3.name}/${pkg$3.version}`);
+  registerKit2(`${pkg$4.name}/${pkg$4.version}`);
   var createContext = (params = {}) => {
     return {
       ...params,
       actions: {
         bridge: {},
         earn: {},
+        borrow: {},
         ...params.actions
       }
     };
@@ -102232,11 +104194,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return kit2;
   };
-  var name$2 = "@circle-fin/earn-kit";
-  var version$2 = "1.7.0";
-  var pkg$2 = {
-    name: name$2,
-    version: version$2
+  var name$3 = "@circle-fin/earn-kit";
+  var version$3 = "1.9.0";
+  var pkg$3 = {
+    name: name$3,
+    version: version$3
   };
   var EARN_BRIDGE_ERC3009_TOKEN_SYMBOLS = [
     "USDC"
@@ -102290,7 +104252,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   };
   var EARN_BRIDGE_MAX_VALIDITY_SECONDS = 86400n;
   var VAULT_SHARE_SYMBOL = "shares";
-  var DEFAULT_CONFIG2 = {
+  var DEFAULT_CONFIG$12 = {
     timeout: 3e4,
     maxRetries: 3,
     retryDelay: 200,
@@ -102330,61 +104292,21 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return API_TO_CHAIN[chain];
   }
-  async function resolveAdapterContext(from16) {
+  async function resolveAdapterContext$1(from16) {
     const chainDef = resolveChainIdentifier2(from16.chain);
     const apiChain = toApiChain(chainDef.chain);
     if (apiChain === void 0) {
       throw createInvalidChainError2(chainDef.chain, "Chain is not supported by the Earn Service provider");
     }
-    const hasAddress = "address" in from16 && typeof from16.address === "string" && from16.address.length > 0;
-    const address = hasAddress ? from16.address : await from16.adapter.getAddress(chainDef);
+    const address = await resolveAdapterAddress(from16, chainDef);
     return {
       address,
       chain: apiChain,
       chainDefinition: chainDef
     };
   }
-  function assertHexAddress(field, value, message = `${field} must be a 0x-prefixed 20-byte hex address`) {
-    const result = evmAddressSchema$1.safeParse(value);
-    if (!result.success) {
-      throw createValidationFailedError$12(field, value, message);
-    }
-    return result.data;
-  }
-  function requireAdapterContract(chain) {
-    const adapterContractAddress = chain.kitContracts?.adapter;
-    if (adapterContractAddress === void 0) {
-      throw createValidationFailedError$12("chain.kitContracts.adapter", adapterContractAddress, `Adapter contract not configured for chain ${chain.name}. Earn operations require an adapter contract.`);
-    }
-    return assertHexAddress("chain.kitContracts.adapter", adapterContractAddress, `Adapter contract for chain ${chain.name} must be a 0x-prefixed 20-byte hex address.`);
-  }
-  var GAS_SAFETY_MULTIPLIER_NUMERATOR = 13n;
-  var GAS_SAFETY_MULTIPLIER_DENOMINATOR = 10n;
-  function applyEarnGasSafetyBuffer(gas) {
-    if (gas <= 0n) {
-      return 0n;
-    }
-    return (gas * GAS_SAFETY_MULTIPLIER_NUMERATOR + GAS_SAFETY_MULTIPLIER_DENOMINATOR - 1n) / GAS_SAFETY_MULTIPLIER_DENOMINATOR;
-  }
-  function bufferEstimatedGas(estimate3) {
-    const gas = applyEarnGasSafetyBuffer(estimate3.gas);
-    return {
-      ...estimate3,
-      gas,
-      fee: (gas * estimate3.gasPrice).toString()
-    };
-  }
-  async function estimateBufferedGasLimit(prepared) {
-    try {
-      const estimate3 = await prepared.estimate();
-      const bufferedEstimate = bufferEstimatedGas(estimate3);
-      const estimatedGas = Number(bufferedEstimate.gas);
-      if (Number.isFinite(estimatedGas) && estimatedGas > 0) {
-        return estimatedGas;
-      }
-    } catch {
-    }
-    return void 0;
+  function toEarnChainIdentifier(chain) {
+    return chain;
   }
   var WARM_SLOT_RESIDUAL = 1n;
   async function prepareApprovalAction(params) {
@@ -102476,6 +104398,72 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         effectiveGasPrice: approvalReceipt.effectiveGasPrice
       }
     };
+  }
+  var DEFAULT_GAS_RESERVE = 50000n;
+  var STABLECOIN_ERC20_DECIMALS = 6;
+  function computeGasReserve(gasFees, nativeDecimals, tokenDecimals) {
+    if (gasFees === void 0 || gasFees.length === 0) {
+      return DEFAULT_GAS_RESERVE;
+    }
+    let totalNative = 0n;
+    let hasNullEntry = false;
+    for (const entry of gasFees) {
+      if (entry.fees === null) {
+        hasNullEntry = true;
+      } else {
+        totalNative += BigInt(entry.fees.fee);
+      }
+    }
+    const decimalDiff = nativeDecimals - tokenDecimals;
+    const scale = decimalDiff > 0 ? 10n ** BigInt(decimalDiff) : 1n;
+    let knownToken;
+    if (totalNative === 0n) {
+      knownToken = 0n;
+    } else if (decimalDiff > 0) {
+      knownToken = (totalNative + scale - 1n) / scale;
+    } else {
+      knownToken = totalNative * 10n ** BigInt(-decimalDiff);
+    }
+    if (hasNullEntry) {
+      return knownToken > DEFAULT_GAS_RESERVE ? knownToken : DEFAULT_GAS_RESERVE;
+    }
+    return knownToken > 0n ? knownToken : DEFAULT_GAS_RESERVE;
+  }
+  function buildSymbolAddressMap(chain) {
+    const map = /* @__PURE__ */ new Map();
+    if (chain.usdcAddress != null) {
+      map.set("USDC", chain.usdcAddress.toLowerCase());
+    }
+    if (chain.eurcAddress != null) {
+      map.set("EURC", chain.eurcAddress.toLowerCase());
+    }
+    return map;
+  }
+  async function checkGasReserveForDeposit(params) {
+    const { adapter, chain, address, depositTokenAddress, depositAmountRaw, gasFees } = params;
+    const nativeSymbol = chain.nativeCurrency.symbol.toUpperCase();
+    const symbolAddressMap = buildSymbolAddressMap(chain);
+    const nativeTokenAddress = symbolAddressMap.get(nativeSymbol);
+    if (nativeTokenAddress === void 0 || depositTokenAddress.toLowerCase() !== nativeTokenAddress) {
+      return;
+    }
+    const rawBalance = await executeAdapterReadAction2(adapter, "token.balanceOf", {
+      tokenAddress: depositTokenAddress,
+      walletAddress: address
+    }, {
+      chain,
+      address
+    });
+    const balance = BigInt(String(rawBalance));
+    const gasReserve = computeGasReserve(gasFees, chain.nativeCurrency.decimals, STABLECOIN_ERC20_DECIMALS);
+    const required = depositAmountRaw + gasReserve;
+    if (balance < required) {
+      throw new KitError2({
+        ...BalanceError2.INSUFFICIENT_TOKEN,
+        recoverability: "FATAL",
+        message: `Insufficient ${chain.nativeCurrency.symbol} balance to cover deposit and gas. Balance: ${balance.toString()}, required: ${required.toString()} (deposit: ${depositAmountRaw.toString()} + gas reserve: ${gasReserve.toString()})`
+      });
+    }
   }
   function isSameAddress(actual, expected) {
     return actual.toLowerCase() === expected.toLowerCase();
@@ -102920,45 +104908,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function buildBatchedEarnExecuteDescriptor(input) {
     return createEarnExecuteDescriptor(input, assertBatchedEarnExecuteCall);
   }
-  async function executeEarnAction(params) {
-    const { adapter, chain, address, actionKey, actionParams, action, executionParams, revertMessage } = params;
-    const authorization = buildEarnExecuteDescriptor({
-      action,
-      // The provider validates the chain is Earn-supported in
-      // `resolveAdapterContext` before reaching execute, so the concrete chain
-      // identifier is a valid `EarnChainIdentifier`. It is carried through to the
-      // decoded preview's display `chain` field only.
-      chain: chain.chain,
-      executionParams
-    });
-    const prepared = await adapter.prepareAction(actionKey, actionParams, {
-      chain,
-      address
-    }, {
-      authorization
-    });
-    const gasLimitOverride = await estimateBufferedGasLimit(prepared);
-    const txHash = prepared.type === "evm" && gasLimitOverride !== void 0 ? await prepared.execute({
-      gasLimit: gasLimitOverride
-    }) : await prepared.execute();
-    const explorerUrl = buildExplorerUrl2(chain, txHash);
-    const receipt = await adapter.waitForTransaction(txHash, {
-      confirmations: 1
-    }, chain);
-    if (receipt.status === "reverted") {
-      throw createTransactionRevertedError2(chain.name, revertMessage, void 0, txHash, explorerUrl);
-    }
-    return {
-      txHash,
-      explorerUrl,
-      ...receipt.gasUsed !== void 0 && {
-        gasUsed: receipt.gasUsed
-      },
-      ...receipt.effectiveGasPrice !== void 0 && {
-        effectiveGasPrice: receipt.effectiveGasPrice
-      }
-    };
-  }
   async function shouldUseBatchedEarnAction(params) {
     const { adapter, chain, address, batchTransactions } = params;
     if (batchTransactions === false) {
@@ -103105,7 +105054,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     ];
     const authorization = buildBatchedEarnExecuteDescriptor({
       action: actionKey === "earn.deposit" ? "deposit" : "withdraw",
-      chain: evmChain.chain,
+      chain: toEarnChainIdentifier(evmChain.chain),
       executionParams: executeParams
     });
     const result = await batchAdapter.batchExecute(calls, evmChain, {
@@ -103122,12 +105071,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return throwBatchFailure(result, executeReceipt, evmChain, actionKey, revertMessage);
   }
-  function validateExecutionDeadline(executionParams) {
-    const deadline = BigInt(executionParams.deadline);
-    const now = BigInt(Math.floor(Date.now() / 1e3));
-    if (deadline <= now) {
-      throw createValidationFailedError$12("executionParams.deadline", executionParams.deadline, "Earn execution deadline has expired");
-    }
+  function validateExecutionDeadline$1(executionParams) {
+    assertExecutionDeadlineNotExpired(executionParams.deadline, {
+      field: "executionParams.deadline",
+      message: "Earn execution deadline has expired"
+    });
   }
   var EARN_ACTION_BASE = {
     protocol: "earn",
@@ -103239,6 +105187,143 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function isCrossChainDepositStatusStep(step) {
     return step.name === "status";
   }
+  var SHARES_LOCKED_SELECTOR = "0xf64059db";
+  var VEDA_REVERT_REASONS = {
+    "0xe0f9e71d": "The vault is paused",
+    "0x3b3132f6": "The vault exchange rate is paused",
+    "0xc8bfa33e": "The vault does not support this asset for this operation",
+    "0x4b37cd2a": "The asset amount must be greater than zero",
+    "0x3a8c54c4": "The share amount must be greater than zero",
+    "0x4bd956a8": "The deposit would mint fewer vault shares than the signed minimum",
+    "0x9883d840": "The withdrawal would pay out fewer assets than the signed minimum",
+    "0xed32f3bb": "The deposit would exceed the vault deposit cap",
+    "0x1b8851f0": "The permit failed and the token allowance is too low",
+    "0x2821264f": "The vault denied the share transfer"
+  };
+  var SELECTOR_IN_TEXT = /(?<![0-9a-fx])0x[0-9a-f]{8}(?![0-9a-f])/gi;
+  function toRecord(value) {
+    return typeof value === "object" && value !== null ? value : {};
+  }
+  function isVedaSelector(selector) {
+    return selector === SHARES_LOCKED_SELECTOR || selector in VEDA_REVERT_REASONS;
+  }
+  function selectorFromData(trace) {
+    const data = typeof trace["revertData"] === "string" ? trace["revertData"] : extractRevertData(trace["rawError"]);
+    const selector = data?.slice(0, 10).toLowerCase();
+    return selector !== void 0 && isVedaSelector(selector) ? selector : void 0;
+  }
+  function selectorFromText(texts) {
+    for (const text of texts) {
+      if (typeof text !== "string") {
+        continue;
+      }
+      if (/SharesAreLocked/i.test(text)) {
+        return SHARES_LOCKED_SELECTOR;
+      }
+      const selector = text.match(SELECTOR_IN_TEXT)?.map((match) => match.toLowerCase()).find(isVedaSelector);
+      if (selector !== void 0) {
+        return selector;
+      }
+    }
+    return void 0;
+  }
+  function readVedaRevert(error) {
+    const trace = toRecord(error.cause?.trace);
+    const selector = selectorFromData(trace) ?? selectorFromText([
+      error.message,
+      trace["reason"]
+    ]);
+    if (selector === void 0) {
+      return void 0;
+    }
+    const chain = trace["chain"];
+    return {
+      selector,
+      chain: typeof chain === "string" ? chain : void 0
+    };
+  }
+  function nestedErrors(error) {
+    const trace = toRecord(error.cause?.trace);
+    return [
+      trace["cause"],
+      trace["error"]
+    ].filter(isKitError2);
+  }
+  function findVedaRevert(error) {
+    const seen = /* @__PURE__ */ new Set();
+    const pending = [
+      error
+    ];
+    let current = pending.pop();
+    while (current !== void 0) {
+      if (!seen.has(current)) {
+        seen.add(current);
+        const revert = readVedaRevert(current);
+        if (revert !== void 0) {
+          return {
+            ...revert,
+            nested: current !== error
+          };
+        }
+        pending.push(...nestedErrors(current));
+      }
+      current = pending.pop();
+    }
+    return void 0;
+  }
+  function mapVedaRevert(error) {
+    if (error.name === NetworkError2.TIMEOUT.name) {
+      return error;
+    }
+    const revert = findVedaRevert(error);
+    if (revert === void 0) {
+      return error;
+    }
+    const trace = toRecord(error.cause?.trace);
+    const chain = typeof trace["chain"] === "string" ? trace["chain"] : revert.chain ?? "EVM";
+    if (revert.selector === SHARES_LOCKED_SELECTOR) {
+      return new KitError2({
+        ...EarnError.SHARES_LOCKED,
+        // The lock can last hours, so an immediate retry fails the same way.
+        recoverability: "FATAL",
+        message: `Vault shares on ${chain} are still locked after a recent deposit. Wait for the vault's share lock period to end, then try again.`,
+        cause: {
+          trace: {
+            ...trace,
+            selector: revert.selector,
+            chain
+          }
+        }
+      });
+    }
+    const readable = VEDA_REVERT_REASONS[revert.selector];
+    if (readable === void 0) {
+      return error;
+    }
+    const reason = `${readable} (${revert.selector})`;
+    if (error.name === OnchainError2.SIMULATION_FAILED.name) {
+      return createSimulationFailedError2(chain, reason, trace);
+    }
+    if (error.name === OnchainError2.TRANSACTION_REVERTED.name) {
+      return createTransactionRevertedError2(chain, reason, trace);
+    }
+    if (!revert.nested) {
+      return error;
+    }
+    return new KitError2({
+      code: error.code,
+      name: error.name,
+      type: error.type,
+      recoverability: error.recoverability,
+      message: `${error.message} Reason: ${reason}.`,
+      cause: {
+        trace: {
+          ...trace,
+          reason
+        }
+      }
+    });
+  }
   var EARN_OPERATIONS = /* @__PURE__ */ new Set([
     "deposit",
     "withdraw",
@@ -103261,7 +105346,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return true;
   }
   function augmentEarnError(error, context) {
-    const base3 = isKitError2(error) ? error : new KitError2({
+    const base3 = isKitError2(error) ? mapVedaRevert(error) : new KitError2({
       ...ServiceError2.INTERNAL_ERROR,
       recoverability: "RETRYABLE",
       message: getErrorMessage2(error)
@@ -103283,12 +105368,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       writable: true,
       configurable: true
     });
+    let message = base3.message;
+    if (base3.name === "ONCHAIN_TRANSACTION_REVERTED" && typeof existingTrace["txHash"] === "string" && existingTrace["txHash"] !== "") {
+      message = `${message} (txHash: ${existingTrace["txHash"]})`;
+    }
     return new KitError2({
       code: base3.code,
       name: base3.name,
       type: base3.type,
       recoverability,
-      message: base3.message,
+      message,
       cause: {
         trace
       }
@@ -103305,7 +105394,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return hasEarnServiceParamsShape(operation, candidate["params"]);
   }
-  function isBigIntLike(value) {
+  function isBigIntLike2(value) {
     try {
       BigInt(value);
       return true;
@@ -103313,7 +105402,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       return false;
     }
   }
-  function isNonNegativeBigIntLike(value) {
+  function isNonNegativeBigIntLike$12(value) {
     try {
       return BigInt(value) >= 0n;
     } catch {
@@ -103324,23 +105413,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var hexAddressSchema = evmAddressSchema$1;
   var BYTES32_HEX_LENGTH2 = 66;
   var bridgeFeeTokenSchema = hexAddressSchema;
-  var uint256LikeSchema = external_exports.union([
+  var uint256LikeSchema$12 = external_exports.union([
     external_exports.string(),
     external_exports.bigint()
-  ]).refine(isNonNegativeBigIntLike, {
+  ]).refine(isNonNegativeBigIntLike$12, {
     message: "value must be a non-negative bigint-compatible string or bigint"
   });
-  var amountJsonSchema = external_exports.object({
-    raw: external_exports.string().refine(isBigIntLike, {
+  var amountJsonSchema$1 = external_exports.object({
+    raw: external_exports.string().refine(isBigIntLike2, {
       message: "raw must be a bigint-compatible string"
     }),
     decimals: external_exports.number().int().nonnegative()
-  });
-  var hexBytesSchema2 = external_exports.union([
-    hexStringSchema2,
-    external_exports.literal("0x")
-  ]).refine((value) => value.length % 2 === 0, {
-    message: "value must be a 0x-prefixed even-length hex string"
   });
   var bytes32HexSchema = hexStringSchema2.refine((value) => value.length === BYTES32_HEX_LENGTH2, {
     message: "value must be a 0x-prefixed 32-byte hex string"
@@ -103356,10 +105439,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assetAddress: external_exports.string(),
     lltv: external_exports.number(),
     supplyUsd: external_exports.number(),
-    // Optional during the expand/contract window (a backend that predates the
-    // field omits the key), mirroring the `.optional()` facets on the base
-    // schema; `null` when the product exposes no per-market allocation (V2).
-    allocationPct: external_exports.number().nullable().optional()
+    // `null` when the product exposes no per-market allocation (V2).
+    allocationPct: external_exports.number().nullable()
   });
   var vaultWarningSchema = external_exports.object({
     type: external_exports.string(),
@@ -103393,9 +105474,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     management: external_exports.number().nullable()
   });
   var liquidityProfileSchema = external_exports.object({
-    totalDeposits: amountJsonSchema,
-    available: amountJsonSchema,
-    totalSupply: amountJsonSchema,
+    totalDeposits: amountJsonSchema$1,
+    available: amountJsonSchema$1,
+    totalSupply: amountJsonSchema$1,
     status: external_exports.enum([
       "active",
       "low_liquidity"
@@ -103418,8 +105499,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     vaultFee: external_exports.number(),
     rewards: external_exports.array(vaultRewardSchema),
     collateral: external_exports.array(collateralSchema),
-    totalDeposits: amountJsonSchema,
-    liquidity: amountJsonSchema,
+    totalDeposits: amountJsonSchema$1,
+    liquidity: amountJsonSchema$1,
     status: external_exports.enum([
       "active",
       "low_liquidity"
@@ -103429,13 +105510,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     earnKitWarnings: external_exports.array(external_exports.string()).optional()
   });
   var earnBaseSchema = vaultInfoResponseSchema.extend({
-    address: external_exports.string().optional(),
-    asOf: external_exports.string().optional(),
-    manager: managerSchema.nullable().optional(),
-    apyProfile: apyProfileSchema.optional(),
-    fee: feeInfoSchema.optional(),
-    liquidityProfile: liquidityProfileSchema.optional(),
-    riskSignals: riskSignalsSchema.optional()
+    address: external_exports.string(),
+    asOf: external_exports.string(),
+    manager: managerSchema.nullable(),
+    apyProfile: apyProfileSchema,
+    fee: feeInfoSchema,
+    liquidityProfile: liquidityProfileSchema,
+    riskSignals: riskSignalsSchema
   });
   var vaultOpportunitySchema = earnBaseSchema.extend({
     productType: external_exports.literal("vault"),
@@ -103474,13 +105555,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var accruedRewardSchema = external_exports.object({
     token: external_exports.string(),
     symbol: external_exports.string(),
-    amount: amountJsonSchema
+    amount: amountJsonSchema$1
   });
   var positionPnlSchema = external_exports.discriminatedUnion("status", [
     external_exports.object({
       status: external_exports.literal("available"),
-      principalDeposited: amountJsonSchema,
-      totalYieldEarned: amountJsonSchema
+      principalDeposited: amountJsonSchema$1,
+      totalYieldEarned: amountJsonSchema$1
     }),
     external_exports.object({
       status: external_exports.literal("pending")
@@ -103496,9 +105577,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     vaultAddress: external_exports.string(),
     vaultName: external_exports.string(),
     asset: external_exports.string(),
-    currentBalance: amountJsonSchema,
+    currentBalance: amountJsonSchema$1,
     currentApy: external_exports.number(),
-    shares: amountJsonSchema,
+    shares: amountJsonSchema$1,
     pnl: positionPnlSchema,
     accruedRewards: external_exports.array(accruedRewardSchema).optional(),
     rewardsUnavailableReason: external_exports.string().optional()
@@ -103508,40 +105589,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   });
   var earnInstructionSchema = external_exports.object({
     tokenIn: hexAddressSchema,
-    amountToApprove: uint256LikeSchema
+    amountToApprove: uint256LikeSchema$12
   }).passthrough();
   var earnExecutionParamsSchema = external_exports.object({
     instructions: external_exports.tuple([
       earnInstructionSchema
     ]).rest(earnInstructionSchema),
-    deadline: uint256LikeSchema
+    deadline: uint256LikeSchema$12
   }).passthrough();
   var depositExecutionParamsSchema = earnExecutionParamsSchema;
   var withdrawExecutionParamsSchema = earnExecutionParamsSchema;
-  var claimRewardsInstructionSchema = external_exports.object({
-    target: hexAddressSchema,
-    data: hexBytesSchema2,
-    value: uint256LikeSchema,
-    tokenIn: hexAddressSchema,
-    amountToApprove: uint256LikeSchema,
-    tokenOut: hexAddressSchema,
-    minTokenOut: uint256LikeSchema
-  }).passthrough();
-  var claimRewardsTokenSchema = external_exports.object({
-    token: hexAddressSchema,
-    beneficiary: hexAddressSchema
-  }).passthrough();
-  var claimRewardsExecutionParamsSchema = external_exports.object({
-    instructions: external_exports.tuple([
-      claimRewardsInstructionSchema
-    ]).rest(claimRewardsInstructionSchema),
-    tokens: external_exports.tuple([
-      claimRewardsTokenSchema
-    ]).rest(claimRewardsTokenSchema),
-    execId: uint256LikeSchema,
-    deadline: uint256LikeSchema,
-    metadata: hexBytesSchema2
-  }).passthrough();
   var depositPayloadSchema = external_exports.object({
     execId: bridgeDepositExecIdSchema,
     executionParams: depositExecutionParamsSchema,
@@ -103577,9 +105634,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     message: external_exports.object({
       from: hexAddressSchema,
       to: hexAddressSchema,
-      value: uint256LikeSchema,
-      validAfter: uint256LikeSchema,
-      validBefore: uint256LikeSchema,
+      value: uint256LikeSchema$12,
+      validAfter: uint256LikeSchema$12,
+      validBefore: uint256LikeSchema$12,
       nonce: bytes32HexSchema
     }).passthrough()
   }).passthrough();
@@ -103587,7 +105644,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     feeToken: bridgeFeeTokenSchema,
     items: external_exports.array(external_exports.object({
       type: external_exports.string(),
-      amount: uint256LikeSchema
+      amount: uint256LikeSchema$12
     }).passthrough())
   }).passthrough();
   var bridgeDepositPreparedBundleSchema = external_exports.object({
@@ -103599,7 +105656,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var bridgeDepositPrepareReviewSchema = external_exports.object({
     sourceChain: external_exports.string(),
     destinationChain: external_exports.string(),
-    amount: amountJsonSchema,
+    amount: amountJsonSchema$1,
     vaultAddress: hexAddressSchema
   }).passthrough();
   var bridgeQuoteExpirySchema = external_exports.discriminatedUnion("mode", [
@@ -103661,32 +105718,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var transactionReportResponseSchema = external_exports.object({
     data: transactionReportPayloadSchema
   });
-  var claimedAmountSchema = external_exports.object({
-    token: hexAddressSchema,
-    symbol: external_exports.string(),
-    amount: amountJsonSchema
-  });
-  var claimRewardsPayloadSchema = external_exports.object({
-    rewards: external_exports.array(claimedAmountSchema),
-    executionParams: claimRewardsExecutionParamsSchema.optional(),
-    signature: hexSignatureSchema.optional()
-  }).refine((data) => {
-    const signedFieldCount = (data.executionParams === void 0 ? 0 : 1) + (data.signature === void 0 ? 0 : 1);
-    if (data.rewards.length > 0) {
-      return signedFieldCount === 2;
-    }
-    return signedFieldCount === 0;
-  }, {
-    message: "claim rewards response must include executionParams and signature only when rewards are claimable"
-  });
-  var claimRewardsResponseSchema = external_exports.object({
-    data: claimRewardsPayloadSchema
-  });
   var feeSchema = external_exports.object({
     type: external_exports.string().optional(),
     status: external_exports.string().optional(),
     token: external_exports.string(),
-    amount: amountJsonSchema
+    amount: amountJsonSchema$1
   });
   var quoteGasFeeSchema = external_exports.object({
     name: external_exports.string().optional(),
@@ -103697,8 +105733,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     vaultAddress: external_exports.string(),
     vaultName: external_exports.string(),
     asset: external_exports.string(),
-    depositAmount: amountJsonSchema,
-    expectedShares: amountJsonSchema,
+    depositAmount: amountJsonSchema$1,
+    expectedShares: amountJsonSchema$1,
     sharePrice: external_exports.string(),
     currentApy: external_exports.number(),
     fees: external_exports.array(feeSchema).optional(),
@@ -103711,27 +105747,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     vaultAddress: external_exports.string(),
     vaultName: external_exports.string(),
     asset: external_exports.string(),
-    withdrawAmount: amountJsonSchema,
-    sharesToRedeem: amountJsonSchema,
+    withdrawAmount: amountJsonSchema$1,
+    sharesToRedeem: amountJsonSchema$1,
     sharePrice: external_exports.string(),
-    maxWithdrawable: amountJsonSchema,
+    maxWithdrawable: amountJsonSchema$1,
     fees: external_exports.array(feeSchema),
     gasFees: external_exports.array(quoteGasFeeSchema).optional(),
     warnings: external_exports.array(external_exports.string()).optional()
   });
   var withdrawalQuoteResponseSchema = external_exports.object({
     data: withdrawalQuotePayloadSchema
-  });
-  var claimRewardsQuoteRewardSchema = external_exports.object({
-    token: external_exports.string(),
-    symbol: external_exports.string(),
-    amount: amountJsonSchema
-  });
-  var claimRewardsQuotePayloadSchema = external_exports.object({
-    rewards: external_exports.array(claimRewardsQuoteRewardSchema)
-  });
-  var claimRewardsQuoteResponseSchema = external_exports.object({
-    data: claimRewardsQuotePayloadSchema
   });
   var vaultErrorSchema = external_exports.object({
     chain: external_exports.string(),
@@ -103786,23 +105811,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function isTransactionReportResponse(value) {
     return transactionReportResponseSchema.safeParse(value).success;
   }
-  function isClaimRewardsResponse(value) {
-    return claimRewardsResponseSchema.safeParse(value).success;
-  }
   function isDepositQuoteResponse(value) {
     return depositQuoteResponseSchema.safeParse(value).success;
   }
   function isWithdrawalQuoteResponse(value) {
     return withdrawalQuoteResponseSchema.safeParse(value).success;
   }
-  function isClaimRewardsQuoteResponse(value) {
-    return claimRewardsQuoteResponseSchema.safeParse(value).success;
-  }
-  var name$1 = "@circle-fin/provider-earn-service";
-  var version$1 = "1.6.0";
-  var pkg$1 = {
-    name: name$1,
-    version: version$1
+  var name$2 = "@circle-fin/provider-earn-service";
+  var version$2 = "1.7.2";
+  var pkg$2 = {
+    name: name$2,
+    version: version$2
   };
   var SDK_VERSION_HEADER = "X-EarnKit-SDK-Version";
   function formatSdkVersion(kitId, providerName, providerVersion) {
@@ -103814,9 +105833,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   function resolveSdkVersionHeader() {
-    return formatSdkVersion(createRequestContext2().kit, pkg$1.name, pkg$1.version);
+    return formatSdkVersion(createRequestContext2().kit, pkg$2.name, pkg$2.version);
   }
-  function buildConfig(serviceConfig) {
+  function buildConfig$1(serviceConfig) {
     const apiKey = resolveApiKey2(serviceConfig ?? {});
     if (apiKey !== void 0 && isBrowserEnvironment2()) {
       throw createValidationFailedError$12("apiKey", "[redacted]", "apiKey must not be provided in a browser environment \u2014 it is a server-only secret. Run EarnKit operations that use an API key on your server, or omit apiKey (and the legacy kitKey) to use the permissionless (keyless) client path");
@@ -103828,9 +105847,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (apiKey === void 0) {
       return {
         pollingConfig: {
-          ...DEFAULT_CONFIG2,
+          ...DEFAULT_CONFIG$12,
           headers: {
-            ...DEFAULT_CONFIG2.headers,
+            ...DEFAULT_CONFIG$12.headers,
             ...sdkVersionHeader
           }
         },
@@ -103846,9 +105865,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return {
       pollingConfig: {
-        ...DEFAULT_CONFIG2,
+        ...DEFAULT_CONFIG$12,
         headers: {
-          ...DEFAULT_CONFIG2.headers,
+          ...DEFAULT_CONFIG$12.headers,
           ...sdkVersionHeader,
           Authorization: `Bearer ${apiKey}`
         }
@@ -103880,13 +105899,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       chain,
       totalDeposits: Amount2.fromJSON(totalDeposits),
       liquidity: Amount2.fromJSON(liquidity),
-      ...liquidityProfile !== void 0 && {
-        liquidityProfile: {
-          ...liquidityProfile,
-          totalDeposits: Amount2.fromJSON(liquidityProfile.totalDeposits),
-          available: Amount2.fromJSON(liquidityProfile.available),
-          totalSupply: Amount2.fromJSON(liquidityProfile.totalSupply)
-        }
+      liquidityProfile: {
+        ...liquidityProfile,
+        totalDeposits: Amount2.fromJSON(liquidityProfile.totalDeposits),
+        available: Amount2.fromJSON(liquidityProfile.available),
+        totalSupply: Amount2.fromJSON(liquidityProfile.totalSupply)
       }
     };
   }
@@ -103901,7 +105918,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   async function fetchVaults(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/vaults`, baseUrl);
     for (const vault of params.vaults) {
       url.searchParams.append("chain", resolveEarnApiChain(vault.chain));
@@ -103920,7 +105937,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   async function fetchExploreVaults(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/vaults/explore`, baseUrl);
     url.searchParams.set("chain", resolveEarnApiChain(params.chain));
     if (params.protocol !== void 0) {
@@ -104019,7 +106036,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   async function fetchPosition(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/position/${encodeURIComponent(params.address)}`, baseUrl);
     url.searchParams.set("chain", params.chain);
     url.searchParams.set("vaultAddress", params.vaultAddress);
@@ -104033,7 +106050,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   async function fetchDeposit(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/deposit`, baseUrl);
     const requestBody = {
       vaultAddress: params.vaultAddress,
@@ -104051,7 +106068,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   async function fetchBridgeDepositPrepare(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/bridge/deposit/prepare`, baseUrl);
     const requestBody = {
       execId: params.execId,
@@ -104088,7 +106105,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   async function fetchBridgeDepositSubmit(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/bridge/deposit/submit`, baseUrl);
     const requestBody = {
       execId: params.execId,
@@ -104108,7 +106125,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (!parsedExecId.success) {
       throw createValidationFailedError$12("execId", params.execId, "execId must be a valid UUID");
     }
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/bridge/deposit/status/${encodeURIComponent(parsedExecId.data)}`, baseUrl);
     try {
       const response = await pollApiGet2(url.toString(), isBridgeDepositStatusResponse, pollingConfig);
@@ -104263,7 +106280,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   }
   async function fetchWithdraw(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/withdraw`, baseUrl);
     const requestBody = {
       vaultAddress: params.vaultAddress,
@@ -104287,8 +106304,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       amount: Amount2.fromJSON(reward.amount)
     };
   }
-  async function fetchClaimRewards(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+  async function fetchClaimRewards$1(params) {
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/claimRewards`, baseUrl);
     const requestBody = {
       address: params.address,
@@ -104313,7 +106330,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       });
     }
   }
-  function toQuoteGasFees(gasFees, chain) {
+  function toQuoteGasFees$1(gasFees, chain) {
     if (gasFees === void 0) {
       return [];
     }
@@ -104340,9 +106357,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         return {
           ...base3,
           fees: {
-            gas: toBigInt3("gas", gas),
-            gasPrice: toBigInt3("gasPrice", gasPrice),
-            fee: toBigInt3("fee", fee).toString()
+            gas: toBigInt$1("gas", gas),
+            gasPrice: toBigInt$1("gasPrice", gasPrice),
+            fee: toBigInt$1("fee", fee).toString()
           }
         };
       } catch (error) {
@@ -104354,7 +106371,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
   }
-  function toBigInt3(field, value) {
+  function toBigInt$1(field, value) {
     if (typeof value !== "string" || value.trim() === "") {
       throw new TypeError(`gas fee field "${field}" must be an integer string`);
     }
@@ -104395,11 +106412,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       // The Earn Service estimates gas server-side; the chain fills token/blockchain.
       // Cross-chain quotes resolve no local chain definition, so gasFees stays
       // empty there (unchanged behavior).
-      gasFees: chain === void 0 ? [] : toQuoteGasFees(data.gasFees, chain)
+      gasFees: chain === void 0 ? [] : toQuoteGasFees$1(data.gasFees, chain)
     };
   }
   async function fetchDepositQuote(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/deposit/quote`, baseUrl);
     const requestBody = {
       vaultAddress: params.vaultAddress,
@@ -104453,7 +106470,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
           status
         }
       })),
-      gasFees: chain === void 0 ? [] : toQuoteGasFees(data.gasFees, chain),
+      gasFees: chain === void 0 ? [] : toQuoteGasFees$1(data.gasFees, chain),
       // Wire format uses `warnings`, but the SDK surface uses
       // `earnKitWarnings` to match the precedent set by `VaultInfo` —
       // `warnings` is reserved for the structured `VaultWarning` shape.
@@ -104463,7 +106480,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   async function fetchWithdrawalQuote(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/withdrawal/quote`, baseUrl);
     const requestBody = {
       vaultAddress: params.vaultAddress,
@@ -104480,8 +106497,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       });
     }
   }
-  async function fetchClaimRewardsQuote(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+  async function fetchClaimRewardsQuote$1(params) {
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/claimRewards/quote`, baseUrl);
     const requestBody = {
       vaultAddress: params.vaultAddress,
@@ -104517,7 +106534,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     };
   }
   async function reportEarnTransaction(params) {
-    const { pollingConfig, baseUrl } = buildConfig(params.config);
+    const { pollingConfig, baseUrl } = buildConfig$1(params.config);
     const url = new URL(`${EARN_KIT_API_PREFIX}/transactions/report`, baseUrl);
     const reportConfig = {
       ...pollingConfig,
@@ -104639,7 +106656,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   function transactionReportErrorCode(error) {
     if (isKitError2(error)) {
-      return error.name;
+      return mapVedaRevert(error).name;
     }
     const message = getErrorMessage2(error);
     if (/user (rejected|denied)|rejected by user/i.test(message)) {
@@ -104818,7 +106835,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     /** {@inheritdoc} */
     async getPosition(params) {
       const config = this.resolveConfig(params.config);
-      const { address, chain } = await resolveAdapterContext(params.from);
+      const { address, chain } = await resolveAdapterContext$1(params.from);
       return fetchPosition({
         address,
         chain,
@@ -104917,7 +106934,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
           };
           return await this.crossChainDeposit(ctx, crossChainParams, config, sourceChain, destinationChain);
         }
-        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext(params.from);
+        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext$1(params.from);
         const adapterContractAddress = requireAdapterContract(chain);
         const { adapter } = params.from;
         const vaultAddress = assertHexAddress("vaultAddress", params.vaultAddress, "Vault address must be a 0x-prefixed 20-byte hex address.");
@@ -104928,7 +106945,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
           chain: apiChain,
           config
         }), () => void 0);
-        validateExecutionDeadline(executionParams);
+        validateExecutionDeadline$1(executionParams);
         const transactionReportContext = {
           execId,
           chain: apiChain,
@@ -104975,6 +106992,17 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
             amount: params.amount
           };
         }
+        if (approvalToken !== void 0 && requiredAllowance > 0n && chain.type === "evm" && isEvmAdapterLike(adapter) && !await isContractSigner(adapter, address, chain)) {
+          const sameChainParams = params;
+          await checkGasReserveForDeposit({
+            adapter,
+            chain,
+            address,
+            depositTokenAddress: approvalToken,
+            depositAmountRaw: requiredAllowance,
+            gasFees: sameChainParams.gasFees
+          });
+        }
         if (!options.skipApprove && approvalToken !== void 0 && requiredAllowance > 0n) {
           await this.runPhase(ctx, "approve", "approve", async () => {
             try {
@@ -104997,7 +107025,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         }
         const { txHash, explorerUrl } = await this.runPhase(ctx, "deposit", "execute", async () => {
           try {
-            const result = await executeEarnAction({
+            const result = await executeAdapterAction({
               adapter,
               chain,
               address,
@@ -105007,8 +107035,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
                 tokenInputs,
                 signature
               },
-              action: "deposit",
-              executionParams,
+              authorization: buildEarnExecuteDescriptor({
+                action: "deposit",
+                chain: toEarnChainIdentifier(chain.chain),
+                executionParams
+              }),
               revertMessage: "Earn deposit reverted on-chain"
             });
             reportTransactionSuccess(transactionReportContext, "Deposit", result);
@@ -105117,7 +107148,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       };
       try {
         const config = this.resolveConfig(params.config);
-        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext(params.from);
+        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext$1(params.from);
         const adapterContractAddress = requireAdapterContract(chain);
         const vaultAddress = assertHexAddress("vaultAddress", params.vaultAddress, "Vault address must be a 0x-prefixed 20-byte hex address.");
         const { adapter } = params.from;
@@ -105128,7 +107159,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
           chain: apiChain,
           config
         }), () => void 0);
-        validateExecutionDeadline(executionParams);
+        validateExecutionDeadline$1(executionParams);
         const transactionReportContext = {
           execId,
           chain: apiChain,
@@ -105195,7 +107226,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         }
         const { txHash, explorerUrl } = await this.runPhase(ctx, "withdraw", "execute", async () => {
           try {
-            const result = await executeEarnAction({
+            const result = await executeAdapterAction({
               adapter,
               chain,
               address,
@@ -105205,8 +107236,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
                 tokenInputs,
                 signature
               },
-              action: "withdraw",
-              executionParams,
+              authorization: buildEarnExecuteDescriptor({
+                action: "withdraw",
+                chain: toEarnChainIdentifier(chain.chain),
+                executionParams
+              }),
               revertMessage: "Earn withdraw reverted on-chain"
             });
             reportTransactionSuccess(transactionReportContext, "Withdraw", result);
@@ -105244,9 +107278,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       };
       try {
         const config = this.resolveConfig(params.config);
-        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext(params.from);
+        const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext$1(params.from);
         requireAdapterContract(chain);
-        const { rewards, executionParams, signature } = await this.runPhase(ctx, "claimRewards", "fetchParams", async () => fetchClaimRewards({
+        const { rewards, executionParams, signature } = await this.runPhase(ctx, "claimRewards", "fetchParams", async () => fetchClaimRewards$1({
           address,
           chain: apiChain,
           vaultAddress: params.vaultAddress,
@@ -105275,8 +107309,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
             }
           });
         }
-        validateExecutionDeadline(executionParams);
-        const { txHash, explorerUrl } = await this.runPhase(ctx, "claimRewards", "execute", async () => executeEarnAction({
+        validateExecutionDeadline$1(executionParams);
+        const { txHash, explorerUrl } = await this.runPhase(ctx, "claimRewards", "execute", async () => executeAdapterAction({
           adapter: params.from.adapter,
           chain,
           address,
@@ -105286,8 +107320,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
             tokenInputs: [],
             signature
           },
-          action: "claimRewards",
-          executionParams,
+          authorization: buildEarnExecuteDescriptor({
+            action: "claimRewards",
+            chain: toEarnChainIdentifier(chain.chain),
+            executionParams
+          }),
           revertMessage: "Earn claim rewards reverted on-chain"
         }), ({ txHash: txHash2 }) => txHash2);
         return {
@@ -105368,8 +107405,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         }
         throw createValidationFailedError$12("chain", destinationChain.chain, "chain is only supported for cross-chain Earn deposit quotes; omit chain/address when quoting on the source chain");
       }
-      const { address, chain, chainDefinition } = await resolveAdapterContext(params.from);
-      return fetchDepositQuote({
+      const { address, chain, chainDefinition } = await resolveAdapterContext$1(params.from);
+      const quote = await fetchDepositQuote({
         vaultAddress: params.vaultAddress,
         amount: params.amount,
         address,
@@ -105377,11 +107414,34 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         config,
         chainDefinition
       });
+      if (chainDefinition?.type === "evm" && isEvmAdapterLike(params.from.adapter) && !await isContractSigner(params.from.adapter, address, chainDefinition)) {
+        const symbol = quote.deposit.symbol.toUpperCase();
+        let depositTokenAddress = null;
+        if (symbol === "USDC") {
+          depositTokenAddress = chainDefinition.usdcAddress;
+        } else if (symbol === "EURC") {
+          depositTokenAddress = chainDefinition.eurcAddress;
+        }
+        if (depositTokenAddress != null) {
+          const amountObj = Amount2.parse(params.amount, {
+            decimals: 6
+          });
+          await checkGasReserveForDeposit({
+            adapter: params.from.adapter,
+            chain: chainDefinition,
+            address,
+            depositTokenAddress,
+            depositAmountRaw: amountObj.raw,
+            gasFees: quote.gasFees
+          });
+        }
+      }
+      return quote;
     }
     /** {@inheritdoc} */
     async getWithdrawalQuote(params) {
       const config = this.resolveConfig(params.config);
-      const { address, chain, chainDefinition } = await resolveAdapterContext(params.from);
+      const { address, chain, chainDefinition } = await resolveAdapterContext$1(params.from);
       return fetchWithdrawalQuote({
         vaultAddress: params.vaultAddress,
         amount: params.amount,
@@ -105394,8 +107454,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     /** {@inheritdoc} */
     async getClaimRewardsQuote(params) {
       const config = this.resolveConfig(params.config);
-      const { address, chain } = await resolveAdapterContext(params.from);
-      return fetchClaimRewardsQuote({
+      const { address, chain } = await resolveAdapterContext$1(params.from);
+      return fetchClaimRewardsQuote$1({
         vaultAddress: params.vaultAddress,
         address,
         chain,
@@ -105523,7 +107583,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
   }
-  var getDefaultProviders$1 = () => [
+  var getDefaultProviders$2 = () => [
     new EarnServiceProvider()
   ];
   function createEarnKitContext(config = {}) {
@@ -105539,7 +107599,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (config.disableErrorReporting !== void 0 && typeof config.disableErrorReporting !== "boolean") {
       throw createValidationFailedError$12("config.disableErrorReporting", config.disableErrorReporting, "disableErrorReporting must be a boolean when provided");
     }
-    const defaultProviders = getDefaultProviders$1();
+    const defaultProviders = getDefaultProviders$2();
     const providers = [
       ...config.providers ?? [],
       ...defaultProviders
@@ -105564,28 +107624,18 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     GET_CLAIM_REWARDS_QUOTE: "earn_get_claim_rewards_quote",
     RETRY: "earn_retry"
   };
-  function formatAmount$1(amount) {
-    return formatUnits4(amount.raw.toString(), amount.decimals);
-  }
-  function formatAssetAmount(assetAmount) {
+  function formatAssetAmount$1(assetAmount) {
     const { amount, ...rest } = assetAmount;
     return {
       ...rest,
-      amount: formatAmount$1(amount)
-    };
-  }
-  function formatClaimedAmount(claimedAmount) {
-    const { amount, ...rest } = claimedAmount;
-    return {
-      ...rest,
-      amount: formatAmount$1(amount)
+      amount: formatAmountValue(amount)
     };
   }
   function formatAccruedReward(reward) {
     const { amount, ...rest } = reward;
     return {
       ...rest,
-      amount: formatAmount$1(amount)
+      amount: formatAmountValue(amount)
     };
   }
   function formatPositionPnL(pnl) {
@@ -105594,23 +107644,21 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return {
       ...pnl,
-      principalDeposited: formatAmount$1(pnl.principalDeposited),
-      totalYieldEarned: formatAmount$1(pnl.totalYieldEarned)
+      principalDeposited: formatAmountValue(pnl.principalDeposited),
+      totalYieldEarned: formatAmountValue(pnl.totalYieldEarned)
     };
   }
   function formatVaultInfo(vault) {
     const { totalDeposits, liquidity, liquidityProfile, ...rest } = vault;
     return {
       ...rest,
-      totalDeposits: formatAmount$1(totalDeposits),
-      liquidity: formatAmount$1(liquidity),
-      ...liquidityProfile !== void 0 && {
-        liquidityProfile: {
-          ...liquidityProfile,
-          totalDeposits: formatAmount$1(liquidityProfile.totalDeposits),
-          available: formatAmount$1(liquidityProfile.available),
-          totalSupply: formatAmount$1(liquidityProfile.totalSupply)
-        }
+      totalDeposits: formatAmountValue(totalDeposits),
+      liquidity: formatAmountValue(liquidity),
+      liquidityProfile: {
+        ...liquidityProfile,
+        totalDeposits: formatAmountValue(liquidityProfile.totalDeposits),
+        available: formatAmountValue(liquidityProfile.available),
+        totalSupply: formatAmountValue(liquidityProfile.totalSupply)
       }
     };
   }
@@ -105624,8 +107672,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const { currentBalance, shares, pnl, accruedRewards, ...rest } = position;
     return {
       ...rest,
-      currentBalance: formatAmount$1(currentBalance),
-      shares: formatAmount$1(shares),
+      currentBalance: formatAmountValue(currentBalance),
+      shares: formatAmountValue(shares),
       pnl: formatPositionPnL(pnl),
       accruedRewards: accruedRewards.map(formatAccruedReward)
     };
@@ -105653,9 +107701,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const { gasFees, ...rest } = quote;
     return {
       ...rest,
-      deposit: formatAssetAmount(quote.deposit),
-      expectedShares: formatAssetAmount(quote.expectedShares),
-      fees: quote.fees.map(formatAssetAmount),
+      deposit: formatAssetAmount$1(quote.deposit),
+      expectedShares: formatAssetAmount$1(quote.expectedShares),
+      fees: quote.fees.map(formatAssetAmount$1),
       ...formatGasFees(gasFees)
     };
   }
@@ -105663,33 +107711,24 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     const { gasFees, ...rest } = quote;
     return {
       ...rest,
-      withdrawal: formatAssetAmount(quote.withdrawal),
-      sharesToRedeem: formatAssetAmount(quote.sharesToRedeem),
-      maxWithdrawable: formatAssetAmount(quote.maxWithdrawable),
-      fees: quote.fees.map(formatAssetAmount),
+      withdrawal: formatAssetAmount$1(quote.withdrawal),
+      sharesToRedeem: formatAssetAmount$1(quote.sharesToRedeem),
+      maxWithdrawable: formatAssetAmount$1(quote.maxWithdrawable),
+      fees: quote.fees.map(formatAssetAmount$1),
       ...formatGasFees(gasFees)
     };
   }
-  function formatClaimRewardsQuoteInfo(quote) {
+  function formatClaimRewardsQuoteInfo$1(quote) {
     return {
       ...quote,
-      rewards: quote.rewards.map(formatAssetAmount)
-    };
-  }
-  function formatClaimRewardsResult(result) {
-    if (result.status === "no_rewards") {
-      return result;
-    }
-    return {
-      ...result,
-      rewards: result.rewards.map(formatClaimedAmount)
+      rewards: quote.rewards.map(formatAssetAmount$1)
     };
   }
   var ASSERT_EARN_PARAMS_SYMBOL = /* @__PURE__ */ Symbol("assertEarnParams");
   function assertEarnParams(params, schema) {
     validateWithStateTracking2(params, schema, "earn parameters", ASSERT_EARN_PARAMS_SYMBOL);
   }
-  function findProvider(context, chain, operation = "earn") {
+  function findProvider$1(context, chain, operation = "earn") {
     let fallback2;
     for (const provider of context.providers) {
       fallback2 ??= provider;
@@ -105728,7 +107767,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return true;
   };
   var recipientEvmAddressSchema = evmAddressSchema$1.refine((address) => !ZERO_EVM_ADDRESS_REGEX.test(address), "address must not be the zero address").refine(isValidEip55Checksum, "address has an invalid EIP-55 checksum");
-  var adapterContextSchema$4 = external_exports.object({
+  var adapterContextSchema$5 = external_exports.object({
     adapter: adapterSchema$1,
     // AdapterContext accepts a wider chain field, but runtime validation must
     // stay constrained to EarnChain identifiers.
@@ -105824,16 +107863,39 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var exploreVaultsIteratorParamsSchema = exploreVaultsParamsSchema.omit({
     page: true
   });
-  var getPositionParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+  var getPositionParamsSchema$1 = external_exports.object({
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     config: earnConfigSchema.optional()
   });
+  var earnGasFeeEstimateSuccessSchema = external_exports.object({
+    name: external_exports.string(),
+    token: external_exports.string(),
+    blockchain: external_exports.string(),
+    fees: external_exports.object({
+      gas: external_exports.string().regex(/^\d+$/, "gas must be a non-negative integer string"),
+      gasPrice: external_exports.string().regex(/^\d+$/, "gasPrice must be a non-negative integer string"),
+      fee: external_exports.string().regex(/^\d+$/, "fee must be a non-negative integer string")
+    }),
+    error: external_exports.undefined().optional()
+  }).strict();
+  var earnGasFeeEstimateFailureSchema = external_exports.object({
+    name: external_exports.string(),
+    token: external_exports.string(),
+    blockchain: external_exports.string(),
+    fees: external_exports.null(),
+    error: external_exports.string()
+  }).strict();
+  var earnGasFeeEstimateSchema = external_exports.union([
+    earnGasFeeEstimateSuccessSchema,
+    earnGasFeeEstimateFailureSchema
+  ]);
   var sameChainDepositParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+    from: adapterContextSchema$5,
     to: external_exports.undefined().optional(),
     vaultAddress: vaultAddressSchema,
     amount: amountSchema$1,
+    gasFees: external_exports.array(earnGasFeeEstimateSchema).optional(),
     config: earnConfigSchema.optional()
   }).strict();
   var crossChainDepositDestinationSchema = external_exports.object({
@@ -105857,7 +107919,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     sameChainDepositParamsSchema
   ]);
   var depositParamsSchema$1 = external_exports.object({
-    from: adapterContextSchema$4,
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     amount: amountSchema$1,
     config: earnConfigSchema.optional()
@@ -105874,18 +107936,18 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     signal: external_exports.instanceof(AbortSignal).optional()
   });
   var withdrawParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     amount: amountSchema$1,
     config: earnConfigSchema.optional()
   });
-  var claimRewardsParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+  var claimRewardsParamsSchema$1 = external_exports.object({
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     config: earnConfigSchema.optional()
   });
   var sameChainGetDepositQuoteParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     amount: amountSchema$1,
     config: earnConfigSchema.optional()
@@ -105932,19 +107994,19 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return result.data;
   });
   var getWithdrawalQuoteParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     amount: amountSchema$1,
     config: earnConfigSchema.optional()
   });
-  var getClaimRewardsQuoteParamsSchema = external_exports.object({
-    from: adapterContextSchema$4,
+  var getClaimRewardsQuoteParamsSchema$1 = external_exports.object({
+    from: adapterContextSchema$5,
     vaultAddress: vaultAddressSchema,
     config: earnConfigSchema.optional()
   });
   async function getVaults$1(context, params) {
     assertEarnParams(params, getVaultsParamsSchema);
-    const provider = findProvider(context);
+    const provider = findProvider$1(context);
     const result = await provider.getVaults({
       vaults: params.vaults,
       ...params.config !== void 0 && {
@@ -105961,7 +108023,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (context.providers.length > 0 && eligibleContext.providers.length === 0) {
       throw createValidationFailedError$12("context.providers", context.providers.map((provider2) => provider2.name), "No configured earn provider supports exploreVaults");
     }
-    const provider = findProvider(eligibleContext, resolveChainIdentifier2(params.chain), "exploreVaults");
+    const provider = findProvider$1(eligibleContext, resolveChainIdentifier2(params.chain), "exploreVaults");
     const result = await provider.exploreVaults(params);
     return formatVaultsResult(result);
   }
@@ -105983,17 +108045,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       page += 1;
     }
   }
-  async function resolveAdapterAddress(from16, chain) {
-    if (from16.address !== void 0 && from16.address !== "") {
-      return from16.address;
-    }
-    return from16.adapter.getAddress(chain);
-  }
-  async function getPosition$1(context, params) {
-    assertEarnParams(params, getPositionParamsSchema);
+  async function getPosition$3(context, params) {
+    assertEarnParams(params, getPositionParamsSchema$1);
     const chain = resolveChainIdentifier2(params.from.chain);
     params.from.adapter.validateChainSupport(chain);
-    const provider = findProvider(context, chain, "getPosition");
+    const provider = findProvider$1(context, chain, "getPosition");
     const address = await resolveAdapterAddress(params.from, chain);
     const result = await provider.getPosition({
       from: {
@@ -106010,7 +108066,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   async function getCrossChainDepositStatus$1(context, params) {
     assertEarnParams(params, getCrossChainDepositStatusParamsSchema);
-    const provider = context.providers.find((candidate) => typeof candidate.getCrossChainDepositStatus === "function") ?? findProvider(context);
+    const provider = context.providers.find((candidate) => typeof candidate.getCrossChainDepositStatus === "function") ?? findProvider$1(context);
     if (provider.getCrossChainDepositStatus === void 0) {
       throw createValidationFailedError$12("context.providers", context.providers.map((candidate) => candidate.name), "No configured earn provider supports cross-chain deposit status retrieval");
     }
@@ -106023,7 +108079,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   async function waitForCrossChainDeposit$1(context, params) {
     assertEarnParams(params, waitForCrossChainDepositParamsSchema);
-    const provider = context.providers.find((candidate) => typeof candidate.waitForCrossChainDeposit === "function") ?? findProvider(context);
+    const provider = context.providers.find((candidate) => typeof candidate.waitForCrossChainDeposit === "function") ?? findProvider$1(context);
     if (provider.waitForCrossChainDeposit === void 0) {
       throw createValidationFailedError$12("context.providers", context.providers.map((candidate) => candidate.name), "No configured earn provider supports cross-chain deposit status retrieval");
     }
@@ -106063,7 +108119,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (hasExplicitDestination && eligibleContext.providers.length === 0) {
       throw createValidationFailedError$12("context.providers", context.providers.map((provider2) => provider2.name), "No configured earn provider supports cross-chain deposits");
     }
-    const provider = findProvider(eligibleContext, destinationChain, "deposit");
+    const provider = findProvider$1(eligibleContext, destinationChain, "deposit");
     const sourceAddress = await resolveAdapterAddress(params.from, sourceChain);
     const baseParams = {
       from: {
@@ -106073,6 +108129,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       },
       vaultAddress: params.vaultAddress,
       amount: params.amount,
+      ...!hasExplicitDestination && params.gasFees !== void 0 && {
+        gasFees: toProviderGasFees(params.gasFees)
+      },
       ...params.config !== void 0 && {
         config: params.config
       }
@@ -106092,6 +108151,21 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return provider.deposit(baseParams);
   }
+  function toProviderGasFees(gasFees) {
+    return gasFees.map((entry) => {
+      if (entry.fees === null) {
+        return entry;
+      }
+      return {
+        ...entry,
+        fees: {
+          ...entry.fees,
+          gas: BigInt(entry.fees.gas),
+          gasPrice: BigInt(entry.fees.gasPrice)
+        }
+      };
+    });
+  }
   function hasCrossChainDestination(params) {
     return typeof params === "object" && params !== null && "to" in params && params.to !== void 0;
   }
@@ -106099,7 +108173,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assertEarnParams(params, withdrawParamsSchema);
     const chain = resolveChainIdentifier2(params.from.chain);
     params.from.adapter.validateChainSupport(chain);
-    const provider = findProvider(context, chain, "withdraw");
+    const provider = findProvider$1(context, chain, "withdraw");
     const address = await resolveAdapterAddress(params.from, chain);
     return provider.withdraw({
       from: {
@@ -106114,11 +108188,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
   }
-  async function claimRewards$1(context, params) {
-    assertEarnParams(params, claimRewardsParamsSchema);
+  async function claimRewards$3(context, params) {
+    assertEarnParams(params, claimRewardsParamsSchema$1);
     const chain = resolveChainIdentifier2(params.from.chain);
     params.from.adapter.validateChainSupport(chain);
-    const provider = findProvider(context, chain, "claimRewards");
+    const provider = findProvider$1(context, chain, "claimRewards");
     const address = await resolveAdapterAddress(params.from, chain);
     const result = await provider.claimRewards({
       from: {
@@ -106140,7 +108214,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     params.from.adapter.validateChainSupport(sourceChain);
     const hasExplicitDestination = hasCrossChainDepositQuoteShape(params);
     const destinationChain = hasExplicitDestination ? resolveChainIdentifier2(params.chain) : sourceChain;
-    const provider = findProvider(context, destinationChain, "getDepositQuote");
+    const provider = findProvider$1(context, destinationChain, "getDepositQuote");
     const sourceAddress = await resolveAdapterAddress(params.from, sourceChain);
     const baseParams = {
       from: {
@@ -106172,7 +108246,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     assertEarnParams(params, getWithdrawalQuoteParamsSchema);
     const chain = resolveChainIdentifier2(params.from.chain);
     params.from.adapter.validateChainSupport(chain);
-    const provider = findProvider(context, chain, "getWithdrawalQuote");
+    const provider = findProvider$1(context, chain, "getWithdrawalQuote");
     const address = await resolveAdapterAddress(params.from, chain);
     const result = await provider.getWithdrawalQuote({
       from: {
@@ -106188,7 +108262,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     });
     return formatWithdrawalQuoteInfo(result);
   }
-  function getSupportedChains$3(context) {
+  function getSupportedChains$4(context) {
     const earnChains = new Set(Object.values(EarnChain2));
     const chainsById = /* @__PURE__ */ new Map();
     for (const provider of context.providers) {
@@ -106202,11 +108276,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       ...chainsById.values()
     ];
   }
-  async function getClaimRewardsQuote$1(context, params) {
-    assertEarnParams(params, getClaimRewardsQuoteParamsSchema);
+  async function getClaimRewardsQuote$3(context, params) {
+    assertEarnParams(params, getClaimRewardsQuoteParamsSchema$1);
     const chain = resolveChainIdentifier2(params.from.chain);
     params.from.adapter.validateChainSupport(chain);
-    const provider = findProvider(context, chain, "getClaimRewardsQuote");
+    const provider = findProvider$1(context, chain, "getClaimRewardsQuote");
     const address = await resolveAdapterAddress(params.from, chain);
     const result = await provider.getClaimRewardsQuote({
       from: {
@@ -106219,9 +108293,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         config: params.config
       }
     });
-    return formatClaimRewardsQuoteInfo(result);
+    return formatClaimRewardsQuoteInfo$1(result);
   }
-  var SDK_NAME$1 = resolveKitSdkName2(pkg$2.name);
+  var SDK_NAME$2 = resolveKitSdkName2(pkg$3.name);
   function isCrossChainDeposit(params) {
     return "to" in params && params.to !== void 0;
   }
@@ -106327,13 +108401,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       this.context = createEarnKitContext(config);
       this.actionDispatcher = new Actionable();
       this.telemetryConfig = {
-        sdkName: SDK_NAME$1,
-        sdkVersion: pkg$2.version,
+        sdkName: SDK_NAME$2,
+        sdkVersion: pkg$3.version,
         disabled: config.disableErrorReporting === true
       };
       this.analyticsTelemetryConfig = {
-        sdkName: SDK_NAME$1,
-        sdkVersion: pkg$2.version,
+        sdkName: SDK_NAME$2,
+        sdkVersion: pkg$3.version,
         disabled: config.disableAnalytics === true
       };
       for (const provider of this.context.providers) {
@@ -106436,7 +108510,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     getSupportedChains() {
-      return getSupportedChains$3(this.context);
+      return getSupportedChains$4(this.context);
     }
     /**
     * Fetch available vault information.
@@ -106540,7 +108614,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     */
     async getPosition(params) {
-      return withErrorTelemetry2(async () => getPosition$1(this.context, params), EARN_EVENT_TYPES.GET_POSITION, this.telemetryConfig, {
+      return withErrorTelemetry2(async () => getPosition$3(this.context, params), EARN_EVENT_TYPES.GET_POSITION, this.telemetryConfig, {
         sourceChain: resolveChainName2(params.from.chain)
       });
     }
@@ -106685,7 +108759,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const context = {
         sourceChain: resolveChainName2(params.from.chain)
       };
-      const result = await withErrorTelemetry2(async () => claimRewards$1(this.context, params), EARN_EVENT_TYPES.CLAIM_REWARDS, this.telemetryConfig, context);
+      const result = await withErrorTelemetry2(async () => claimRewards$3(this.context, params), EARN_EVENT_TYPES.CLAIM_REWARDS, this.telemetryConfig, context);
       if (result.status === "claimed") {
         emitSuccessTelemetry2(EARN_EVENT_TYPES.CLAIM_REWARDS, this.analyticsTelemetryConfig, {
           ...context,
@@ -106765,12 +108839,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * @internal
     */
     async getClaimRewardsQuote(params) {
-      return withErrorTelemetry2(async () => getClaimRewardsQuote$1(this.context, params), EARN_EVENT_TYPES.GET_CLAIM_REWARDS_QUOTE, this.telemetryConfig, {
+      return withErrorTelemetry2(async () => getClaimRewardsQuote$3(this.context, params), EARN_EVENT_TYPES.GET_CLAIM_REWARDS_QUOTE, this.telemetryConfig, {
         sourceChain: resolveChainName2(params.from.chain)
       });
     }
   };
-  registerKit2(`${pkg$2.name}/${pkg$2.version}`);
+  registerKit2(`${pkg$3.name}/${pkg$3.version}`);
   var registerActionHandlers = (kit2, handlers, prefix = "") => {
     for (const [action, handlerArray] of Object.entries(handlers)) {
       for (const handler of handlerArray) {
@@ -106797,6 +108871,5739 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     });
     registerActionHandlers(kit2, context.actions.earn, "earn");
+    return kit2;
+  };
+  var name$1 = "@circle-fin/borrow-kit";
+  var version$1 = "1.1.0";
+  var pkg$1 = {
+    name: name$1,
+    version: version$1
+  };
+  var HUMAN_READABLE_AMOUNT_REGEX$1 = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+  var EVM_ADDRESS_REGEX2 = /^0x[0-9a-fA-F]{40}$/;
+  var POSITIVE_USDC_AMOUNT_REGEX = /^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/;
+  function isHttpsUrl$1(value) {
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  var borrowServiceConfigSchema$1 = external_exports.object({
+    apiKey: external_exports.string().optional(),
+    baseUrl: external_exports.string().url().optional()
+  }).strict();
+  function positiveLoanAssetAmountSchema(field) {
+    return external_exports.string().regex(POSITIVE_USDC_AMOUNT_REGEX, `${field} must be a canonical decimal with at most 6 decimal places`).refine((value) => /[1-9]/.test(value), {
+      message: `${field} must be greater than zero`
+    });
+  }
+  function positiveCollateralAmountSchema(field) {
+    return external_exports.string().regex(HUMAN_READABLE_AMOUNT_REGEX$1, `${field} must be a canonical decimal`).refine((value) => /[1-9]/.test(value), {
+      message: `${field} must be greater than zero`
+    });
+  }
+  var getMarketServiceParamsSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var getLoansServiceParamsSchema = external_exports.object({
+    walletAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    chain: chainIdentifierSchema2,
+    pageSize: external_exports.number().int().positive().optional(),
+    pageAfter: external_exports.string().min(1).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var marketSortBySchema$1 = external_exports.enum([
+    "lltv",
+    "borrowApy"
+  ]);
+  var decimalFilterSchema$1 = external_exports.string().regex(/^\d+(\.\d+)?$/, "filter thresholds must be non-negative decimal strings");
+  var exploreMarketsServiceParamsSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    minLltv: decimalFilterSchema$1.optional(),
+    maxLltv: decimalFilterSchema$1.optional(),
+    minBorrow: decimalFilterSchema$1.optional(),
+    maxBorrow: decimalFilterSchema$1.optional(),
+    sortBy: marketSortBySchema$1.optional(),
+    pageSize: external_exports.number().int().min(1).max(1e3).optional(),
+    pageAfter: external_exports.string().min(1).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict().superRefine((value, ctx) => {
+    if (value.minLltv !== void 0 && value.maxLltv !== void 0 && Number(value.minLltv) > Number(value.maxLltv)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [
+          "maxLltv"
+        ],
+        message: "maxLltv must be greater than or equal to minLltv"
+      });
+    }
+    if (value.minBorrow !== void 0 && value.maxBorrow !== void 0 && Number(value.minBorrow) > Number(value.maxBorrow)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [
+          "maxBorrow"
+        ],
+        message: "maxBorrow must be greater than or equal to minBorrow"
+      });
+    }
+  });
+  var repayQuoteServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    repayAmount: positiveLoanAssetAmountSchema("repayAmount"),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var repayServiceParamsSchema = repayQuoteServiceParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: external_exports.string().uuid().optional()
+  });
+  var closeLoanQuoteServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var borrowServiceParamsBaseShape = {
+    loanAssetAmount: positiveLoanAssetAmountSchema("loanAssetAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    idempotencyKey: external_exports.string().uuid().optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  };
+  var openLoanServiceParamsSchema = external_exports.object({
+    ...borrowServiceParamsBaseShape,
+    walletAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1)
+  }).strict();
+  var borrowMoreServiceParamsSchema = external_exports.object({
+    ...borrowServiceParamsBaseShape,
+    loanId: external_exports.string().uuid()
+  }).strict();
+  var borrowServiceParamsSchema = external_exports.union([
+    openLoanServiceParamsSchema,
+    borrowMoreServiceParamsSchema
+  ]);
+  var openLoanQuoteServiceParamsSchema = external_exports.object({
+    walletAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    loanAssetAmount: positiveLoanAssetAmountSchema("loanAssetAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var borrowMoreQuoteServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    loanAssetAmount: positiveLoanAssetAmountSchema("loanAssetAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var borrowQuoteServiceParamsSchema = external_exports.union([
+    openLoanQuoteServiceParamsSchema,
+    borrowMoreQuoteServiceParamsSchema
+  ]);
+  var requiredCollateralServiceParamsSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    loanAssetAmount: positiveLoanAssetAmountSchema("loanAssetAmount"),
+    // `.finite()` is load-bearing, not decoration: the value is encoded as a
+    // decimal string on the wire, and there is no decimal string for Infinity.
+    targetHealthFactor: external_exports.number().positive().finite(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var maxBorrowServiceParamsSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    collateralAmount: positiveCollateralAmountSchema("collateralAmount"),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var closeLoanServiceParamsSchema = closeLoanQuoteServiceParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: external_exports.string().uuid().optional()
+  });
+  var claimRewardsServiceParamsSchema = external_exports.object({
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var getPositionServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var getRewardsServiceParamsSchema = claimRewardsServiceParamsSchema;
+  var withdrawCollateralQuoteServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    // Carries no decimal-place cap: the repayment is USDC, but the collateral
+    // is the market's own token and may hold more precision than USDC's six.
+    collateralAmount: positiveCollateralAmountSchema("collateralAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var withdrawCollateralServiceParamsSchema = withdrawCollateralQuoteServiceParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: external_exports.string().uuid().optional()
+  });
+  var addCollateralQuoteServiceParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    collateralAmount: positiveCollateralAmountSchema("collateralAmount"),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var addCollateralServiceParamsSchema = addCollateralQuoteServiceParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: external_exports.string().uuid().optional()
+  });
+  var borrowAssetAmountSchema = external_exports.object({
+    token: external_exports.string().min(1),
+    tokenAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    decimals: external_exports.number().int().min(0).max(255),
+    amount: external_exports.string().regex(HUMAN_READABLE_AMOUNT_REGEX$1)
+  });
+  var healthFactorBandSchema = external_exports.enum([
+    "SAFE",
+    "WARN",
+    "URGENT",
+    "IMMINENT",
+    "LIQUIDATABLE"
+  ]);
+  var loanDataStatusSchema = external_exports.enum([
+    "READY",
+    "PENDING"
+  ]);
+  var loanStatusSchema = external_exports.enum([
+    "active",
+    "closed"
+  ]);
+  var loanSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: external_exports.string().min(1),
+    marketId: external_exports.string().min(1),
+    walletAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    dataStatus: loanDataStatusSchema,
+    collateral: borrowAssetAmountSchema.nullable(),
+    borrowed: borrowAssetAmountSchema.nullable(),
+    principalBorrowed: borrowAssetAmountSchema.nullable(),
+    accruedInterest: borrowAssetAmountSchema.nullable(),
+    borrowApy: external_exports.number().nullable(),
+    ltv: external_exports.number().nullable(),
+    healthFactor: external_exports.number().nullable(),
+    healthFactorBand: healthFactorBandSchema.nullable(),
+    liquidationPrice: borrowAssetAmountSchema.nullable(),
+    status: loanStatusSchema
+  });
+  var listLoansResponseSchema = external_exports.object({
+    data: external_exports.object({
+      loans: external_exports.array(loanSchema),
+      pagination: external_exports.object({
+        pageAfter: external_exports.string().optional()
+      })
+    })
+  });
+  var borrowFeeSchema = external_exports.object({
+    type: external_exports.string(),
+    token: external_exports.string(),
+    amount: borrowAssetAmountSchema
+  });
+  var borrowQuoteGasFeeSchema = external_exports.object({
+    name: external_exports.string(),
+    fees: external_exports.object({
+      gas: external_exports.string(),
+      gasPrice: borrowAssetAmountSchema,
+      fee: borrowAssetAmountSchema
+    })
+  });
+  var hexBytesSchema2 = external_exports.string().regex(/^0x(?:[0-9a-fA-F]{2})*$/).transform((value) => value);
+  function isNonNegativeBigIntLike2(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var uint256LikeSchema2 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike2, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var decimalNumericString = external_exports.string().min(1).refine((value) => value.trim() !== "" && Number.isFinite(Number(value)), {
+    message: "value must be a decimal string that parses to a finite number"
+  });
+  var borrowExecutionParamsSchema2 = external_exports.object({
+    instructions: external_exports.array(external_exports.object({
+      target: evmAddressSchema$1,
+      data: hexBytesSchema2,
+      value: uint256LikeSchema2,
+      tokenIn: evmAddressSchema$1,
+      amountToApprove: uint256LikeSchema2,
+      tokenOut: evmAddressSchema$1,
+      minTokenOut: uint256LikeSchema2
+    }).passthrough()).min(1),
+    tokens: external_exports.array(external_exports.object({
+      token: evmAddressSchema$1,
+      beneficiary: evmAddressSchema$1
+    }).passthrough()),
+    execId: uint256LikeSchema2,
+    deadline: uint256LikeSchema2,
+    metadata: hexBytesSchema2
+  }).passthrough();
+  var loanExecutionPayloadSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: external_exports.string().min(1),
+    execId: external_exports.string().min(1),
+    signature: evmSignatureSchema2,
+    executionParams: borrowExecutionParamsSchema2
+  });
+  var loanExecutionSchema = external_exports.object({
+    data: loanExecutionPayloadSchema
+  });
+  var borrowExecutionSchema = external_exports.object({
+    data: loanExecutionPayloadSchema.extend({
+      fees: external_exports.array(borrowFeeSchema).optional()
+    })
+  });
+  var resultingHealthSchema = {
+    resultingHealthFactor: external_exports.number().nullable(),
+    resultingLtv: external_exports.number().nullable(),
+    resultingBand: healthFactorBandSchema,
+    liquidationPrice: borrowAssetAmountSchema.nullable()
+  };
+  var repayQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      repayAmount: borrowAssetAmountSchema,
+      fees: external_exports.array(borrowFeeSchema),
+      gasFees: external_exports.array(borrowQuoteGasFeeSchema),
+      ...resultingHealthSchema
+    })
+  });
+  var loanPayloadSchema = external_exports.object({
+    loanId: external_exports.string(),
+    walletAddress: external_exports.string(),
+    chain: external_exports.string(),
+    marketId: external_exports.string().min(1),
+    dataStatus: loanDataStatusSchema,
+    collateral: borrowAssetAmountSchema.nullable(),
+    borrowed: borrowAssetAmountSchema.nullable(),
+    principalBorrowed: borrowAssetAmountSchema.nullable(),
+    accruedInterest: borrowAssetAmountSchema.nullable(),
+    borrowApy: external_exports.number().nullable(),
+    ltv: external_exports.number().nullable(),
+    healthFactor: external_exports.number().nullable(),
+    healthFactorBand: healthFactorBandSchema.nullable(),
+    liquidationPrice: borrowAssetAmountSchema.nullable(),
+    status: loanStatusSchema
+  });
+  var loanResponseSchema = external_exports.object({
+    data: loanPayloadSchema
+  });
+  var borrowQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      collateralAmount: borrowAssetAmountSchema,
+      loanAssetAmount: borrowAssetAmountSchema,
+      // Nullable: the service reports null when the curated market row has no
+      // cached rate yet, rather than a misleading 0%. The loans and markets
+      // schemas already allow it; this one did not, so an unpriced market failed
+      // validation and surfaced the whole quote as SERVICE_UNKNOWN_ERROR.
+      borrowApy: external_exports.number().nullable(),
+      fees: external_exports.array(borrowFeeSchema),
+      gasFees: external_exports.array(borrowQuoteGasFeeSchema),
+      ...resultingHealthSchema
+    })
+  });
+  var addCollateralQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      collateralAmount: borrowAssetAmountSchema,
+      fees: external_exports.array(borrowFeeSchema),
+      gasFees: external_exports.array(borrowQuoteGasFeeSchema),
+      ...resultingHealthSchema
+    })
+  });
+  var closeLoanQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      repayAmount: borrowAssetAmountSchema,
+      collateralAmount: borrowAssetAmountSchema,
+      fees: external_exports.array(borrowFeeSchema),
+      gasFees: external_exports.array(borrowQuoteGasFeeSchema),
+      ...resultingHealthSchema
+    })
+  });
+  var withdrawCollateralExecutionSchema = external_exports.object({
+    data: loanExecutionPayloadSchema.omit({
+      chain: true
+    })
+  });
+  var withdrawCollateralQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      repayAmount: borrowAssetAmountSchema,
+      collateralAmount: borrowAssetAmountSchema,
+      fees: external_exports.array(borrowFeeSchema),
+      gasFees: external_exports.array(borrowQuoteGasFeeSchema),
+      ...resultingHealthSchema
+    })
+  });
+  var requiredCollateralQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      requiredCollateral: borrowAssetAmountSchema,
+      resultingHealthFactor: external_exports.union([
+        external_exports.number(),
+        decimalNumericString
+      ]).nullable(),
+      liquidationPrice: borrowAssetAmountSchema.nullable()
+    })
+  });
+  var maxBorrowQuoteSchema = external_exports.object({
+    data: external_exports.object({
+      chain: external_exports.string().min(1),
+      maxBorrowAmount: borrowAssetAmountSchema,
+      resultingHealthFactor: external_exports.number().nullable(),
+      liquidationPrice: borrowAssetAmountSchema.nullable()
+    })
+  });
+  var integratorConfigSchema = external_exports.object({
+    data: external_exports.object({
+      integratorId: external_exports.string().min(1),
+      integratorFeeBps: external_exports.number().int().min(0),
+      integratorFeeAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2).nullable(),
+      createdAt: external_exports.string().datetime({
+        offset: true
+      }),
+      updatedAt: external_exports.string().datetime({
+        offset: true
+      })
+    })
+  });
+  var getIntegratorConfigServiceParamsSchema = external_exports.object({
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict();
+  var setIntegratorConfigServiceParamsSchema = external_exports.object({
+    integratorFeeBps: external_exports.number().int().min(0).max(1e4),
+    integratorFeeAddress: external_exports.string().regex(EVM_ADDRESS_REGEX2).nullable(),
+    config: borrowServiceConfigSchema$1.optional()
+  }).strict().refine((params) => params.integratorFeeAddress !== null || params.integratorFeeBps === 0, {
+    message: "integratorFeeAddress can only be null when integratorFeeBps is 0",
+    path: [
+      "integratorFeeAddress"
+    ]
+  });
+  var webhookRegistrationPayloadSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    webhookUrl: external_exports.string().nullish()
+  });
+  var registerWebhookInputSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    webhookUrl: external_exports.string().url().refine((value) => isHttpsUrl$1(value), "webhookUrl must use the https scheme").nullable()
+  }).strict();
+  var webhookRegistrationResponseSchema = external_exports.object({
+    data: webhookRegistrationPayloadSchema
+  });
+  var marketAssetSchema = external_exports.object({
+    symbol: external_exports.string().min(1),
+    address: external_exports.string().regex(EVM_ADDRESS_REGEX2),
+    decimals: external_exports.number().int().nonnegative()
+  });
+  var amountJsonSchema2 = external_exports.object({
+    raw: external_exports.string().refine(isNonNegativeBigIntLike2, {
+      message: "raw must be a non-negative bigint-compatible string"
+    }),
+    decimals: external_exports.number().int().nonnegative()
+  });
+  var marketResponseSchema = external_exports.object({
+    marketId: external_exports.string().min(1),
+    protocol: external_exports.enum([
+      "morpho"
+    ]),
+    chain: external_exports.string().min(1),
+    loanAsset: marketAssetSchema,
+    collateralAsset: marketAssetSchema,
+    lltv: external_exports.number().nonnegative().nullable(),
+    borrowCap: amountJsonSchema2.nullable().optional(),
+    borrowAssets: amountJsonSchema2.nullable(),
+    liquidity: amountJsonSchema2.nullable(),
+    borrowApy: external_exports.number().nonnegative().nullable(),
+    utilization: external_exports.number().nonnegative().nullable(),
+    refreshedAt: external_exports.string().datetime({
+      offset: true
+    }).nullable()
+  });
+  var getMarketResponseSchema = external_exports.object({
+    data: marketResponseSchema
+  });
+  var listMarketsResponseSchema = external_exports.object({
+    data: external_exports.object({
+      markets: external_exports.array(marketResponseSchema),
+      pagination: external_exports.object({
+        pageAfter: external_exports.string().optional()
+      })
+    })
+  });
+  function isListLoansResponse(value) {
+    return listLoansResponseSchema.safeParse(value).success;
+  }
+  function isLoanExecution(value) {
+    return loanExecutionSchema.safeParse(value).success;
+  }
+  function isBorrowExecution(value) {
+    return borrowExecutionSchema.safeParse(value).success;
+  }
+  function isRepayQuote(value) {
+    return repayQuoteSchema.safeParse(value).success;
+  }
+  function isWebhookRegistrationResponse(value) {
+    return webhookRegistrationResponseSchema.safeParse(value).success;
+  }
+  function isAddCollateralQuote(value) {
+    return addCollateralQuoteSchema.safeParse(value).success;
+  }
+  function isCloseLoanQuote(value) {
+    return closeLoanQuoteSchema.safeParse(value).success;
+  }
+  function isLoanResponse(value) {
+    return loanResponseSchema.safeParse(value).success;
+  }
+  function isBorrowQuote(value) {
+    return borrowQuoteSchema.safeParse(value).success;
+  }
+  function isRequiredCollateralQuote(value) {
+    return requiredCollateralQuoteSchema.safeParse(value).success;
+  }
+  function isMaxBorrowQuote(value) {
+    return maxBorrowQuoteSchema.safeParse(value).success;
+  }
+  function isIntegratorConfig(value) {
+    return integratorConfigSchema.safeParse(value).success;
+  }
+  function isGetMarketResponse(value) {
+    return getMarketResponseSchema.safeParse(value).success;
+  }
+  function isListMarketsResponse(value) {
+    return listMarketsResponseSchema.safeParse(value).success;
+  }
+  function isWithdrawCollateralExecution(value) {
+    return withdrawCollateralExecutionSchema.safeParse(value).success;
+  }
+  function isWithdrawCollateralQuote(value) {
+    return withdrawCollateralQuoteSchema.safeParse(value).success;
+  }
+  var BORROW_SERVICE_BASE_URL = "https://api.circle.com";
+  var BORROW_KIT_API_PREFIX = "/v1/borrowKit";
+  var KITS_API_PREFIX = "/v1/kits";
+  var BORROW_CHAIN_TO_API = {
+    [Blockchain2.Arc]: "ARC",
+    [Blockchain2.Arc_Testnet]: "ARC-TESTNET"
+  };
+  var WEBHOOK_REGISTRATION_DOMAIN = {
+    name: "BorrowKit Webhook Registration",
+    version: "1"
+  };
+  var WEBHOOK_REGISTRATION_TYPES = {
+    WebhookRegistration: [
+      {
+        name: "loanId",
+        type: "string"
+      },
+      {
+        name: "owner",
+        type: "address"
+      },
+      {
+        name: "webhookUrl",
+        type: "string"
+      },
+      {
+        name: "deadline",
+        type: "uint256"
+      }
+    ]
+  };
+  var MAX_WEBHOOK_DEADLINE_SECONDS = 300;
+  var DEFAULT_CONFIG2 = {
+    timeout: 3e4,
+    maxRetries: 3,
+    retryDelay: 200,
+    backoff: "exponential",
+    headers: {
+      "Content-Type": "application/json"
+    }
+  };
+  var DEFAULT_WITHDRAW_SLIPPAGE_BPS = 300;
+  var DEFAULT_CLOSE_SLIPPAGE_BPS = 300;
+  var AMOUNT_COMPARISON_DECIMALS = 36;
+  var API_TO_BORROW_CHAIN = Object.fromEntries(Object.entries(BORROW_CHAIN_TO_API).map(([sdkChain, apiChain]) => [
+    apiChain,
+    sdkChain
+  ]));
+  function toBorrowApiChain(chain) {
+    if (!Object.hasOwn(BORROW_CHAIN_TO_API, chain)) {
+      return void 0;
+    }
+    return BORROW_CHAIN_TO_API[chain];
+  }
+  function toBorrowSdkChain(chain) {
+    if (Object.hasOwn(BORROW_CHAIN_TO_API, chain)) {
+      return chain;
+    }
+    if (!Object.hasOwn(API_TO_BORROW_CHAIN, chain)) {
+      return void 0;
+    }
+    return API_TO_BORROW_CHAIN[chain];
+  }
+  function requireBorrowApiChain(chain) {
+    const resolved = resolveChainIdentifier2(chain);
+    const apiChain = toBorrowApiChain(resolved.chain);
+    if (apiChain === void 0) {
+      throw new KitError2({
+        ...BorrowError.UNSUPPORTED_CHAIN,
+        recoverability: "FATAL",
+        message: `Chain is not supported by the Borrow Service provider: ${resolved.chain}`,
+        cause: {
+          trace: {
+            chain: resolved.chain
+          }
+        }
+      });
+    }
+    return apiChain;
+  }
+  function requireBorrowSdkChain(chain) {
+    const sdkChain = toBorrowSdkChain(chain);
+    if (sdkChain === void 0) {
+      throw new KitError2({
+        ...BorrowError.UNRECOGNIZED_RESPONSE_CHAIN,
+        recoverability: "FATAL",
+        message: `Unrecognized Borrow Service response chain: ${chain}`,
+        cause: {
+          trace: {
+            chain
+          }
+        }
+      });
+    }
+    return sdkChain;
+  }
+  function assertApiKey2(apiKey) {
+    if (apiKey === void 0 || apiKey === "") {
+      throw createValidationFailedError$12("config.apiKey", void 0, "Integrator configuration requires an API key: the Borrow Service resolves the integrator from it");
+    }
+  }
+  function buildConfig(providerConfig, requestConfig, credential) {
+    const config = {
+      ...providerConfig,
+      ...requestConfig
+    };
+    const apiKey = resolveApiKey2({
+      apiKey: config.apiKey
+    });
+    if (credential === "forbidden" && apiKey !== void 0) {
+      throw createValidationFailedError$12("config.apiKey", "[redacted]", "This Borrow Service API does not accept an API key; remove config.apiKey");
+    }
+    assertBrowserSafeApiKey2(apiKey);
+    if (apiKey !== void 0 && !isValidApiKey(apiKey)) {
+      throw createValidationFailedError$12("apiKey", "[redacted]", "apiKey must use the <ENV>_API_KEY:<keyId>:<keySecret> format (for example TEST_API_KEY:...), or the legacy KIT_KEY:<keyId>:<keySecret>");
+    }
+    if (credential === "required") {
+      assertApiKey2(apiKey);
+    }
+    return {
+      baseUrl: config.baseUrl ?? BORROW_SERVICE_BASE_URL,
+      pollingConfig: {
+        ...DEFAULT_CONFIG2,
+        headers: {
+          ...DEFAULT_CONFIG2.headers,
+          ...apiKey === void 0 ? {} : {
+            Authorization: `Bearer ${apiKey}`
+          }
+        }
+      }
+    };
+  }
+  async function postBorrowService(params) {
+    const { baseUrl, pollingConfig } = buildConfig(params.providerConfig, params.requestConfig, params.credential);
+    const body = params.idempotent ? {
+      ...params.body,
+      idempotencyKey: params.idempotencyKey ?? createUuidV4()
+    } : params.body;
+    try {
+      return await pollApiPost2(new URL(`${BORROW_KIT_API_PREFIX}${params.path}`, baseUrl).toString(), body, params.responseGuard, pollingConfig);
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: params.operation,
+        service: "Borrow Service"
+      });
+    }
+  }
+  var NATIVE_WEI_DECIMALS = 18;
+  function toNativeWeiString(asset) {
+    return Amount2.parse(asset.amount, {
+      decimals: asset.decimals
+    }).toDecimals(NATIVE_WEI_DECIMALS).raw.toString();
+  }
+  function toQuoteGasFees(gasFees) {
+    return gasFees.map((gasFee) => ({
+      name: gasFee.name,
+      fees: {
+        gas: gasFee.fees.gas,
+        gasPrice: toNativeWeiString(gasFee.fees.gasPrice),
+        fee: toNativeWeiString(gasFee.fees.fee)
+      }
+    }));
+  }
+  function addCollateralPath(loanId) {
+    return `/loans/${encodeURIComponent(loanId)}/addCollateral`;
+  }
+  async function fetchAddCollateral(providerConfig, params) {
+    const execution = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: addCollateralPath(params.loanId),
+      body: {
+        collateralAmount: params.collateralAmount
+      },
+      responseGuard: isLoanExecution,
+      operation: "addCollateral",
+      idempotent: true,
+      idempotencyKey: params.idempotencyKey,
+      credential: "forbidden"
+    });
+    return {
+      ...execution.data,
+      chain: requireBorrowSdkChain(execution.data.chain)
+    };
+  }
+  async function fetchAddCollateralQuote(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: `${addCollateralPath(params.loanId)}/quote`,
+      body: {
+        collateralAmount: params.collateralAmount
+      },
+      responseGuard: isAddCollateralQuote,
+      operation: "getAddCollateralQuote",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    const quoteChain = requireBorrowSdkChain(quote.data.chain);
+    if (String(quoteChain) !== String(resolveChainIdentifier2(params.chain).chain)) {
+      throw createValidationFailedError$12("quote.chain", quote.data.chain, "Borrow Service returned a collateral-addition quote for a different chain");
+    }
+    return {
+      ...quote.data,
+      chain: quoteChain,
+      gasFees: toQuoteGasFees(quote.data.gasFees)
+    };
+  }
+  function assertSweepsToOwner(executionParams, owner, operation, sweptTokens = []) {
+    const foreign = executionParams.tokens.find(({ beneficiary }) => beneficiary.toLowerCase() !== owner.toLowerCase());
+    if (foreign !== void 0) {
+      throw createValidationFailedError$12("executionParams.tokens[].beneficiary", foreign.beneficiary, `Borrow Service signed a ${operation} that sweeps tokens to a different address`);
+    }
+    for (const token of sweptTokens) {
+      const swept = executionParams.tokens.some((recipient) => recipient.token.toLowerCase() === token.toLowerCase());
+      if (!swept) {
+        throw createValidationFailedError$12("executionParams.tokens", token, `Borrow Service signed a ${operation} that leaves a token it moves stranded in the Adapter Contract`);
+      }
+    }
+  }
+  function selectorOf(data) {
+    return data.slice(0, 10).toLowerCase();
+  }
+  function readWord(data, wordIndex, path) {
+    const normalized = data.startsWith("0x") ? data.slice(2) : data;
+    const word = normalized.slice(wordIndex * 64, (wordIndex + 1) * 64);
+    if (word.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(word)) {
+      throw createValidationFailedError$12(path, data, "Morpho calldata must contain complete uint256 words");
+    }
+    return word;
+  }
+  function decodeAddressWord(data, wordIndex, path) {
+    return `0x${readWord(data, wordIndex, path).slice(24)}`.toLowerCase();
+  }
+  var MARKET_PARAMS_WORDS = 5;
+  function marketParamsOf(args, path) {
+    return Array.from({
+      length: MARKET_PARAMS_WORDS
+    }, (_, index2) => readWord(args, index2, path).toLowerCase()).join("");
+  }
+  var BORROW_LEG_LOAN_TOKEN_WORD = 0;
+  var BORROW_LEG_ASSETS_WORD = 5;
+  function parseAuthorization(value) {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    throw createValidationFailedError$12("morpho.isAuthorized", value, "Morpho isAuthorized must return a boolean");
+  }
+  function resolveMorphoAddress(executionParams, selectors) {
+    const wanted = new Set(selectors.map((selector) => selector.toLowerCase()));
+    const targets = new Set(executionParams.instructions.filter(({ data }) => wanted.has(data.slice(0, 10).toLowerCase())).map(({ target }) => target.toLowerCase()));
+    if (targets.size !== 1) {
+      const summary = executionParams.instructions.map(({ target, data }) => ({
+        target,
+        selector: data.slice(0, 10)
+      }));
+      throw createValidationFailedError$12("executionParams.instructions", summary, "A Borrow execution envelope must identify one Morpho contract through its debiting instructions");
+    }
+    return requireEvmAddress("executionParams.instructions[].target", [
+      ...targets
+    ][0]);
+  }
+  function buildTokenInputs2(executionParams, usdcAddress, options = {}) {
+    const tokenInputs = [];
+    let requiredAllowance = 0n;
+    executionParams.instructions.forEach((instruction, index2) => {
+      const amountPath = `executionParams.instructions[${index2.toString()}].amountToApprove`;
+      let amount;
+      try {
+        amount = BigInt(instruction.amountToApprove);
+      } catch {
+        throw createValidationFailedError$12(amountPath, instruction.amountToApprove, `${amountPath} must be a non-negative bigint-compatible value`);
+      }
+      if (amount < 0n) {
+        throw createValidationFailedError$12(amountPath, instruction.amountToApprove, `${amountPath} must be a non-negative bigint-compatible value`);
+      }
+      if (amount === 0n) return;
+      const tokenPath = `executionParams.instructions[${index2.toString()}].tokenIn`;
+      const tokenIn = requireEvmAddress(tokenPath, instruction.tokenIn);
+      if (tokenIn.toLowerCase() !== usdcAddress.toLowerCase()) {
+        throw createValidationFailedError$12(tokenPath, tokenIn, "A Borrow execution may only pull the chain USDC token");
+      }
+      requiredAllowance += amount;
+      tokenInputs.push({
+        permitType: BorrowPermitType2.NONE,
+        token: tokenIn,
+        amount,
+        permitCalldata: "0x"
+      });
+    });
+    if (requiredAllowance === 0n && options.allowEmpty !== true) {
+      throw createValidationFailedError$12("executionParams.instructions", executionParams.instructions, "A Borrow execution requires a positive USDC token input");
+    }
+    return {
+      tokenInputs,
+      requiredAllowance
+    };
+  }
+  function parseApprovalAmount(value, path) {
+    let amount;
+    try {
+      amount = BigInt(value);
+    } catch {
+      throw createValidationFailedError$12(path, value, `${path} must be a non-negative bigint-compatible value`);
+    }
+    if (amount < 0n) {
+      throw createValidationFailedError$12(path, value, `${path} must be a non-negative bigint-compatible value`);
+    }
+    return amount;
+  }
+  function buildBorrowTokenInputs(executionParams) {
+    const tokenInputs = [];
+    const totals = /* @__PURE__ */ new Map();
+    executionParams.instructions.forEach((instruction, index2) => {
+      const amount = parseApprovalAmount(instruction.amountToApprove, `executionParams.instructions[${index2.toString()}].amountToApprove`);
+      if (amount === 0n) return;
+      const tokenIn = requireEvmAddress(`executionParams.instructions[${index2.toString()}].tokenIn`, instruction.tokenIn);
+      const key = tokenIn.toLowerCase();
+      const running = totals.get(key);
+      totals.set(key, {
+        token: running?.token ?? tokenIn,
+        amount: (running?.amount ?? 0n) + amount
+      });
+      tokenInputs.push({
+        permitType: BorrowPermitType2.NONE,
+        token: tokenIn,
+        amount,
+        permitCalldata: "0x"
+      });
+    });
+    return {
+      tokenInputs,
+      approvals: [
+        ...totals.values()
+      ]
+    };
+  }
+  function borrowLegArgs(executionParams) {
+    const borrowLegs = executionParams.instructions.filter(({ data }) => selectorOf(data) === morphoBlueFunctionSelectors.borrow);
+    const leg = borrowLegs[0];
+    if (borrowLegs.length !== 1 || leg === void 0) {
+      throw createValidationFailedError$12("executionParams.instructions", executionParams.instructions.map(({ data }) => selectorOf(data)), "A Borrow execution envelope must carry exactly one Morpho borrow instruction");
+    }
+    return leg.data.slice(10);
+  }
+  function resolveLoanAsset(executionParams) {
+    const path = "executionParams.instructions[].data";
+    return requireEvmAddress(path, decodeAddressWord(borrowLegArgs(executionParams), BORROW_LEG_LOAN_TOKEN_WORD, path));
+  }
+  function assertBorrowAmountMatches(executionParams, requestedAmount, decimals) {
+    const path = "executionParams.instructions[].data";
+    const signedAmount = BigInt(`0x${readWord(borrowLegArgs(executionParams), BORROW_LEG_ASSETS_WORD, path)}`);
+    if (signedAmount !== Amount2.parse(requestedAmount, {
+      decimals
+    }).raw) {
+      throw createValidationFailedError$12(path, signedAmount.toString(), "Borrow Service signed an execution for a different borrow amount");
+    }
+  }
+  function assertExecutionMatches(execution, expectedLoanId, expectedChain) {
+    if (expectedLoanId !== void 0 && execution.loanId !== expectedLoanId) {
+      throw createValidationFailedError$12("execution.loanId", execution.loanId, "Borrow Service returned an execution for a different loan");
+    }
+    if (execution.chain !== expectedChain) {
+      throw createValidationFailedError$12("execution.chain", execution.chain, "Borrow Service returned an execution for a different chain");
+    }
+  }
+  function assertExecutionNotExpired(executionParams, nowSeconds = BigInt(Math.floor(Date.now() / 1e3))) {
+    let deadline;
+    try {
+      deadline = BigInt(executionParams.deadline);
+    } catch {
+      throw createValidationFailedError$12("executionParams.deadline", executionParams.deadline, "Borrow execution deadline must be a non-negative bigint-compatible value");
+    }
+    if (deadline <= nowSeconds) {
+      throw new KitError2({
+        ...InputError2.VALIDATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: `Validation failed for 'executionParams.deadline': '${String(executionParams.deadline)}' - Borrow execution deadline has expired.`
+      });
+    }
+  }
+  async function assertSupportsAtomicBatch(adapter, chain, fromAddress, operation) {
+    if (await adapter.supportsAtomicBatch(chain, {
+      fromAddress
+    })) return;
+    const eoaRemedy = chain.kitContracts?.senderPreservingBatcher === void 0 ? " An externally owned account (EOA) cannot batch atomically here." : ` An externally owned account (EOA) can batch on ${chain.name} through the sender-preserving batcher the chain publishes, but only via an adapter that uses it: import your Viem adapter from \`@circle-fin/adapter-viem-v2/next\`.`;
+    throw new KitError2({
+      ...InputError2.UNSUPPORTED_ACTION,
+      recoverability: "FATAL",
+      message: `${operation} requires a wallet that can settle an atomic batch, and ${fromAddress} cannot on ${chain.name}. Use a batch-capable wallet: a Circle Wallets ERC-6900 smart-contract account, or an EIP-5792 wallet that supports \`wallet_sendCalls\`.` + eoaRemedy,
+      cause: {
+        trace: {
+          address: fromAddress,
+          chain: chain.name,
+          operation
+        }
+      }
+    });
+  }
+  async function prepareMorphoAuthorizedCalls({ adapter, chain, owner, morphoAddress, adapterContract, authorizedCall }) {
+    const operationContext = {
+      chain,
+      address: owner
+    };
+    const isAuthorized = await executeAdapterContractRead(adapter, {
+      address: morphoAddress,
+      abi: morphoAuthorizationAbi,
+      functionName: "isAuthorized",
+      args: [
+        owner,
+        adapterContract
+      ]
+    }, operationContext);
+    const authorizeRequest = await adapter.prepare({
+      address: morphoAddress,
+      abi: morphoAuthorizationAbi,
+      functionName: "setAuthorization",
+      args: [
+        adapterContract,
+        true
+      ]
+    }, operationContext);
+    const revokeRequest = await adapter.prepare({
+      address: morphoAddress,
+      abi: morphoAuthorizationAbi,
+      functionName: "setAuthorization",
+      args: [
+        adapterContract,
+        false
+      ]
+    }, operationContext);
+    if (parseAuthorization(isAuthorized)) {
+      throw new KitError2({
+        ...BorrowError.STANDING_AUTHORIZATION,
+        recoverability: "FATAL",
+        message: "The Borrow Adapter has unexpected standing Morpho authorization. The owner must revoke it before retrying; this operation was not submitted.",
+        cause: {
+          trace: {
+            owner,
+            morphoAddress,
+            adapterContract
+          }
+        }
+      });
+    }
+    return {
+      calls: [
+        getCallData(authorizeRequest, "Morpho authorization"),
+        authorizedCall,
+        getCallData(revokeRequest, "Morpho authorization revocation")
+      ],
+      authorizedCallIndex: 1
+    };
+  }
+  function normalizeBorrowResultError(error, message) {
+    return isKitError2(error) ? error : createUnknownError({
+      message,
+      cause: error,
+      recoverability: "RETRYABLE"
+    });
+  }
+  function normalizeDetailsUnavailableError(error, message) {
+    if (isKitError2(error)) {
+      return new KitError2({
+        code: error.code,
+        name: error.name,
+        type: error.type,
+        recoverability: "FATAL",
+        message: error.message,
+        ...error.cause !== void 0 && {
+          cause: error.cause
+        }
+      });
+    }
+    return createUnknownError({
+      message,
+      cause: error
+    });
+  }
+  async function readTokenDecimals(adapter, token, operationContext, path) {
+    const value = await executeAdapterContractRead(adapter, {
+      address: token,
+      abi: erc20Abi2,
+      functionName: "decimals",
+      args: []
+    }, operationContext);
+    const decimals = typeof value === "bigint" || typeof value === "string" && value !== "" ? Number(value) : value;
+    if (typeof decimals !== "number" || !Number.isInteger(decimals) || decimals < 0 || decimals > 255) {
+      throw createValidationFailedError$12(path, value, "Token decimals must be an integer between 0 and 255");
+    }
+    return decimals;
+  }
+  async function assertSufficientTokenBalance(adapter, params, ctx) {
+    const { tokenAddress, walletAddress, required, decimals, liveUntilSeconds } = params;
+    if (required <= 0n) return;
+    const balance = await readTokenBalance(adapter, {
+      tokenAddress,
+      walletAddress
+    }, ctx);
+    if (balance >= required) return;
+    const symbol = params.symbol ?? "the token";
+    const format2 = (value) => Amount2.of(value, {
+      decimals
+    }).formatted({
+      useGrouping: false
+    });
+    const liveUntil = liveUntilSeconds === void 0 ? void 0 : new Date(Number(liveUntilSeconds) * 1e3).toISOString();
+    const remedy = liveUntil === void 0 ? `Fund the wallet with at least ${format2(required - balance)} more ${symbol} and retry.` : `Fund the wallet with at least ${format2(required - balance)} more ${symbol}, then retry after ${liveUntil}: a signed bundle for this operation is already live until then and an earlier retry is refused as a conflict.`;
+    throw new KitError2({
+      ...BalanceError2.INSUFFICIENT_TOKEN,
+      recoverability: "FATAL",
+      message: `This operation ${params.action} ${format2(required)} ${symbol} from ${walletAddress}, which holds ${format2(balance)}. ${remedy}`,
+      cause: {
+        trace: {
+          tokenAddress,
+          walletAddress,
+          chain: ctx.chain.name,
+          required: required.toString(),
+          available: balance.toString(),
+          shortfall: (required - balance).toString(),
+          ...liveUntil !== void 0 && {
+            liveUntil
+          }
+        }
+      }
+    });
+  }
+  function sumQuotedGas(gasFees, names2) {
+    let total = 0n;
+    for (const name4 of names2) {
+      const entry = gasFees.find((candidate) => candidate.name === name4);
+      if (entry === void 0) continue;
+      try {
+        const fee = BigInt(entry.fees.fee);
+        if (fee > 0n) total += fee;
+      } catch {
+        continue;
+      }
+    }
+    return total;
+  }
+  function nativeMirrorTokenAddress(chain) {
+    if (chain.nativeCurrency.symbol !== "USDC") return void 0;
+    const { usdcAddress } = chain;
+    if (typeof usdcAddress !== "string" || !usdcAddress.startsWith("0x")) {
+      return void 0;
+    }
+    return usdcAddress;
+  }
+  function gasShortfallRemedy(canShrink, hasAmount) {
+    if (canShrink) return "Fund the wallet, or request a smaller amount.";
+    if (!hasAmount) return "Fund the wallet.";
+    return "Fund the wallet. A smaller amount will not help.";
+  }
+  async function shouldCheckNativeGasBalance(adapter, address, chain) {
+    if (!isNativeBalanceReadableAdapter(adapter)) return false;
+    if (isEvmAdapterLike(adapter) && await isContractSigner(adapter, address, chain)) {
+      return false;
+    }
+    return true;
+  }
+  async function assertSufficientGasBalance(adapter, params, ctx) {
+    if (!await shouldCheckNativeGasBalance(adapter, params.walletAddress, ctx.chain)) {
+      return;
+    }
+    if (!isNativeBalanceReadableAdapter(adapter)) return;
+    const gas = sumQuotedGas(params.gasFees, params.actions);
+    const nativeDecimals = ctx.chain.nativeCurrency.decimals;
+    const mirror = nativeMirrorTokenAddress(ctx.chain);
+    const { tokenPull } = params;
+    let pullInNativeUnits = 0n;
+    if (mirror !== void 0 && tokenPull !== void 0 && tokenPull.required > 0n && tokenPull.tokenAddress.toLowerCase() === mirror.toLowerCase() && nativeDecimals >= tokenPull.decimals) {
+      pullInNativeUnits = tokenPull.required * 10n ** BigInt(nativeDecimals - tokenPull.decimals);
+    }
+    const required = gas + pullInNativeUnits;
+    if (required <= 0n) return;
+    let balance;
+    try {
+      balance = await adapter.readNativeBalance(params.walletAddress, ctx.chain);
+    } catch {
+      return;
+    }
+    if (balance >= required) return;
+    const symbol = params.symbol ?? ctx.chain.nativeCurrency.symbol;
+    const format2 = (value) => Amount2.of(value, {
+      decimals: nativeDecimals
+    }).formatted({
+      useGrouping: false
+    });
+    const liveUntil = params.liveUntilSeconds === void 0 ? void 0 : new Date(Number(params.liveUntilSeconds) * 1e3).toISOString();
+    const hasAmount = params.amountIsReducible !== false;
+    const canShrink = hasAmount && pullInNativeUnits > 0n && balance > gas;
+    const retry2 = liveUntil === void 0 ? "" : ` A signed bundle for this operation is live until ${liveUntil}; an earlier retry is refused as a conflict.`;
+    const remedy = gasShortfallRemedy(canShrink, hasAmount) + retry2;
+    const detail = pullInNativeUnits > 0n ? `moves ${format2(pullInNativeUnits)} ${symbol} and needs about ${format2(gas)} ${symbol} for gas` : `needs about ${format2(gas)} ${symbol} for gas`;
+    throw new KitError2({
+      ...BalanceError2.INSUFFICIENT_GAS,
+      recoverability: "FATAL",
+      message: `This operation ${detail}, but ${params.walletAddress} holds ${format2(balance)} ${symbol}. Gas is paid in ${symbol} on ${ctx.chain.name}, so both come out of the same balance: the wallet is ${format2(required - balance)} ${symbol} short. ${remedy}`,
+      cause: {
+        trace: {
+          walletAddress: params.walletAddress,
+          chain: ctx.chain.name,
+          estimatedGas: gas.toString(),
+          amountMoved: pullInNativeUnits.toString(),
+          required: required.toString(),
+          available: balance.toString(),
+          shortfall: (required - balance).toString(),
+          decimals: nativeDecimals,
+          ...liveUntil !== void 0 && {
+            liveUntil
+          }
+        }
+      }
+    });
+  }
+  function findRevertReason(error) {
+    const trace = findErrorTrace(error);
+    if (trace === void 0) return void 0;
+    const { errorReason, errorDetails } = trace;
+    const reason = [
+      errorReason,
+      errorDetails
+    ].find((value) => typeof value === "string" && value !== "");
+    return reason;
+  }
+  function findErrorTrace(error) {
+    if (typeof error !== "object" || error === null) return void 0;
+    const trace = error.cause?.trace;
+    if (typeof trace !== "object" || trace === null) return void 0;
+    return trace;
+  }
+  function isRevertedBatchError(error) {
+    return isKitError2(error) && error.name === "ONCHAIN_TRANSACTION_REVERTED";
+  }
+  function assertNoTerminalBatchFailure(batch, chain, operation) {
+    const revertReason = findRevertReason(batch.error);
+    const trace = {
+      batchId: batch.batchId,
+      statusCode: batch.statusCode,
+      ...revertReason !== void 0 && {
+        revertReason
+      }
+    };
+    if (batch.statusCode === 400) {
+      const outcome = `${operation} batch failed before on-chain submission`;
+      throw new KitError2({
+        ...OnchainError2.SIMULATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: revertReason === void 0 ? outcome : `${outcome}: ${revertReason}`,
+        cause: {
+          trace
+        }
+      });
+    }
+    if (batch.statusCode === 500 || batch.statusCode === 600) {
+      const outcome = batch.statusCode === 600 ? `${operation} batch partially reverted on-chain` : `${operation} batch reverted on-chain`;
+      throw createTransactionRevertedError2(chain, revertReason === void 0 ? outcome : `${outcome}: ${revertReason}`, trace);
+    }
+    if (batch.statusCode === void 0 && isRevertedBatchError(batch.error)) {
+      const outcome = `${operation} batch reverted on-chain`;
+      const txHash = findErrorTrace(batch.error)?.["txHash"];
+      throw createTransactionRevertedError2(chain, revertReason === void 0 ? outcome : `${outcome}: ${revertReason}`, trace, typeof txHash === "string" ? txHash : void 0);
+    }
+  }
+  function decodeUint256Word(data, wordIndex, path) {
+    return BigInt(`0x${readWord(data, wordIndex, path)}`);
+  }
+  var MARKET_ID_TOPIC_INDEX = 1;
+  function decodeMarketIdTopic(log) {
+    const topic = log.topics[MARKET_ID_TOPIC_INDEX];
+    return topic !== void 0 && /^0x[0-9a-fA-F]{64}$/.test(topic) ? topic.toLowerCase() : void 0;
+  }
+  var REPAY_LAYOUT = {
+    topic: morphoBlueEventTopics.repay,
+    onBehalfTopicIndex: 3,
+    assetsWordIndex: 0
+  };
+  var WITHDRAW_COLLATERAL_LAYOUT = {
+    topic: morphoBlueEventTopics.withdrawCollateral,
+    onBehalfTopicIndex: 2,
+    assetsWordIndex: 1
+  };
+  var BORROW_LAYOUT = {
+    topic: morphoBlueEventTopics.borrow,
+    onBehalfTopicIndex: 2,
+    assetsWordIndex: 1
+  };
+  var SUPPLY_COLLATERAL_LAYOUT = {
+    topic: morphoBlueEventTopics.supplyCollateral,
+    onBehalfTopicIndex: 3,
+    assetsWordIndex: 0
+  };
+  function matchingLogs(logs, morphoAddress, onBehalf, layout) {
+    const morphoAddressLower = morphoAddress.toLowerCase();
+    const onBehalfTopicSuffix = onBehalf.slice(2).toLowerCase();
+    return (logs ?? []).filter(({ address, topics }) => address.toLowerCase() === morphoAddressLower && topics[0]?.toLowerCase() === layout.topic && topics[layout.onBehalfTopicIndex]?.toLowerCase().endsWith(onBehalfTopicSuffix) === true);
+  }
+  function findOne(logs, morphoAddress, onBehalf, layout, path) {
+    const [log] = matchingLogs(logs, morphoAddress, onBehalf, layout);
+    if (log === void 0) return void 0;
+    const marketId = decodeMarketIdTopic(log);
+    return {
+      assets: decodeUint256Word(log.data, layout.assetsWordIndex, path),
+      ...marketId !== void 0 && {
+        marketId
+      }
+    };
+  }
+  function sumAssets(logs, morphoAddress, onBehalf, layout, path) {
+    return matchingLogs(logs, morphoAddress, onBehalf, layout).reduce((total, log) => total + decodeUint256Word(log.data, layout.assetsWordIndex, path), 0n);
+  }
+  function findRepayLog(logs, morphoAddress, onBehalf, path) {
+    return findOne(logs, morphoAddress, onBehalf, REPAY_LAYOUT, path);
+  }
+  function sumRepayAssets(logs, morphoAddress, onBehalf, path) {
+    return sumAssets(logs, morphoAddress, onBehalf, REPAY_LAYOUT, path);
+  }
+  function findWithdrawCollateralLog(logs, morphoAddress, onBehalf, path) {
+    return findOne(logs, morphoAddress, onBehalf, WITHDRAW_COLLATERAL_LAYOUT, path);
+  }
+  function findBorrowLog(logs, morphoAddress, onBehalf, path) {
+    return findOne(logs, morphoAddress, onBehalf, BORROW_LAYOUT, path);
+  }
+  function findSupplyCollateralLog(logs, morphoAddress, onBehalf, path) {
+    return findOne(logs, morphoAddress, onBehalf, SUPPLY_COLLATERAL_LAYOUT, path);
+  }
+  async function resolveSignedExecution(fetch3, resume) {
+    if (resume?.signed !== void 0) {
+      resume.onExecution?.(resume.signed);
+      return resume.signed;
+    }
+    resume?.progress?.begin("fetchParams");
+    try {
+      const execution = await fetch3();
+      resume?.progress?.succeed("fetchParams");
+      resume?.onExecution?.(execution);
+      return execution;
+    } catch (error) {
+      resume?.progress?.fail("fetchParams", error);
+      throw error;
+    }
+  }
+  function reportWritePhases(progress, options) {
+    if (options.usesApprove !== false) {
+      progress?.begin("approve");
+      if (!options.needsApprove) {
+        progress?.succeed("approve");
+      }
+    }
+    if (options.usesAuthorization) {
+      progress?.begin("setAuthorization");
+    }
+    progress?.begin("execute");
+  }
+  async function runReportedBatch(progress, run2) {
+    try {
+      return await run2();
+    } catch (error) {
+      progress?.settle({
+        state: "error",
+        error
+      });
+      throw error;
+    }
+  }
+  function settleWriteReceipt(progress, receipt, revert) {
+    if (receipt.status !== "success") {
+      progress?.settle({
+        state: "error",
+        error: revert
+      });
+      throw revert;
+    }
+    progress?.settle({
+      state: "success",
+      txHash: receipt.txHash
+    });
+  }
+  var SUPPLY_LEG_COLLATERAL_TOKEN_WORD = 1;
+  var SUPPLY_LEG_ASSETS_WORD = 5;
+  var SUPPLY_LEG_ON_BEHALF_WORD = 6;
+  var SUPPLY_LEG_DATA_OFFSET_WORD = 7;
+  var SUPPLY_LEG_DATA_LENGTH_WORD = 8;
+  var SUPPLY_LEG_EMPTY_DATA_OFFSET = 0x100n;
+  function assertNoCallbackPayload(args, path) {
+    const offset2 = BigInt(`0x${readWord(args, SUPPLY_LEG_DATA_OFFSET_WORD, path)}`);
+    const length = BigInt(`0x${readWord(args, SUPPLY_LEG_DATA_LENGTH_WORD, path)}`);
+    if (offset2 !== SUPPLY_LEG_EMPTY_DATA_OFFSET || length !== 0n) {
+      throw createValidationFailedError$12(path, args.slice(SUPPLY_LEG_DATA_OFFSET_WORD * 64), "Borrow Service signed a collateral addition carrying a Morpho callback payload");
+    }
+  }
+  function assertOnlySupplyLegs(executionParams, path) {
+    const foreign = executionParams.instructions.find(({ data }) => selectorOf(data) !== morphoBlueFunctionSelectors.supplyCollateral);
+    if (foreign !== void 0) {
+      throw createValidationFailedError$12(path, selectorOf(foreign.data), "A collateral-addition envelope may only carry Morpho supplyCollateral instructions");
+    }
+    const payable = executionParams.instructions.find(({ value }) => BigInt(value) !== 0n);
+    if (payable !== void 0) {
+      throw createValidationFailedError$12("executionParams.instructions[].value", payable.value, "A collateral-addition envelope may not forward native value");
+    }
+  }
+  function assertSupplyLegMatchesRequest({ executionParams, requestedAssets, collateralToken, owner }) {
+    const path = "executionParams.instructions[].data";
+    assertOnlySupplyLegs(executionParams, path);
+    assertSweepsToOwner(executionParams, owner, "collateral addition");
+    const [leg] = executionParams.instructions;
+    if (executionParams.instructions.length !== 1 || leg === void 0) {
+      throw createValidationFailedError$12("executionParams.instructions", executionParams.instructions, "A collateral-addition envelope must carry exactly one Morpho supplyCollateral instruction");
+    }
+    const args = leg.data.slice(10);
+    const assets = BigInt(`0x${readWord(args, SUPPLY_LEG_ASSETS_WORD, path)}`);
+    if (assets !== requestedAssets) {
+      throw createValidationFailedError$12(path, assets.toString(), "Borrow Service signed a collateral addition for a different amount than the one requested");
+    }
+    const legToken = decodeAddressWord(args, SUPPLY_LEG_COLLATERAL_TOKEN_WORD, path);
+    if (legToken !== collateralToken.toLowerCase()) {
+      throw createValidationFailedError$12(path, legToken, "Borrow Service signed a collateral addition for a different token than the quote");
+    }
+    const onBehalf = decodeAddressWord(args, SUPPLY_LEG_ON_BEHALF_WORD, path);
+    if (onBehalf !== owner.toLowerCase()) {
+      throw createValidationFailedError$12(path, onBehalf, "Borrow Service signed a collateral addition against a different position");
+    }
+    assertNoCallbackPayload(args, path);
+  }
+  async function executeAddCollateral(params, fetchQuote, fetchExecution, resume) {
+    const { from: from16, loanId, collateralAmount } = params;
+    const chain = resolveChainIdentifier2(from16.chain);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "Adding Borrow Kit collateral is only supported on EVM chains");
+    }
+    const { adapter } = from16;
+    if (!isBatchCapableBorrowAdapter(adapter)) {
+      throw new KitError2({
+        ...InputError2.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Adding Borrow Kit collateral requires an atomic-batch capable adapter."
+      });
+    }
+    const fromAddress = requireEvmAddress("from.address", from16.address);
+    await assertSupportsAtomicBatch(adapter, chain, fromAddress, "Adding Borrow collateral");
+    const adapterContract = requireEvmAddress("chain.kitContracts.adapter", chain.kitContracts?.adapter);
+    const operationContext = {
+      chain,
+      address: fromAddress
+    };
+    const [quote, execution] = await Promise.all([
+      fetchQuote(),
+      resolveSignedExecution(fetchExecution, resume)
+    ]);
+    assertExecutionMatches(execution, loanId, String(chain.chain));
+    assertExecutionNotExpired(execution.executionParams);
+    const collateralToken = requireEvmAddress("quote.collateralAmount.tokenAddress", quote.collateralAmount.tokenAddress);
+    const collateralDecimals = await readTokenDecimals(adapter, collateralToken, operationContext, "quote.collateralAmount.tokenAddress.decimals");
+    const { tokenInputs, requiredAllowance } = buildTokenInputs2(execution.executionParams, collateralToken);
+    const requestedAssets = Amount2.parse(collateralAmount, {
+      decimals: collateralDecimals
+    }).raw;
+    if (requiredAllowance !== requestedAssets) {
+      throw createValidationFailedError$12("execution.executionParams.instructions", execution.executionParams.instructions, "Borrow Service signed an execution for a different collateral amount");
+    }
+    assertSupplyLegMatchesRequest({
+      executionParams: execution.executionParams,
+      requestedAssets,
+      collateralToken,
+      owner: fromAddress
+    });
+    const currentAllowance = await readTokenAllowance2(adapter, {
+      tokenAddress: collateralToken,
+      delegate: adapterContract
+    }, operationContext);
+    const morphoAddress = resolveMorphoAddress(execution.executionParams, [
+      morphoBlueFunctionSelectors.supplyCollateral
+    ]);
+    const needsApprove = currentAllowance < requiredAllowance;
+    const liveUntilSeconds = BigInt(execution.executionParams.deadline);
+    await assertSufficientTokenBalance(adapter, {
+      tokenAddress: collateralToken,
+      walletAddress: fromAddress,
+      required: requiredAllowance,
+      decimals: collateralDecimals,
+      symbol: quote.collateralAmount.token,
+      action: "supplies",
+      liveUntilSeconds
+    }, operationContext);
+    await assertSufficientGasBalance(adapter, {
+      gasFees: quote.gasFees,
+      actions: needsApprove ? [
+        "Approve",
+        "SupplyCollateral"
+      ] : [
+        "SupplyCollateral"
+      ],
+      walletAddress: fromAddress,
+      tokenPull: {
+        tokenAddress: collateralToken,
+        required: requiredAllowance,
+        decimals: collateralDecimals
+      },
+      liveUntilSeconds
+    }, operationContext);
+    const calls = [];
+    if (needsApprove) {
+      if (currentAllowance > 0n) {
+        const resetRequest = await adapter.prepareAction("token.approve", {
+          tokenAddress: collateralToken,
+          delegate: adapterContract,
+          amount: 0n
+        }, operationContext);
+        calls.push(getCallData(resetRequest, "Borrow collateral-addition allowance reset"));
+      }
+      const approvalRequest = await adapter.prepareAction("token.approve", {
+        tokenAddress: collateralToken,
+        delegate: adapterContract,
+        amount: requiredAllowance
+      }, operationContext);
+      calls.push(getCallData(approvalRequest, "Borrow collateral-addition approval"));
+    }
+    const executeRequest = await adapter.prepareAction("borrow.execute", {
+      executeParams: execution.executionParams,
+      tokenInputs,
+      signature: execution.signature
+    }, operationContext);
+    const executeCallIndex = calls.length;
+    calls.push(getCallData(executeRequest, "Borrow collateral-addition execution"));
+    reportWritePhases(resume?.progress, {
+      needsApprove,
+      usesAuthorization: false
+    });
+    assertExecutionNotExpired(execution.executionParams);
+    const batch = await runReportedBatch(resume?.progress, async () => {
+      const submitted = await adapter.batchExecute(calls, chain, {
+        fromAddress
+      });
+      assertNoTerminalBatchFailure(submitted, chain.name, "Borrow collateral-addition");
+      return submitted;
+    });
+    const receipt = batch.receipts[executeCallIndex];
+    if (receipt === void 0 || receipt.txHash === "") {
+      return {
+        status: "submitted",
+        loanId,
+        batchId: batch.batchId,
+        ...batch.error !== void 0 && {
+          error: normalizeBorrowResultError(batch.error, "Borrow collateral-addition confirmation is unavailable")
+        }
+      };
+    }
+    settleWriteReceipt(resume?.progress, receipt, createTransactionRevertedError2(chain.name, "Borrow collateral-addition batch reverted on-chain", void 0, receipt.txHash));
+    let amounts;
+    try {
+      amounts = findSupplyCollateralLog(receipt.logs, morphoAddress, fromAddress, "supplyCollateral");
+    } catch (error) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(error, "Borrow collateral addition confirmed but receipt details are unavailable")
+      };
+    }
+    if (amounts === void 0) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(new Error("SupplyCollateral event log not found in receipt"), "Borrow collateral addition confirmed but receipt details are unavailable")
+      };
+    }
+    const collateralAdded = {
+      ...quote.collateralAmount,
+      amount: Amount2.of(amounts.assets, {
+        decimals: collateralDecimals
+      }).formatted({
+        useGrouping: false
+      }),
+      decimals: collateralDecimals
+    };
+    return {
+      status: "confirmed",
+      loanId,
+      batchId: batch.batchId,
+      collateralAdded,
+      txHash: receipt.txHash
+    };
+  }
+  var BORROW_MORPHO_SELECTORS = [
+    morphoBlueFunctionSelectors.borrow,
+    morphoBlueFunctionSelectors.supplyCollateral
+  ];
+  function resolveUsdcLoanAsset(executionParams, usdcAddress) {
+    const loanAsset = resolveLoanAsset(executionParams);
+    if (loanAsset.toLowerCase() !== usdcAddress.toLowerCase()) {
+      throw createValidationFailedError$12("executionParams.instructions[].data", loanAsset, `Borrow Kit borrows USDC (${usdcAddress}), and this market's loan asset is a different token`);
+    }
+    return loanAsset;
+  }
+  var UNNAMED_FEE_TYPE = "unknown";
+  var LOAN_ASSET_SYMBOL = "USDC";
+  function topicIsAddress(topic, address) {
+    return topic?.toLowerCase().endsWith(address.slice(2).toLowerCase()) === true;
+  }
+  function findFeeTransfers(logs, token, adapterContract, owner) {
+    const tokenLower = token.toLowerCase();
+    const path = "receipt.logs[].data";
+    return (logs ?? []).filter(({ address, topics }) => address.toLowerCase() === tokenLower && topics[0]?.toLowerCase() === erc20EventTopics.transfer && topicIsAddress(topics[1], adapterContract) && !topicIsAddress(topics[2], owner)).map(({ data }) => ({
+      value: BigInt(`0x${readWord(data, 0, path)}`)
+    }));
+  }
+  function reconcileFeeLegs({ declaredFees, paidOut, loanAsset, decimals }) {
+    const format2 = (value) => Amount2.of(value, {
+      decimals
+    }).formatted({
+      useGrouping: false
+    });
+    if (declaredFees.length === 0) {
+      return paidOut.map((paid) => ({
+        type: UNNAMED_FEE_TYPE,
+        token: LOAN_ASSET_SYMBOL,
+        amount: {
+          token: LOAN_ASSET_SYMBOL,
+          tokenAddress: loanAsset,
+          decimals,
+          amount: format2(paid.value)
+        }
+      }));
+    }
+    if (paidOut.length !== declaredFees.length) return [
+      ...declaredFees
+    ];
+    return declaredFees.map((declared, index2) => {
+      const paid = paidOut[index2];
+      return {
+        ...declared,
+        amount: {
+          ...declared.amount,
+          decimals,
+          amount: format2(paid.value)
+        }
+      };
+    });
+  }
+  async function executeBorrow(params, fetchExecution, resume) {
+    const { from: from16, loanAssetAmount } = params;
+    const chain = resolveChainIdentifier2(from16.chain);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "Borrowing is only supported on EVM chains");
+    }
+    const { adapter } = from16;
+    if (!isBatchCapableBorrowAdapter(adapter)) {
+      throw new KitError2({
+        ...InputError2.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Borrowing requires an atomic-batch capable adapter."
+      });
+    }
+    const fromAddress = requireEvmAddress("from.address", from16.address);
+    await assertSupportsAtomicBatch(adapter, chain, fromAddress, "Borrowing");
+    const adapterContract = requireEvmAddress("chain.kitContracts.adapter", chain.kitContracts?.adapter);
+    const usdcAddress = requireEvmAddress("chain.usdcAddress", chain.usdcAddress);
+    const decimals = resolveTokenDecimals$12(USDC2, chain.chain);
+    const operationContext = {
+      chain,
+      address: fromAddress
+    };
+    const execution = await resolveSignedExecution(async () => {
+      const fetched = await fetchExecution();
+      assertExecutionMatches(fetched, params.loanId, String(chain.chain));
+      assertBorrowAmountMatches(fetched.executionParams, loanAssetAmount, decimals);
+      return fetched;
+    }, resume);
+    const { tokenInputs, approvals } = buildBorrowTokenInputs(execution.executionParams);
+    const loanAsset = resolveUsdcLoanAsset(execution.executionParams, usdcAddress);
+    assertSweepsToOwner(execution.executionParams, fromAddress, "borrow", [
+      loanAsset
+    ]);
+    const morphoAddress = resolveMorphoAddress(execution.executionParams, BORROW_MORPHO_SELECTORS);
+    const calls = [];
+    for (const { token, amount } of approvals) {
+      const currentAllowance = await readTokenAllowance2(adapter, {
+        tokenAddress: token,
+        delegate: adapterContract
+      }, operationContext);
+      if (currentAllowance >= amount) continue;
+      const approvalRequest = await adapter.prepareAction("token.approve", {
+        tokenAddress: token,
+        delegate: adapterContract,
+        amount
+      }, operationContext);
+      calls.push(getCallData(approvalRequest, "Borrow collateral approval"));
+    }
+    const needsApprove = calls.length > 0;
+    const borrowRequest = await adapter.prepareAction("borrow.execute", {
+      executeParams: execution.executionParams,
+      tokenInputs,
+      signature: execution.signature
+    }, operationContext);
+    const authorized = await prepareMorphoAuthorizedCalls({
+      adapter,
+      chain,
+      owner: fromAddress,
+      morphoAddress,
+      adapterContract,
+      authorizedCall: getCallData(borrowRequest, "Borrow execution")
+    });
+    const borrowCallIndex = calls.length + authorized.authorizedCallIndex;
+    calls.push(...authorized.calls);
+    reportWritePhases(resume?.progress, {
+      needsApprove,
+      usesAuthorization: true,
+      // Borrowing more against collateral that is already supplied pulls no
+      // token, so there is no approval to report either way.
+      usesApprove: approvals.length > 0
+    });
+    assertExecutionNotExpired(execution.executionParams);
+    const batch = await runReportedBatch(resume?.progress, async () => adapter.batchExecute(calls, chain, {
+      fromAddress
+    }));
+    const receipt = batch.receipts[borrowCallIndex];
+    if (receipt === void 0 || receipt.txHash === "") {
+      return {
+        status: "submitted",
+        loanId: execution.loanId,
+        batchId: batch.batchId,
+        ...batch.error !== void 0 && {
+          error: normalizeBorrowResultError(batch.error, "Borrow confirmation is unavailable")
+        }
+      };
+    }
+    settleWriteReceipt(resume?.progress, receipt, createTransactionRevertedError2(chain.name, "Borrow batch reverted on-chain", void 0, receipt.txHash));
+    let amounts;
+    try {
+      amounts = findBorrowLog(receipt.logs, morphoAddress, fromAddress, "borrow");
+    } catch (error) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId: execution.loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(error, "Borrow confirmed but receipt details are unavailable")
+      };
+    }
+    if (amounts === void 0) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId: execution.loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(new Error("Borrow event log not found in receipt"), "Borrow confirmed but receipt details are unavailable")
+      };
+    }
+    const paidOut = findFeeTransfers(receipt.logs, loanAsset, adapterContract, fromAddress);
+    const fees2 = reconcileFeeLegs({
+      declaredFees: execution.fees ?? [],
+      paidOut,
+      loanAsset,
+      decimals
+    });
+    return {
+      status: "confirmed",
+      loanId: execution.loanId,
+      batchId: batch.batchId,
+      fees: fees2,
+      amountBorrowed: {
+        token: LOAN_ASSET_SYMBOL,
+        tokenAddress: loanAsset,
+        decimals,
+        amount: Amount2.of(amounts.assets, {
+          decimals
+        }).formatted({
+          useGrouping: false
+        })
+      },
+      txHash: receipt.txHash
+    };
+  }
+  function borrowRequestParams(params) {
+    const request = {
+      ...params
+    };
+    delete request["from"];
+    return request;
+  }
+  async function fetchBorrow(providerConfig, params) {
+    const body = {
+      amount: params.loanAssetAmount,
+      ...params.loanId === void 0 ? {
+        walletAddress: params.walletAddress,
+        chain: requireBorrowApiChain(params.chain),
+        marketId: params.marketId
+      } : {
+        loanId: params.loanId
+      },
+      ...params.slippageBps !== void 0 && {
+        slippageBps: params.slippageBps
+      }
+    };
+    const response = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: "/loans/borrow",
+      body,
+      responseGuard: isBorrowExecution,
+      operation: "borrow",
+      idempotent: true,
+      credential: "optional",
+      ...params.idempotencyKey !== void 0 && {
+        idempotencyKey: params.idempotencyKey
+      }
+    });
+    return {
+      ...response.data,
+      chain: requireBorrowSdkChain(response.data.chain)
+    };
+  }
+  async function fetchClaimRewards(providerConfig, params) {
+    const { pollingConfig, baseUrl } = buildConfig(providerConfig, params.config, "forbidden");
+    const url = new URL(`${KITS_API_PREFIX}/claimRewards`, baseUrl);
+    const requestBody = {
+      address: params.address,
+      chain: params.chain
+    };
+    try {
+      const response = await pollApiPost2(url.toString(), requestBody, isClaimRewardsResponse, pollingConfig);
+      const { rewards, executionParams, signature } = response.data;
+      return {
+        rewards: rewards.map(toClaimedAmount$1),
+        ...executionParams === void 0 ? {} : {
+          executionParams
+        },
+        ...signature === void 0 ? {} : {
+          signature
+        }
+      };
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "claimRewards"
+      });
+    }
+  }
+  async function fetchClaimRewardsQuote(providerConfig, params) {
+    const { pollingConfig, baseUrl } = buildConfig(providerConfig, params.config, "forbidden");
+    const url = new URL(`${KITS_API_PREFIX}/claimRewards/quote`, baseUrl);
+    const requestBody = {
+      address: params.address,
+      chain: params.chain
+    };
+    try {
+      const response = await pollApiPost2(url.toString(), requestBody, isClaimRewardsQuoteResponse, pollingConfig);
+      return {
+        rewards: response.data.rewards.map(toClaimedAmount$1)
+      };
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "getRewards"
+      });
+    }
+  }
+  function toDecimalString(value) {
+    return value.toLocaleString("en-US", {
+      useGrouping: false,
+      maximumFractionDigits: 20
+    });
+  }
+  function decimalToNumber(value) {
+    if (value === null) {
+      return null;
+    }
+    return typeof value === "number" ? value : Number(value);
+  }
+  async function fetchBorrowQuote(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: "/loans/borrow/quote",
+      body: params.loanId === void 0 ? {
+        walletAddress: params.walletAddress,
+        chain: requireBorrowApiChain(params.chain),
+        marketId: params.marketId,
+        amount: params.loanAssetAmount,
+        ...params.slippageBps !== void 0 && {
+          slippageBps: params.slippageBps
+        }
+      } : {
+        loanId: params.loanId,
+        amount: params.loanAssetAmount,
+        ...params.slippageBps !== void 0 && {
+          slippageBps: params.slippageBps
+        }
+      },
+      responseGuard: isBorrowQuote,
+      operation: "getBorrowQuote",
+      idempotent: false,
+      credential: "optional"
+    });
+    return {
+      ...quote.data,
+      chain: requireBorrowSdkChain(quote.data.chain),
+      gasFees: toQuoteGasFees(quote.data.gasFees)
+    };
+  }
+  async function fetchRequiredCollateral(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: "/loans/requiredCollateral/quote",
+      body: {
+        chain: requireBorrowApiChain(params.chain),
+        marketId: params.marketId,
+        loanAssetAmount: params.loanAssetAmount,
+        // Not `.toString()` on an exponential: a target of 1e-7 would serialize
+        // as "1e-7", which the service's decimal validator rejects.
+        targetHealthFactor: toDecimalString(params.targetHealthFactor)
+      },
+      responseGuard: isRequiredCollateralQuote,
+      operation: "getRequiredCollateral",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    return {
+      ...quote.data,
+      chain: requireBorrowSdkChain(quote.data.chain),
+      resultingHealthFactor: decimalToNumber(quote.data.resultingHealthFactor)
+    };
+  }
+  async function fetchMaxBorrow(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: "/loans/maxBorrow/quote",
+      body: {
+        chain: requireBorrowApiChain(params.chain),
+        marketId: params.marketId,
+        collateralAmount: params.collateralAmount
+      },
+      responseGuard: isMaxBorrowQuote,
+      operation: "getMaxBorrow",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    return {
+      ...quote.data,
+      chain: requireBorrowSdkChain(quote.data.chain)
+    };
+  }
+  var BASIS_POINTS = 10000n;
+  function maximumWithToleranceBps(base3, toleranceBps) {
+    return (base3 * (BASIS_POINTS + BigInt(toleranceBps)) + BASIS_POINTS - 1n) / BASIS_POINTS;
+  }
+  function resolveToleranceBps(slippageBps, defaultBps) {
+    return slippageBps ?? defaultBps;
+  }
+  function inflateAmountByToleranceBps(amount, toleranceBps) {
+    const { decimals } = amount;
+    const raw = Amount2.parse(amount.amount, {
+      decimals
+    }).raw;
+    const ceiling = maximumWithToleranceBps(raw, toleranceBps);
+    return {
+      ...amount,
+      amount: Amount2.of(ceiling, {
+        decimals
+      }).formatted({
+        useGrouping: false
+      })
+    };
+  }
+  function closeLoanPath(loanId) {
+    return `/loans/${encodeURIComponent(loanId)}/closeLoan`;
+  }
+  function closeLoanBody(params) {
+    return params.slippageBps === void 0 ? {} : {
+      slippageBps: params.slippageBps
+    };
+  }
+  async function fetchCloseLoan(providerConfig, params) {
+    const path = closeLoanPath(params.loanId);
+    const body = closeLoanBody(params);
+    const execution = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path,
+      body,
+      responseGuard: isLoanExecution,
+      operation: "closeLoan",
+      idempotent: true,
+      idempotencyKey: params.idempotencyKey,
+      credential: "forbidden"
+    });
+    const result = {
+      ...execution.data,
+      chain: requireBorrowSdkChain(execution.data.chain)
+    };
+    return result;
+  }
+  async function fetchCloseLoanQuote(providerConfig, params) {
+    const path = `${closeLoanPath(params.loanId)}/quote`;
+    const body = closeLoanBody(params);
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path,
+      body,
+      responseGuard: isCloseLoanQuote,
+      operation: "getCloseLoanQuote",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    const { repayAmount, ...rest } = quote.data;
+    const result = {
+      ...rest,
+      bundledRepayment: inflateAmountByToleranceBps(repayAmount, resolveToleranceBps(params.slippageBps, DEFAULT_CLOSE_SLIPPAGE_BPS)),
+      chain: requireBorrowSdkChain(quote.data.chain),
+      gasFees: toQuoteGasFees(quote.data.gasFees)
+    };
+    return result;
+  }
+  var POSITION_DEBIT_SELECTORS = /* @__PURE__ */ new Set([
+    morphoBlueFunctionSelectors.repay,
+    morphoBlueFunctionSelectors.withdrawCollateral
+  ]);
+  function assertOnlyMorphoLegs(executionParams, operation) {
+    const path = "executionParams.instructions[].data";
+    const foreign = executionParams.instructions.find(({ data }) => !POSITION_DEBIT_SELECTORS.has(selectorOf(data)));
+    if (foreign !== void 0) {
+      throw createValidationFailedError$12(path, selectorOf(foreign.data), `A ${operation} envelope may only carry Morpho repay and withdrawCollateral instructions`);
+    }
+    const valued = executionParams.instructions.find(({ value }) => BigInt(value) !== 0n);
+    if (valued !== void 0) {
+      throw createValidationFailedError$12("executionParams.instructions[].value", valued.value, `A ${operation} envelope may not send native value`);
+    }
+  }
+  var REPAY_LEG_ON_BEHALF_WORD = 7;
+  function assertRepayLegsMatchWithdrawal(executionParams, owner, market, path) {
+    const repayLegs = executionParams.instructions.filter(({ data }) => selectorOf(data) === morphoBlueFunctionSelectors.repay);
+    for (const { data } of repayLegs) {
+      const args = data.slice(10);
+      const repayOnBehalf = decodeAddressWord(args, REPAY_LEG_ON_BEHALF_WORD, path);
+      if (repayOnBehalf !== owner.toLowerCase()) {
+        throw createValidationFailedError$12(path, repayOnBehalf, "Borrow Service signed a repayment against a different position");
+      }
+      if (marketParamsOf(args, path) !== market) {
+        throw createValidationFailedError$12(path, args.slice(0, MARKET_PARAMS_WORDS * 64), "Borrow Service signed a repayment in a different market than the withdrawal");
+      }
+    }
+  }
+  var POSITION_FIELDS = [
+    "supplyShares",
+    "borrowShares",
+    "collateral"
+  ];
+  var MARKET_FIELDS = [
+    "totalSupplyAssets",
+    "totalSupplyShares",
+    "totalBorrowAssets",
+    "totalBorrowShares",
+    "lastUpdate",
+    "fee"
+  ];
+  var VIRTUAL_ASSETS = 1n;
+  var VIRTUAL_SHARES = 1000000n;
+  var UINT256_MAX = 2n ** 256n - 1n;
+  function toBigInt3(value) {
+    if (typeof value === "bigint") {
+      return value >= 0n && value <= UINT256_MAX ? value : void 0;
+    }
+    if (typeof value === "string" && /^(0x[\da-f]+|\d+)$/i.test(value)) {
+      const n = BigInt(value);
+      return n <= UINT256_MAX ? n : void 0;
+    }
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+      return BigInt(value);
+    }
+    return void 0;
+  }
+  function fieldAt(value, index2, fields) {
+    if (Array.isArray(value)) return value[index2];
+    if (typeof value === "object" && value !== null) {
+      return value[fields[index2] ?? ""];
+    }
+    return void 0;
+  }
+  function parseStoredPosition(value, path) {
+    const parsed = POSITION_FIELDS.map((_, index2) => toBigInt3(fieldAt(value, index2, POSITION_FIELDS)));
+    const [supplyShares, borrowShares, collateral] = parsed;
+    if (supplyShares === void 0 || borrowShares === void 0 || collateral === void 0) {
+      throw createValidationFailedError$12(path, value, "Morpho position() must return supplyShares, borrowShares, and collateral");
+    }
+    return {
+      supplyShares,
+      borrowShares,
+      collateral
+    };
+  }
+  async function readMorphoPosition(adapter, input, ctx, path) {
+    const value = await executeAdapterContractRead(adapter, {
+      address: input.morphoAddress,
+      abi: morphoBlueAbi,
+      functionName: "position",
+      args: [
+        input.marketId,
+        input.owner
+      ]
+    }, ctx);
+    return parseStoredPosition(value, path);
+  }
+  function parseBorrowTotals(value, path) {
+    const totalBorrowAssets = toBigInt3(fieldAt(value, MARKET_FIELDS.indexOf("totalBorrowAssets"), MARKET_FIELDS));
+    const totalBorrowShares = toBigInt3(fieldAt(value, MARKET_FIELDS.indexOf("totalBorrowShares"), MARKET_FIELDS));
+    if (totalBorrowAssets === void 0 || totalBorrowShares === void 0) {
+      throw createValidationFailedError$12(path, value, "Morpho market() must return totalBorrowAssets and totalBorrowShares");
+    }
+    return {
+      totalBorrowAssets,
+      totalBorrowShares
+    };
+  }
+  async function readMorphoBorrowAssets(adapter, input, ctx, path) {
+    if (input.borrowShares === 0n) return 0n;
+    const value = await executeAdapterContractRead(adapter, {
+      address: input.morphoAddress,
+      abi: morphoBlueAbi,
+      functionName: "market",
+      args: [
+        input.marketId
+      ]
+    }, ctx);
+    const { totalBorrowAssets, totalBorrowShares } = parseBorrowTotals(value, path);
+    const denominator = totalBorrowShares + VIRTUAL_SHARES;
+    return (input.borrowShares * (totalBorrowAssets + VIRTUAL_ASSETS) + denominator - 1n) / denominator;
+  }
+  var WITHDRAW_LEG_RECEIVER_WORD$1 = 7;
+  function assertClosePaysOwner({ executionParams, owner, adapterContract, sweptTokens }) {
+    const path = "executionParams.instructions[].data";
+    assertOnlyMorphoLegs(executionParams, "close");
+    assertSweepsToOwner(executionParams, owner, "close", sweptTokens);
+    const legs = executionParams.instructions.filter(({ data }) => selectorOf(data) === morphoBlueFunctionSelectors.withdrawCollateral);
+    const leg = legs[0];
+    if (legs.length !== 1 || leg === void 0) {
+      throw createValidationFailedError$12("executionParams.instructions", executionParams.instructions, "A close envelope must carry exactly one Morpho withdrawCollateral instruction");
+    }
+    const args = leg.data.slice(10);
+    const receiver = decodeAddressWord(args, WITHDRAW_LEG_RECEIVER_WORD$1, path);
+    if (receiver !== adapterContract.toLowerCase()) {
+      throw createValidationFailedError$12(path, receiver, "Borrow Service signed a close paying the collateral to a different address");
+    }
+    assertRepayLegsMatchWithdrawal(executionParams, owner, marketParamsOf(args, path), path);
+  }
+  async function resolveCloseExecutionContext(params) {
+    const chain = resolveChainIdentifier2(params.from.chain);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "Closing a Borrow Kit loan is only supported on EVM chains");
+    }
+    const { adapter } = params.from;
+    if (!isBatchCapableBorrowAdapter(adapter)) {
+      throw new KitError2({
+        ...InputError2.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Closing a Borrow Kit loan requires an atomic-batch capable adapter."
+      });
+    }
+    const fromAddress = requireEvmAddress("from.address", params.from.address);
+    await assertSupportsAtomicBatch(adapter, chain, fromAddress, "Closing a Borrow loan");
+    return {
+      adapter,
+      chain,
+      fromAddress,
+      adapterContract: requireEvmAddress("chain.kitContracts.adapter", chain.kitContracts?.adapter),
+      usdcAddress: requireEvmAddress("chain.usdcAddress", chain.usdcAddress)
+    };
+  }
+  function parseCloseEventAmounts(logs, morphoAddress, owner) {
+    const repay2 = findRepayLog(logs, morphoAddress, owner, "closeReceipt.logs[].data");
+    const withdraw3 = findWithdrawCollateralLog(logs, morphoAddress, owner, "closeReceipt.logs[].data");
+    if (repay2 === void 0 || withdraw3 === void 0) {
+      throw createValidationFailedError$12("closeReceipt.logs", logs, "A confirmed close receipt must include Morpho Repay and WithdrawCollateral events");
+    }
+    const { marketId } = withdraw3;
+    if (marketId === void 0) {
+      throw createValidationFailedError$12("closeReceipt.logs[].topics", withdraw3, "A confirmed WithdrawCollateral event must index the market id");
+    }
+    return {
+      repaidAssets: repay2.assets,
+      withdrawnCollateral: withdraw3.assets,
+      marketId
+    };
+  }
+  function looksPreClose(position, debt, amounts) {
+    return amounts.withdrawnCollateral > 0n && position.collateral >= amounts.withdrawnCollateral || amounts.repaidAssets > 0n && debt >= amounts.repaidAssets;
+  }
+  var StalePositionReadError = class StalePositionReadError2 extends Error {
+  };
+  async function readSettledCloseState(adapter, input, ctx, amounts) {
+    return await retryAsync(async () => {
+      const position = await readMorphoPosition(adapter, input, ctx, "closeReceipt.position");
+      const debt = await readMorphoBorrowAssets(adapter, {
+        ...input,
+        borrowShares: position.borrowShares
+      }, ctx, "closeReceipt.market");
+      if (looksPreClose(position, debt, amounts)) {
+        throw new StalePositionReadError("Morpho position read appears to predate the close it just confirmed");
+      }
+      return {
+        position,
+        debt
+      };
+    }, {
+      maxRetries: 2,
+      baseDelayMs: 500,
+      isRetryable: (error) => error instanceof StalePositionReadError
+    });
+  }
+  function resolveQuoteCollateralToken$1(quote, usdcAddress) {
+    const repayToken = requireEvmAddress("quote.bundledRepayment.tokenAddress", quote.bundledRepayment.tokenAddress);
+    if (repayToken.toLowerCase() !== usdcAddress.toLowerCase()) {
+      throw createValidationFailedError$12("quote.bundledRepayment.tokenAddress", repayToken, "Borrow Service returned a repay token that does not match the chain USDC address");
+    }
+    return requireEvmAddress("quote.collateralAmount.tokenAddress", quote.collateralAmount.tokenAddress);
+  }
+  function assertCloseAllowanceWithinQuote(requiredAllowance, quote, repayDecimals) {
+    const maximumAllowance = Amount2.parse(quote.bundledRepayment.amount, {
+      decimals: repayDecimals
+    }).raw;
+    if (requiredAllowance > maximumAllowance) {
+      throw createValidationFailedError$12("execution.executionParams.instructions", {
+        requiredAllowance: requiredAllowance.toString(),
+        maximumAllowance: maximumAllowance.toString()
+      }, "Borrow Service signed a close execution above the quoted maximum repayment. With a zero or small slippageBps this usually means debt accrued between the quote and the execution; retry, or pass a larger slippageBps");
+    }
+  }
+  async function executeCloseLoan(params, fetchQuote, fetchExecution, resume) {
+    const { loanId } = params;
+    const { adapter, chain, fromAddress, adapterContract, usdcAddress } = await resolveCloseExecutionContext(params);
+    const operationContext = {
+      chain,
+      address: fromAddress
+    };
+    const currentAllowance = await readTokenAllowance2(adapter, {
+      tokenAddress: usdcAddress,
+      delegate: adapterContract
+    }, operationContext);
+    const [quote, execution] = await Promise.all([
+      fetchQuote(),
+      resolveSignedExecution(fetchExecution, resume)
+    ]);
+    assertExecutionMatches(execution, loanId, String(chain.chain));
+    assertExecutionNotExpired(execution.executionParams);
+    if (quote.chain !== String(chain.chain)) {
+      throw createValidationFailedError$12("quote.chain", quote.chain, "Borrow Service returned close data for a different chain");
+    }
+    const collateralToken = resolveQuoteCollateralToken$1(quote, usdcAddress);
+    const repayDecimals = resolveTokenDecimals$12(USDC2, chain.chain);
+    const { tokenInputs, requiredAllowance } = buildTokenInputs2(execution.executionParams, usdcAddress);
+    assertCloseAllowanceWithinQuote(requiredAllowance, quote, repayDecimals);
+    assertClosePaysOwner({
+      executionParams: execution.executionParams,
+      owner: fromAddress,
+      adapterContract,
+      sweptTokens: [
+        collateralToken,
+        usdcAddress
+      ]
+    });
+    const morphoAddress = resolveMorphoAddress(execution.executionParams, [
+      morphoBlueFunctionSelectors.repay,
+      morphoBlueFunctionSelectors.withdrawCollateral
+    ]);
+    const needsApprove = currentAllowance < requiredAllowance;
+    const liveUntilSeconds = BigInt(execution.executionParams.deadline);
+    await assertSufficientGasBalance(adapter, {
+      gasFees: quote.gasFees,
+      actions: needsApprove ? [
+        "Approve",
+        "CloseLoan"
+      ] : [
+        "CloseLoan"
+      ],
+      // closeLoan is sized entirely from the position, so its caller has no
+      // amount to reduce and the refusal must offer funding only.
+      amountIsReducible: false,
+      walletAddress: fromAddress,
+      tokenPull: {
+        tokenAddress: usdcAddress,
+        required: requiredAllowance,
+        decimals: repayDecimals
+      },
+      liveUntilSeconds
+    }, operationContext);
+    await assertSufficientTokenBalance(adapter, {
+      tokenAddress: usdcAddress,
+      walletAddress: fromAddress,
+      required: requiredAllowance,
+      decimals: repayDecimals,
+      symbol: quote.bundledRepayment.token,
+      action: "repays",
+      liveUntilSeconds
+    }, operationContext);
+    const calls = [];
+    if (needsApprove) {
+      const approvalRequest = await adapter.prepareAction("token.approve", {
+        tokenAddress: usdcAddress,
+        delegate: adapterContract,
+        amount: requiredAllowance
+      }, operationContext);
+      calls.push(getCallData(approvalRequest, "Borrow loan-close approval"));
+    }
+    const closeRequest = await adapter.prepareAction("borrow.execute", {
+      executeParams: execution.executionParams,
+      tokenInputs,
+      signature: execution.signature
+    }, operationContext);
+    const authorized = await prepareMorphoAuthorizedCalls({
+      adapter,
+      chain,
+      owner: fromAddress,
+      morphoAddress,
+      adapterContract,
+      authorizedCall: getCallData(closeRequest, "Borrow loan-close execution")
+    });
+    const closeCallIndex = calls.length + authorized.authorizedCallIndex;
+    calls.push(...authorized.calls);
+    reportWritePhases(resume?.progress, {
+      needsApprove,
+      usesAuthorization: true
+    });
+    assertExecutionNotExpired(execution.executionParams);
+    const batch = await runReportedBatch(resume?.progress, async () => {
+      const submitted = await adapter.batchExecute(calls, chain, {
+        fromAddress,
+        senderPreservingBatcherGasBufferRatio: BORROWKIT_SENDER_PRESERVING_BATCHER_GAS_BUFFER_RATIO
+      });
+      assertNoTerminalBatchFailure(submitted, chain.name, "Borrow loan-close");
+      return submitted;
+    });
+    const receipt = batch.receipts[closeCallIndex];
+    if (receipt === void 0 || receipt.txHash === "") {
+      return {
+        status: "submitted",
+        loanId,
+        batchId: batch.batchId,
+        ...batch.error !== void 0 && {
+          error: normalizeBorrowResultError(batch.error, "Borrow loan-close confirmation is unavailable")
+        }
+      };
+    }
+    settleWriteReceipt(resume?.progress, receipt, createTransactionRevertedError2(chain.name, "Borrow loan-close batch reverted on-chain", void 0, receipt.txHash));
+    let amounts;
+    let collateralDecimals;
+    let settled;
+    let settledDebt;
+    try {
+      amounts = parseCloseEventAmounts(receipt.logs, morphoAddress, fromAddress);
+      collateralDecimals = await readTokenDecimals(adapter, collateralToken, operationContext, "quote.collateralAmount.tokenAddress.decimals");
+      ({ position: settled, debt: settledDebt } = await readSettledCloseState(adapter, {
+        morphoAddress,
+        marketId: amounts.marketId,
+        owner: fromAddress
+      }, operationContext, amounts));
+    } catch (error) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        // Position state is unknown; do not report closed until both debt and
+        // collateral are confirmed zero.
+        closed: false,
+        error: normalizeDetailsUnavailableError(error, "Borrow loan close confirmed but receipt details are unavailable")
+      };
+    }
+    const amountRepaid = {
+      ...quote.bundledRepayment,
+      amount: Amount2.of(amounts.repaidAssets, {
+        decimals: repayDecimals
+      }).formatted({
+        useGrouping: false
+      }),
+      decimals: repayDecimals
+    };
+    const collateralWithdrawn = {
+      ...quote.collateralAmount,
+      amount: Amount2.of(amounts.withdrawnCollateral, {
+        decimals: collateralDecimals
+      }).formatted({
+        useGrouping: false
+      }),
+      decimals: collateralDecimals
+    };
+    return {
+      status: "confirmed",
+      loanId,
+      batchId: batch.batchId,
+      amountRepaid,
+      collateralWithdrawn,
+      position: {
+        collateral: {
+          ...collateralWithdrawn,
+          amount: Amount2.of(settled.collateral, {
+            decimals: collateralDecimals
+          }).formatted({
+            useGrouping: false
+          })
+        },
+        borrowed: {
+          ...amountRepaid,
+          amount: Amount2.of(settledDebt, {
+            decimals: repayDecimals
+          }).formatted({
+            useGrouping: false
+          })
+        },
+        ltv: null,
+        healthFactor: null,
+        healthFactorBand: settled.borrowShares === 0n ? "SAFE" : null,
+        liquidationPrice: null
+      },
+      txHash: receipt.txHash,
+      // Both debt and collateral must be zero for the position to be fully
+      // wound down. Residual collateral (e.g. a partial close that left margin)
+      // means the position is still open from the protocol's perspective.
+      closed: settled.borrowShares === 0n && settled.collateral === 0n
+    };
+  }
+  function toNullableAssetAmount(amount, asset) {
+    if (amount === null || amount === void 0) return null;
+    return {
+      token: asset.symbol,
+      tokenAddress: asset.address,
+      amount: Amount2.fromJSON(amount).formatted({
+        useGrouping: false
+      }),
+      decimals: amount.decimals
+    };
+  }
+  function toMarketInfo(raw, chain) {
+    const resolvedChain = chain ?? requireBorrowSdkChain(raw.chain);
+    return {
+      marketId: raw.marketId,
+      protocol: raw.protocol,
+      chain: resolvedChain,
+      loanAsset: {
+        symbol: raw.loanAsset.symbol,
+        address: raw.loanAsset.address,
+        decimals: raw.loanAsset.decimals
+      },
+      collateralAsset: {
+        symbol: raw.collateralAsset.symbol,
+        address: raw.collateralAsset.address,
+        decimals: raw.collateralAsset.decimals
+      },
+      lltv: raw.lltv,
+      ...raw.borrowCap !== void 0 && {
+        borrowCap: toNullableAssetAmount(raw.borrowCap, raw.loanAsset)
+      },
+      borrowAssets: toNullableAssetAmount(raw.borrowAssets, raw.loanAsset),
+      liquidity: toNullableAssetAmount(raw.liquidity, raw.loanAsset),
+      borrowApy: raw.borrowApy,
+      utilization: raw.utilization,
+      refreshedAt: raw.refreshedAt
+    };
+  }
+  function toExploreMarketsResult(raw, chain) {
+    return {
+      markets: raw.markets.map((market) => toMarketInfo(market, chain)),
+      pagination: {
+        ...raw.pagination.pageAfter === void 0 ? {} : {
+          pageAfter: raw.pagination.pageAfter
+        }
+      }
+    };
+  }
+  async function fetchExploreMarkets(providerConfig, params) {
+    const { baseUrl, pollingConfig } = buildConfig(providerConfig, params.config, "forbidden");
+    const chain = resolveChainIdentifier2(params.chain);
+    const apiChain = requireBorrowApiChain(chain.chain);
+    const url = new URL(`${BORROW_KIT_API_PREFIX}/markets`, baseUrl);
+    url.searchParams.set("chain", apiChain);
+    if (params.minLltv !== void 0) {
+      url.searchParams.set("minLltv", params.minLltv);
+    }
+    if (params.maxLltv !== void 0) {
+      url.searchParams.set("maxLltv", params.maxLltv);
+    }
+    if (params.minBorrow !== void 0) {
+      url.searchParams.set("minBorrow", params.minBorrow);
+    }
+    if (params.maxBorrow !== void 0) {
+      url.searchParams.set("maxBorrow", params.maxBorrow);
+    }
+    if (params.sortBy !== void 0) {
+      url.searchParams.set("sortBy", params.sortBy);
+    }
+    if (params.pageSize !== void 0) {
+      url.searchParams.set("pageSize", params.pageSize.toString());
+    }
+    if (params.pageAfter !== void 0) {
+      url.searchParams.set("pageAfter", params.pageAfter);
+    }
+    try {
+      const response = await pollApiGet2(url.toString(), isListMarketsResponse, pollingConfig);
+      return toExploreMarketsResult(response.data, chain.chain);
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "exploreMarkets"
+      });
+    }
+  }
+  function toSdkResult(result) {
+    return {
+      ...result,
+      loans: result.loans.map((loan) => ({
+        ...loan,
+        chain: requireBorrowSdkChain(loan.chain)
+      }))
+    };
+  }
+  async function fetchLoans(providerConfig, params) {
+    const { baseUrl, pollingConfig } = buildConfig(providerConfig, params.config, "forbidden");
+    const chain = resolveChainIdentifier2(params.chain);
+    const apiChain = requireBorrowApiChain(chain.chain);
+    const url = new URL(`${BORROW_KIT_API_PREFIX}/loans`, baseUrl);
+    url.searchParams.set("walletAddress", params.walletAddress);
+    url.searchParams.set("chain", apiChain);
+    if (params.pageSize !== void 0) {
+      url.searchParams.set("pageSize", params.pageSize.toString());
+    }
+    if (params.pageAfter !== void 0) {
+      url.searchParams.set("pageAfter", params.pageAfter);
+    }
+    try {
+      const response = await pollApiGet2(url.toString(), isListLoansResponse, pollingConfig);
+      return toSdkResult(response.data);
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "getLoans"
+      });
+    }
+  }
+  function isMarketNotFoundError(error) {
+    return extractResponseBody$12(error)?.["code"] === 380620;
+  }
+  async function fetchMarket(providerConfig, params) {
+    const { baseUrl, pollingConfig } = buildConfig(providerConfig, params.config, "forbidden");
+    const chain = resolveChainIdentifier2(params.chain);
+    const apiChain = requireBorrowApiChain(chain.chain);
+    const url = new URL(`${BORROW_KIT_API_PREFIX}/markets/${apiChain}/${encodeURIComponent(params.marketId)}`, baseUrl).toString();
+    try {
+      const raw = await pollApiGet2(url, isGetMarketResponse, {
+        ...pollingConfig,
+        isTerminalError: isMarketNotFoundError
+      });
+      return toMarketInfo(raw.data);
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "getMarket"
+      });
+    }
+  }
+  var INTEGRATOR_CONFIG_PATH = "/integrators/config";
+  function isIntegratorConfigNotFoundError(error) {
+    return extractResponseBody$12(error)?.["code"] === 380623;
+  }
+  async function fetchIntegratorConfig(providerConfig, params = {}) {
+    const { baseUrl, pollingConfig } = buildConfig(providerConfig, params.config, "required");
+    const url = new URL(`${BORROW_KIT_API_PREFIX}${INTEGRATOR_CONFIG_PATH}`, baseUrl);
+    try {
+      const result = await pollApiGet2(url.toString(), isIntegratorConfig, {
+        ...pollingConfig,
+        isTerminalError: isIntegratorConfigNotFoundError
+      });
+      return result.data;
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "getIntegratorConfig"
+      });
+    }
+  }
+  async function upsertIntegratorConfig(providerConfig, params) {
+    const result = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: INTEGRATOR_CONFIG_PATH,
+      // Built field by field rather than forwarding `params`, which also carries
+      // the per-request `config` that must not reach the request body.
+      body: {
+        integratorFeeBps: params.integratorFeeBps,
+        integratorFeeAddress: params.integratorFeeAddress
+      },
+      responseGuard: isIntegratorConfig,
+      operation: "setIntegratorConfig",
+      // An upsert, so the service is free to replay it. No idempotency key.
+      idempotent: false,
+      credential: "required"
+    });
+    return result.data;
+  }
+  function repayPath(loanId) {
+    return `/loans/${encodeURIComponent(loanId)}/repay`;
+  }
+  async function fetchRepay(providerConfig, params) {
+    const execution = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: repayPath(params.loanId),
+      body: {
+        repayAmount: params.repayAmount
+      },
+      responseGuard: isLoanExecution,
+      operation: "repay",
+      idempotent: true,
+      idempotencyKey: params.idempotencyKey,
+      credential: "forbidden"
+    });
+    return {
+      ...execution.data,
+      chain: requireBorrowSdkChain(execution.data.chain)
+    };
+  }
+  async function fetchRepayQuote(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: `${repayPath(params.loanId)}/quote`,
+      body: {
+        repayAmount: params.repayAmount
+      },
+      responseGuard: isRepayQuote,
+      operation: "getRepayQuote",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    return {
+      ...quote.data,
+      chain: requireBorrowSdkChain(quote.data.chain),
+      gasFees: toQuoteGasFees(quote.data.gasFees)
+    };
+  }
+  async function resolveAdapterContext(from16) {
+    const chainDef = resolveChainIdentifier2(from16.chain);
+    const apiChain = toBorrowApiChain(chainDef.chain);
+    if (apiChain === void 0) {
+      throw createInvalidChainError2(chainDef.chain, "Chain is not supported by the Borrow Service provider");
+    }
+    const address = await resolveAdapterAddress(from16, chainDef);
+    return {
+      address,
+      chain: apiChain,
+      chainDefinition: chainDef
+    };
+  }
+  function validateExecutionDeadline(executionParams, nowSeconds = BigInt(Math.floor(Date.now() / 1e3))) {
+    let deadline;
+    try {
+      deadline = BigInt(executionParams.deadline);
+    } catch {
+      throw createValidationFailedError$12("executionParams.deadline", executionParams.deadline, "Borrow claim rewards execution deadline must be a non-negative bigint-compatible value");
+    }
+    if (deadline <= nowSeconds) {
+      throw new KitError2({
+        ...InputError2.VALIDATION_FAILED,
+        recoverability: "RETRYABLE",
+        message: `Validation failed for 'executionParams.deadline': '${String(executionParams.deadline)}' - Borrow claim rewards execution deadline has expired.`
+      });
+    }
+  }
+  var REPAY_SLIPPAGE_BPS = 300;
+  async function executeRepay(params, fetchExecution, resume, fetchGasQuote) {
+    const { from: from16, loanId, repayAmount } = params;
+    const chain = resolveChainIdentifier2(from16.chain);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "Borrow repayment is only supported on EVM chains");
+    }
+    const { adapter } = from16;
+    if (!isBatchCapableBorrowAdapter(adapter)) {
+      throw new KitError2({
+        ...InputError2.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Borrow repayment requires an atomic-batch capable adapter."
+      });
+    }
+    const fromAddress = requireEvmAddress("from.address", from16.address);
+    await assertSupportsAtomicBatch(adapter, chain, fromAddress, "Borrow repayment");
+    const adapterContract = requireEvmAddress("chain.kitContracts.adapter", chain.kitContracts?.adapter);
+    const usdcAddress = requireEvmAddress("chain.usdcAddress", chain.usdcAddress);
+    const operationContext = {
+      chain,
+      address: fromAddress
+    };
+    const currentAllowance = await readTokenAllowance2(adapter, {
+      tokenAddress: usdcAddress,
+      delegate: adapterContract
+    }, operationContext);
+    const gasQuotePromise = fetchGasQuote !== void 0 && await shouldCheckNativeGasBalance(adapter, fromAddress, chain) ? fetchGasQuote().catch(() => void 0) : Promise.resolve(void 0);
+    const [execution, gasQuote] = await Promise.all([
+      resolveSignedExecution(fetchExecution, resume),
+      gasQuotePromise
+    ]);
+    assertExecutionMatches(execution, loanId, String(chain.chain));
+    const { tokenInputs, requiredAllowance } = buildTokenInputs2(execution.executionParams, usdcAddress);
+    const usdcDecimals = resolveTokenDecimals$12(USDC2, chain.chain);
+    const requestedAssets = Amount2.parse(repayAmount, {
+      decimals: usdcDecimals
+    }).raw;
+    assertSweepsToOwner(execution.executionParams, fromAddress, "repayment", [
+      usdcAddress
+    ]);
+    const maximumAllowance = maximumWithToleranceBps(requestedAssets, REPAY_SLIPPAGE_BPS);
+    if (requiredAllowance < requestedAssets || requiredAllowance > maximumAllowance) {
+      throw createValidationFailedError$12("execution.executionParams.instructions", {
+        requiredAllowance: requiredAllowance.toString(),
+        requestedAssets: requestedAssets.toString(),
+        maximumAllowance: maximumAllowance.toString()
+      }, "Borrow Service signed a repayment outside the requested amount and its tolerance");
+    }
+    const morphoAddress = resolveMorphoAddress(execution.executionParams, [
+      morphoBlueFunctionSelectors.repay
+    ]);
+    const needsApprove = currentAllowance < requiredAllowance;
+    const liveUntilSeconds = BigInt(execution.executionParams.deadline);
+    if (gasQuote !== void 0) {
+      await assertSufficientGasBalance(adapter, {
+        gasFees: gasQuote.gasFees,
+        actions: needsApprove ? [
+          "Approve",
+          "Repay"
+        ] : [
+          "Repay"
+        ],
+        walletAddress: fromAddress,
+        tokenPull: {
+          tokenAddress: usdcAddress,
+          required: requiredAllowance,
+          decimals: usdcDecimals
+        },
+        liveUntilSeconds
+      }, operationContext);
+    }
+    await assertSufficientTokenBalance(adapter, {
+      tokenAddress: usdcAddress,
+      walletAddress: fromAddress,
+      required: requiredAllowance,
+      decimals: usdcDecimals,
+      symbol: "USDC",
+      action: "repays",
+      liveUntilSeconds
+    }, operationContext);
+    const calls = [];
+    if (needsApprove) {
+      const approvalRequest = await adapter.prepareAction("token.approve", {
+        tokenAddress: usdcAddress,
+        delegate: adapterContract,
+        amount: requiredAllowance
+      }, operationContext);
+      calls.push(getCallData(approvalRequest, "Borrow repayment approval"));
+    }
+    const executeRequest = await adapter.prepareAction("borrow.execute", {
+      executeParams: execution.executionParams,
+      tokenInputs,
+      signature: execution.signature
+    }, operationContext);
+    const executeCallIndex = calls.length;
+    calls.push(getCallData(executeRequest, "Borrow repayment execution"));
+    reportWritePhases(resume?.progress, {
+      needsApprove,
+      usesAuthorization: false
+    });
+    assertExecutionNotExpired(execution.executionParams);
+    const batch = await runReportedBatch(resume?.progress, async () => {
+      const submitted = await adapter.batchExecute(calls, chain, {
+        fromAddress
+      });
+      assertNoTerminalBatchFailure(submitted, chain.name, "Borrow repayment");
+      return submitted;
+    });
+    const receipt = batch.receipts[executeCallIndex];
+    if (receipt === void 0 || receipt.txHash === "") {
+      return {
+        status: "submitted",
+        loanId,
+        batchId: batch.batchId,
+        ...batch.error !== void 0 && {
+          error: normalizeBorrowResultError(batch.error, "Borrow repayment confirmation is unavailable")
+        }
+      };
+    }
+    settleWriteReceipt(resume?.progress, receipt, createTransactionRevertedError2(chain.name, "Borrow repayment batch reverted on-chain", void 0, receipt.txHash));
+    let amounts;
+    let totalRepaidAssets;
+    try {
+      amounts = findRepayLog(receipt.logs, morphoAddress, fromAddress, "repay");
+      totalRepaidAssets = sumRepayAssets(receipt.logs, morphoAddress, fromAddress, "repay");
+    } catch (error) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(error, "Borrow repayment confirmed but receipt details are unavailable")
+      };
+    }
+    if (amounts === void 0) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(new Error("Repay event log not found in receipt"), "Borrow repayment confirmed but receipt details are unavailable")
+      };
+    }
+    const amountRepaid = {
+      token: "USDC",
+      tokenAddress: usdcAddress,
+      amount: Amount2.of(totalRepaidAssets, {
+        decimals: usdcDecimals
+      }).formatted({
+        useGrouping: false
+      }),
+      decimals: usdcDecimals
+    };
+    return {
+      status: "confirmed",
+      loanId,
+      batchId: batch.batchId,
+      amountRepaid,
+      txHash: receipt.txHash
+    };
+  }
+  async function resolveWithdrawExecutionContext(params) {
+    const chain = resolveChainIdentifier2(params.from.chain);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "Withdrawing Borrow Kit collateral is only supported on EVM chains");
+    }
+    const { adapter } = params.from;
+    if (!isBatchCapableBorrowAdapter(adapter)) {
+      throw new KitError2({
+        ...InputError2.UNSUPPORTED_ACTION,
+        recoverability: "FATAL",
+        message: "Withdrawing Borrow Kit collateral requires an atomic-batch capable adapter."
+      });
+    }
+    const fromAddress = requireEvmAddress("from.address", params.from.address);
+    await assertSupportsAtomicBatch(adapter, chain, fromAddress, "Withdrawing Borrow collateral");
+    return {
+      adapter,
+      chain,
+      fromAddress,
+      adapterContract: requireEvmAddress("chain.kitContracts.adapter", chain.kitContracts?.adapter),
+      usdcAddress: requireEvmAddress("chain.usdcAddress", chain.usdcAddress)
+    };
+  }
+  var WITHDRAWAL_MORPHO_SELECTORS = [
+    morphoBlueFunctionSelectors.repay,
+    morphoBlueFunctionSelectors.withdrawCollateral
+  ];
+  var WITHDRAW_LEG_LOAN_TOKEN_WORD = 0;
+  var WITHDRAW_LEG_COLLATERAL_TOKEN_WORD = 1;
+  var WITHDRAW_LEG_ASSETS_WORD = 5;
+  var WITHDRAW_LEG_ON_BEHALF_WORD = 6;
+  var WITHDRAW_LEG_RECEIVER_WORD = 7;
+  function assertWithdrawLegMatchesRequest({ executionParams, requestedAssets, collateralToken, usdcAddress, owner, adapterContract, sweptTokens }) {
+    const path = "executionParams.instructions[].data";
+    assertOnlyMorphoLegs(executionParams, "collateral-withdrawal");
+    assertSweepsToOwner(executionParams, owner, "withdrawal", sweptTokens);
+    const legs = executionParams.instructions.filter(({ data }) => selectorOf(data) === morphoBlueFunctionSelectors.withdrawCollateral);
+    const leg = legs[0];
+    if (legs.length !== 1 || leg === void 0) {
+      throw createValidationFailedError$12("executionParams.instructions", executionParams.instructions, "A collateral-withdrawal envelope must carry exactly one Morpho withdrawCollateral instruction");
+    }
+    const args = leg.data.slice(10);
+    const assets = BigInt(`0x${readWord(args, WITHDRAW_LEG_ASSETS_WORD, path)}`);
+    if (assets !== requestedAssets) {
+      throw createValidationFailedError$12(path, assets.toString(), "Borrow Service signed a withdrawal for a different collateral amount than the one requested");
+    }
+    const legToken = decodeAddressWord(args, WITHDRAW_LEG_COLLATERAL_TOKEN_WORD, path);
+    if (legToken !== collateralToken.toLowerCase()) {
+      throw createValidationFailedError$12(path, legToken, "Borrow Service signed a withdrawal for a different collateral token than the quote");
+    }
+    const legLoanToken = decodeAddressWord(args, WITHDRAW_LEG_LOAN_TOKEN_WORD, path);
+    if (legLoanToken !== usdcAddress.toLowerCase()) {
+      throw createValidationFailedError$12(path, legLoanToken, "Borrow Service signed a withdrawal in a market that does not borrow the chain USDC token");
+    }
+    const onBehalf = decodeAddressWord(args, WITHDRAW_LEG_ON_BEHALF_WORD, path);
+    if (onBehalf !== owner.toLowerCase()) {
+      throw createValidationFailedError$12(path, onBehalf, "Borrow Service signed a withdrawal against a different position");
+    }
+    const receiver = decodeAddressWord(args, WITHDRAW_LEG_RECEIVER_WORD, path);
+    if (receiver !== adapterContract.toLowerCase()) {
+      throw createValidationFailedError$12(path, receiver, "Borrow Service signed a withdrawal paying the collateral to a different address");
+    }
+    const market = marketParamsOf(args, path);
+    assertRepayLegsMatchWithdrawal(executionParams, owner, market, path);
+  }
+  function parseWithdrawEventAmounts(logs, morphoAddress, owner) {
+    const path = "withdrawReceipt.logs[].data";
+    const withdraw3 = findWithdrawCollateralLog(logs, morphoAddress, owner, path);
+    if (withdraw3 === void 0) {
+      throw createValidationFailedError$12("withdrawReceipt.logs", logs, "A confirmed withdrawal receipt must include a Morpho WithdrawCollateral event");
+    }
+    const repaidAssets = sumRepayAssets(logs, morphoAddress, owner, path);
+    return {
+      repaidAssets,
+      withdrawnCollateral: withdraw3.assets
+    };
+  }
+  function resolveQuoteCollateralToken(quote, usdcAddress) {
+    const repayToken = requireEvmAddress("quote.bundledRepayment.tokenAddress", quote.bundledRepayment.tokenAddress);
+    if (repayToken.toLowerCase() !== usdcAddress.toLowerCase()) {
+      throw createValidationFailedError$12("quote.bundledRepayment.tokenAddress", repayToken, "Borrow Service returned a repay token that does not match the chain USDC address");
+    }
+    return requireEvmAddress("quote.collateralAmount.tokenAddress", quote.collateralAmount.tokenAddress);
+  }
+  function assertWithinRequestedBounds({ quote, requestedAssets, requiredAllowance, repayDecimals, collateralDecimals }) {
+    const quotedCollateral = Amount2.parse(quote.collateralAmount.amount, {
+      decimals: collateralDecimals
+    }).raw;
+    if (quotedCollateral !== requestedAssets) {
+      throw createValidationFailedError$12("quote.collateralAmount.amount", quote.collateralAmount.amount, "Borrow Service quoted a different collateral amount than the one requested");
+    }
+    const maximumAllowance = Amount2.parse(quote.bundledRepayment.amount, {
+      decimals: repayDecimals
+    }).raw;
+    if (requiredAllowance > maximumAllowance) {
+      throw createValidationFailedError$12("execution.executionParams.instructions[].amountToApprove", requiredAllowance.toString(), "Borrow Service signed a withdrawal that pulls more USDC than the quoted maximum repayment. With a zero or small slippageBps this usually means debt accrued between the quote and the execution; retry, or pass a larger slippageBps");
+    }
+  }
+  async function executeWithdrawCollateral(params, fetchQuote, fetchExecution, resume) {
+    const { loanId } = params;
+    const { adapter, chain, fromAddress, adapterContract, usdcAddress } = await resolveWithdrawExecutionContext(params);
+    const operationContext = {
+      chain,
+      address: fromAddress
+    };
+    const currentAllowance = await readTokenAllowance2(adapter, {
+      tokenAddress: usdcAddress,
+      delegate: adapterContract
+    }, operationContext);
+    const [quote, execution] = await Promise.all([
+      fetchQuote(),
+      resolveSignedExecution(fetchExecution, resume)
+    ]);
+    if (execution.loanId !== loanId) {
+      throw createValidationFailedError$12("execution.loanId", execution.loanId, "Borrow Service returned an execution for a different loan");
+    }
+    assertExecutionNotExpired(execution.executionParams);
+    if (quote.chain !== String(chain.chain)) {
+      throw createValidationFailedError$12("quote.chain", quote.chain, "Borrow Service returned withdrawal data for a different chain");
+    }
+    const collateralToken = resolveQuoteCollateralToken(quote, usdcAddress);
+    const repayDecimals = resolveTokenDecimals$12(USDC2, chain.chain);
+    const collateralDecimals = await readTokenDecimals(adapter, collateralToken, operationContext, "quote.collateralAmount.tokenAddress.decimals");
+    const { tokenInputs, requiredAllowance } = buildTokenInputs2(execution.executionParams, usdcAddress, {
+      allowEmpty: true
+    });
+    const excessPrecision = (params.collateralAmount.split(".")[1] ?? "").slice(collateralDecimals);
+    if (/[^0]/.test(excessPrecision)) {
+      throw createValidationFailedError$12("collateralAmount", params.collateralAmount, `collateralAmount carries more decimal places than the collateral token's ${collateralDecimals.toString()}`);
+    }
+    const requestedAssets = Amount2.parse(params.collateralAmount, {
+      decimals: collateralDecimals
+    }).raw;
+    assertWithinRequestedBounds({
+      quote,
+      requestedAssets,
+      requiredAllowance,
+      repayDecimals,
+      collateralDecimals
+    });
+    assertWithdrawLegMatchesRequest({
+      executionParams: execution.executionParams,
+      requestedAssets,
+      collateralToken,
+      usdcAddress,
+      owner: fromAddress,
+      adapterContract,
+      // The Adapter pulls the whole approved ceiling rather than only what Morpho
+      // consumes, and returns the unspent part through the sweep. So USDC has to
+      // come back too, but only when the envelope pulls any: an
+      // over-collateralized withdrawal moves collateral alone.
+      sweptTokens: requiredAllowance > 0n ? [
+        collateralToken,
+        usdcAddress
+      ] : [
+        collateralToken
+      ]
+    });
+    const morphoAddress = resolveMorphoAddress(execution.executionParams, WITHDRAWAL_MORPHO_SELECTORS);
+    const needsApprove = currentAllowance < requiredAllowance;
+    const liveUntilSeconds = BigInt(execution.executionParams.deadline);
+    await assertSufficientGasBalance(adapter, {
+      gasFees: quote.gasFees,
+      actions: needsApprove ? [
+        "Approve",
+        "WithdrawCollateral"
+      ] : [
+        "WithdrawCollateral"
+      ],
+      walletAddress: fromAddress,
+      tokenPull: {
+        tokenAddress: usdcAddress,
+        required: requiredAllowance,
+        decimals: repayDecimals
+      },
+      liveUntilSeconds
+    }, operationContext);
+    await assertSufficientTokenBalance(adapter, {
+      tokenAddress: usdcAddress,
+      walletAddress: fromAddress,
+      required: requiredAllowance,
+      decimals: repayDecimals,
+      symbol: quote.bundledRepayment.token,
+      action: "repays",
+      liveUntilSeconds
+    }, operationContext);
+    const calls = [];
+    if (needsApprove) {
+      const approvalRequest = await adapter.prepareAction("token.approve", {
+        tokenAddress: usdcAddress,
+        delegate: adapterContract,
+        amount: requiredAllowance
+      }, operationContext);
+      calls.push(getCallData(approvalRequest, "Borrow collateral-withdrawal approval"));
+    }
+    const withdrawRequest = await adapter.prepareAction("borrow.execute", {
+      executeParams: execution.executionParams,
+      tokenInputs,
+      signature: execution.signature
+    }, operationContext);
+    const authorized = await prepareMorphoAuthorizedCalls({
+      adapter,
+      chain,
+      owner: fromAddress,
+      morphoAddress,
+      adapterContract,
+      authorizedCall: getCallData(withdrawRequest, "Borrow collateral-withdrawal execution")
+    });
+    const withdrawCallIndex = calls.length + authorized.authorizedCallIndex;
+    calls.push(...authorized.calls);
+    reportWritePhases(resume?.progress, {
+      needsApprove,
+      usesAuthorization: true
+    });
+    assertExecutionNotExpired(execution.executionParams);
+    const batch = await runReportedBatch(resume?.progress, async () => {
+      const submitted = await adapter.batchExecute(calls, chain, {
+        fromAddress,
+        senderPreservingBatcherGasBufferRatio: BORROWKIT_SENDER_PRESERVING_BATCHER_GAS_BUFFER_RATIO
+      });
+      assertNoTerminalBatchFailure(submitted, chain.name, "Borrow collateral-withdrawal");
+      return submitted;
+    });
+    const receipt = batch.receipts[withdrawCallIndex];
+    if (receipt === void 0 || receipt.txHash === "") {
+      return {
+        status: "submitted",
+        loanId,
+        batchId: batch.batchId,
+        ...batch.error !== void 0 && {
+          error: normalizeBorrowResultError(batch.error, "Borrow collateral-withdrawal confirmation is unavailable")
+        }
+      };
+    }
+    settleWriteReceipt(resume?.progress, receipt, createTransactionRevertedError2(chain.name, "Borrow collateral-withdrawal batch reverted on-chain", void 0, receipt.txHash));
+    let amounts;
+    try {
+      amounts = parseWithdrawEventAmounts(receipt.logs, morphoAddress, fromAddress);
+    } catch (error) {
+      return {
+        status: "confirmed-details-unavailable",
+        loanId,
+        batchId: batch.batchId,
+        txHash: receipt.txHash,
+        error: normalizeDetailsUnavailableError(error, "Borrow collateral withdrawal confirmed but receipt details are unavailable")
+      };
+    }
+    return {
+      status: "confirmed",
+      loanId,
+      batchId: batch.batchId,
+      // Token and address are spread from the quote, which names them. `amount`
+      // is decoded from the confirmed receipt, and `decimals` is overridden with
+      // the precision that decoded it. The two must agree: reporting the quoted
+      // precision beside an amount converted with a different one would describe
+      // the figure wrongly.
+      collateralWithdrawn: {
+        ...quote.collateralAmount,
+        amount: Amount2.of(amounts.withdrawnCollateral, {
+          decimals: collateralDecimals
+        }).formatted({
+          useGrouping: false
+        }),
+        decimals: collateralDecimals
+      },
+      amountRepaid: {
+        ...quote.bundledRepayment,
+        amount: Amount2.of(amounts.repaidAssets, {
+          decimals: repayDecimals
+        }).formatted({
+          useGrouping: false
+        }),
+        decimals: repayDecimals
+      },
+      txHash: receipt.txHash
+    };
+  }
+  function buildWebhookRegistrationTypedData(params) {
+    return {
+      domain: {
+        ...WEBHOOK_REGISTRATION_DOMAIN,
+        chainId: params.chainId
+      },
+      types: WEBHOOK_REGISTRATION_TYPES,
+      primaryType: "WebhookRegistration",
+      message: {
+        loanId: params.loanId,
+        owner: params.owner,
+        webhookUrl: params.webhookUrl ?? "",
+        deadline: params.deadline
+      }
+    };
+  }
+  function isLoanNotFoundError$1(error) {
+    return extractHttpStatusCode2(error.message) === 404;
+  }
+  async function postWebhookRegistration(params, config) {
+    const { pollingConfig, baseUrl } = buildConfig(config, void 0, "forbidden");
+    const url = new URL(`${BORROW_KIT_API_PREFIX}/loans/${encodeURIComponent(params.loanId)}/webhookRegistration`, baseUrl);
+    try {
+      const response = await pollApiPost2(url.toString(), {
+        webhookUrl: params.webhookUrl,
+        deadline: Number(params.deadline),
+        walletSignature: params.signature
+      }, isWebhookRegistrationResponse, {
+        ...pollingConfig,
+        isTerminalError: isLoanNotFoundError$1
+      });
+      return {
+        loanId: response.data.loanId,
+        webhookUrl: response.data.webhookUrl ?? null
+      };
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "registerWebhook"
+      });
+    }
+  }
+  async function registerWebhook$2(params) {
+    buildConfig(params.config, void 0, "forbidden");
+    if (!Number.isInteger(params.deadline) || params.deadline < 0) {
+      throw createValidationFailedError$12("deadline", params.deadline, "deadline must be a non-negative integer unix-seconds timestamp");
+    }
+    const nowSeconds = Math.floor(Date.now() / 1e3);
+    if (params.deadline <= nowSeconds) {
+      throw createValidationFailedError$12("deadline", params.deadline, "deadline must be in the future \u2014 a past or current deadline would sign a message the Borrow Service always rejects");
+    }
+    if (params.deadline > nowSeconds + MAX_WEBHOOK_DEADLINE_SECONDS) {
+      throw createValidationFailedError$12("deadline", params.deadline, `deadline must be at most ${String(MAX_WEBHOOK_DEADLINE_SECONDS)} seconds from now \u2014 the signature has no nonce, so a long window is a long-lived replayable authorization`);
+    }
+    const deadline = BigInt(params.deadline);
+    const typedData = buildWebhookRegistrationTypedData({
+      loanId: params.loanId,
+      owner: params.address,
+      webhookUrl: params.webhookUrl,
+      deadline,
+      chainId: params.chain.chainId
+    });
+    const signature = await params.adapter.signTypedData(typedData, {
+      chain: params.chain,
+      address: params.address
+    });
+    return await postWebhookRegistration({
+      loanId: params.loanId,
+      // Reuse the exact string that was signed (already coerced from `null`
+      // to `''` by buildWebhookRegistrationTypedData) rather than
+      // `params.webhookUrl`, so the POST body can never drift from the
+      // signed EIP-712 message.
+      webhookUrl: typedData.message.webhookUrl,
+      deadline,
+      signature
+    }, params.config);
+  }
+  function isLoanNotFoundError(error) {
+    return extractHttpStatusCode2(error.message) === 404;
+  }
+  function toLoan(data) {
+    const chain = toBorrowSdkChain(data.chain);
+    if (chain === void 0) {
+      throw new KitError2({
+        ...BorrowError.UNSUPPORTED_CHAIN,
+        recoverability: "FATAL",
+        message: `Unsupported Borrow Service chain: ${data.chain}`,
+        cause: {
+          trace: {
+            chain: data.chain
+          }
+        }
+      });
+    }
+    return {
+      loanId: data.loanId,
+      // The service names this `walletAddress`; the kit-facing field stays
+      // `wallet`, matching `LoanPosition`.
+      wallet: data.walletAddress,
+      chain,
+      marketId: data.marketId,
+      dataStatus: data.dataStatus,
+      collateral: data.collateral,
+      borrowed: data.borrowed,
+      principalBorrowed: data.principalBorrowed,
+      accruedInterest: data.accruedInterest,
+      borrowApy: data.borrowApy,
+      ltv: data.ltv,
+      healthFactor: data.healthFactor,
+      healthFactorBand: data.healthFactorBand,
+      liquidationPrice: data.liquidationPrice,
+      status: data.status
+    };
+  }
+  async function fetchLoan(providerConfig, params) {
+    const { pollingConfig, baseUrl } = buildConfig(providerConfig, params.config, "forbidden");
+    const url = new URL(`${BORROW_KIT_API_PREFIX}/loans/${encodeURIComponent(params.loanId)}`, baseUrl);
+    try {
+      const response = await pollApiGet2(url.toString(), isLoanResponse, {
+        ...pollingConfig,
+        isTerminalError: isLoanNotFoundError
+      });
+      return toLoan(response.data);
+    } catch (error) {
+      throw parseBorrowApiError(error, {
+        operation: "getPosition"
+      });
+    }
+  }
+  function withdrawCollateralPath(loanId) {
+    return `/loans/${encodeURIComponent(loanId)}/withdrawCollateral`;
+  }
+  function withdrawCollateralBody(params) {
+    return {
+      collateralAmount: params.collateralAmount,
+      // Always explicit: leaving it off would let the service apply its own
+      // default while the SDK bounds the envelope against ours.
+      slippageBps: params.slippageBps ?? DEFAULT_WITHDRAW_SLIPPAGE_BPS
+    };
+  }
+  async function fetchWithdrawCollateral(providerConfig, params) {
+    const execution = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: withdrawCollateralPath(params.loanId),
+      body: withdrawCollateralBody(params),
+      responseGuard: isWithdrawCollateralExecution,
+      operation: "withdrawCollateral",
+      idempotent: true,
+      idempotencyKey: params.idempotencyKey,
+      credential: "forbidden"
+    });
+    return execution.data;
+  }
+  async function fetchWithdrawCollateralQuote(providerConfig, params) {
+    const quote = await postBorrowService({
+      providerConfig,
+      requestConfig: params.config,
+      path: `${withdrawCollateralPath(params.loanId)}/quote`,
+      body: withdrawCollateralBody(params),
+      responseGuard: isWithdrawCollateralQuote,
+      operation: "getWithdrawCollateralQuote",
+      idempotent: false,
+      credential: "forbidden"
+    });
+    const quoteChain = requireBorrowSdkChain(quote.data.chain);
+    if (String(quoteChain) !== String(resolveChainIdentifier2(params.chain).chain)) {
+      throw createValidationFailedError$12("quote.chain", quote.data.chain, "Borrow Service returned a withdrawal quote for a different chain");
+    }
+    const scale = {
+      decimals: AMOUNT_COMPARISON_DECIMALS
+    };
+    if (Amount2.parse(quote.data.collateralAmount.amount, scale).raw !== Amount2.parse(params.collateralAmount, scale).raw) {
+      throw createValidationFailedError$12("quote.collateralAmount.amount", quote.data.collateralAmount.amount, "Borrow Service quoted a different collateral amount than the one requested. A collateralAmount finer than the collateral token's precision also lands here, because the service truncates it");
+    }
+    const { repayAmount, ...rest } = quote.data;
+    return {
+      ...rest,
+      bundledRepayment: inflateAmountByToleranceBps(repayAmount, resolveToleranceBps(params.slippageBps, DEFAULT_WITHDRAW_SLIPPAGE_BPS)),
+      chain: quoteChain,
+      gasFees: toQuoteGasFees(quote.data.gasFees)
+    };
+  }
+  var BorrowServiceProvider = class {
+    supportedChains;
+    #config;
+    /**
+    * Create a Borrow Service provider.
+    *
+    * @param config - Default connection settings for requests.
+    * @param supportedChains - Provider routing metadata.
+    */
+    constructor(config = {}, supportedChains = [
+      Arc2,
+      ArcTestnet2
+    ]) {
+      this.#config = config;
+      this.supportedChains = supportedChains;
+    }
+    assertKeyless(requestConfig) {
+      buildConfig(this.#config, requestConfig, "forbidden");
+    }
+    /** {@inheritDoc BorrowingProvider.getLoans} */
+    async getLoans(params) {
+      const validated = parseOrThrow(params, getLoansServiceParamsSchema, "borrow getLoans parameters");
+      this.assertKeyless(validated.config);
+      return await fetchLoans(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getMarket} */
+    async getMarket(params) {
+      const validated = parseOrThrow(params, getMarketServiceParamsSchema, "borrow getMarket parameters");
+      this.assertKeyless(validated.config);
+      return await fetchMarket(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.exploreMarkets} */
+    async exploreMarkets(params) {
+      const validated = parseOrThrow(params, exploreMarketsServiceParamsSchema, "borrow exploreMarkets parameters");
+      this.assertKeyless(validated.config);
+      return await fetchExploreMarkets(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.repay} */
+    async repay(params, resume) {
+      const requestParams = {
+        loanId: params.loanId,
+        repayAmount: params.repayAmount,
+        ...params.idempotencyKey !== void 0 && {
+          idempotencyKey: params.idempotencyKey
+        },
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      };
+      const validated = parseOrThrow(requestParams, repayServiceParamsSchema, "borrow repay parameters");
+      this.assertKeyless(validated.config);
+      return await executeRepay(
+        params,
+        async () => fetchRepay(this.#config, validated),
+        resume,
+        // Fetched only for the gas figure, and only if executeRepay decides it can
+        // use one — a repayment names its own amount, so this path has never
+        // needed a quote for anything else.
+        async () => fetchRepayQuote(this.#config, {
+          ...validated,
+          chain: params.from.chain
+        })
+      );
+    }
+    /** {@inheritDoc BorrowingProvider.getRepayQuote} */
+    async getRepayQuote(params) {
+      const validated = parseOrThrow(params, repayQuoteServiceParamsSchema, "borrow repay quote parameters");
+      this.assertKeyless(validated.config);
+      return await fetchRepayQuote(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getPosition} */
+    async getPosition(params) {
+      const validated = parseOrThrow(params, getPositionServiceParamsSchema, "borrow getPosition parameters");
+      this.assertKeyless(validated.config);
+      return await fetchLoan(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.borrow} */
+    async borrow(params, resume) {
+      const validated = parseOrThrow(borrowRequestParams(params), borrowServiceParamsSchema, "borrow parameters");
+      if (params.walletAddress !== void 0 && params.walletAddress.toLowerCase() !== params.from.address.toLowerCase()) {
+        throw createValidationFailedError$12("walletAddress", params.walletAddress, `must match the executing wallet '${params.from.address}'`);
+      }
+      return await executeBorrow(params, async () => fetchBorrow(this.#config, validated), resume);
+    }
+    /** {@inheritDoc BorrowingProvider.claimRewards} */
+    async claimRewards(params) {
+      parseOrThrow({
+        config: params.config
+      }, claimRewardsServiceParamsSchema, "borrow claim rewards parameters");
+      this.assertKeyless(params.config);
+      const { address, chain: apiChain, chainDefinition: chain } = await resolveAdapterContext(params.from);
+      requireAdapterContract(chain);
+      const { rewards, executionParams, signature } = await fetchClaimRewards(this.#config, {
+        address,
+        chain: apiChain,
+        config: params.config
+      });
+      const nothingToClaim = rewards.length === 0;
+      if (nothingToClaim) {
+        return {
+          status: "no_rewards",
+          rewards: []
+        };
+      }
+      const missingExecutionParams = executionParams === void 0;
+      const missingSignature = signature === void 0;
+      if (missingExecutionParams || missingSignature) {
+        throw new KitError2({
+          ...BorrowError.INTERNAL_ERROR,
+          recoverability: "RETRYABLE",
+          message: "Claim rewards response must include executionParams and signature when rewards are claimable",
+          cause: {
+            trace: {
+              rewardsCount: rewards.length,
+              missingExecutionParams,
+              missingSignature
+            }
+          }
+        });
+      }
+      validateExecutionDeadline(executionParams);
+      const { txHash, explorerUrl } = await executeAdapterAction({
+        adapter: params.from.adapter,
+        chain,
+        address,
+        actionKey: "earn.claimRewards",
+        actionParams: {
+          executeParams: executionParams,
+          tokenInputs: [],
+          signature
+        },
+        revertMessage: "Borrow claim rewards reverted on-chain"
+      });
+      return {
+        status: "claimed",
+        rewards,
+        txHash,
+        explorerUrl
+      };
+    }
+    /** {@inheritDoc BorrowingProvider.getRewards} */
+    async getRewards(params) {
+      parseOrThrow({
+        config: params.config
+      }, getRewardsServiceParamsSchema, "borrow get rewards parameters");
+      this.assertKeyless(params.config);
+      const { address, chain: apiChain } = await resolveAdapterContext(params.from);
+      return await fetchClaimRewardsQuote(this.#config, {
+        address,
+        chain: apiChain,
+        config: params.config
+      });
+    }
+    /** {@inheritDoc BorrowingProvider.closeLoan} */
+    async closeLoan(params, resume) {
+      const { from: from16, ...requestParams } = params;
+      const validated = parseOrThrow(requestParams, closeLoanServiceParamsSchema, "borrow close loan parameters");
+      this.assertKeyless(validated.config);
+      return await executeCloseLoan(params, async () => fetchCloseLoanQuote(this.#config, {
+        ...validated,
+        chain: from16.chain
+      }), async () => fetchCloseLoan(this.#config, validated), resume);
+    }
+    /** {@inheritDoc BorrowingProvider.getCloseLoanQuote} */
+    async getCloseLoanQuote(params) {
+      const validated = parseOrThrow(params, closeLoanQuoteServiceParamsSchema, "borrow close loan quote parameters");
+      this.assertKeyless(validated.config);
+      return await fetchCloseLoanQuote(this.#config, validated);
+    }
+    /**
+    * Sign and submit (or remove) a webhook callback registration for a loan.
+    *
+    * `params.chain` accepts the flexible `ChainIdentifier` shape (a
+    * `ChainDefinition` object, a `Blockchain` enum value, or a string
+    * literal), matching `getLoans`. It's resolved via `resolveChainIdentifier`
+    * and then matched against `supportedChains` by name only — the matched
+    * provider-owned chain definition, not the caller-supplied one, is what
+    * actually gets signed. This guards against a caller passing a valid
+    * `chain` name paired with a forged `chainId`, which would otherwise flow
+    * straight into the signed EIP-712 domain.
+    *
+    * `loanId` and `webhookUrl` are validated before they're signed or posted:
+    * `loanId` must be a UUID and `webhookUrl` must be `null` (an explicit
+    * "unset" intent) or a syntactically valid URL string, so an empty string
+    * — which would otherwise skip the `?? ''` null-coercion applied to a
+    * genuine `null` and silently unset the webhook — is rejected outright.
+    *
+    * @param params - Adapter, chain, connected address, loan, URL, and
+    *   signature deadline.
+    * @returns The applied webhook registration.
+    * @throws {@link KitError} `INPUT_VALIDATION_FAILED` when the adapter
+    *   cannot produce an EIP-712 signature, `params.chain` is not one of
+    *   `supportedChains`, `params.address` is not a 0x-prefixed 20-byte hex
+    *   address, `params.loanId` is not a UUID, or `params.webhookUrl` is
+    *   neither `null` nor a valid URL; `BorrowError.OWNER_MISMATCH`,
+    *   `BorrowError.INVALID_OWNER_SIGNATURE`, or `BorrowError.LOAN_NOT_FOUND`
+    *   depending on the failure.
+    */
+    async registerWebhook(params) {
+      if (!canSignTypedData2(params.adapter)) {
+        throw createValidationFailedError$12("adapter", params.adapter, "adapter must support signTypedData to register a Borrow webhook");
+      }
+      const resolvedChain = resolveChainIdentifier2(params.chain);
+      const canonicalChain = this.supportedChains.find((chain) => chain.chain === resolvedChain.chain);
+      if (canonicalChain === void 0 || !("chainId" in canonicalChain)) {
+        throw createValidationFailedError$12("chain", params.chain, `chain must be one of the provider's supportedChains to register a Borrow webhook`);
+      }
+      assertHexAddress("address", params.address);
+      parseOrThrow({
+        loanId: params.loanId,
+        webhookUrl: params.webhookUrl
+      }, registerWebhookInputSchema, "borrow register webhook parameters");
+      const config = {
+        ...this.#config,
+        ...params.config
+      };
+      buildConfig(config, void 0, "forbidden");
+      return registerWebhook$2({
+        ...params,
+        chain: canonicalChain,
+        config
+      });
+    }
+    /** {@inheritDoc BorrowingProvider.withdrawCollateral} */
+    async withdrawCollateral(params, resume) {
+      const { from: from16, ...requestParams } = params;
+      const validated = parseOrThrow(requestParams, withdrawCollateralServiceParamsSchema, "borrow withdraw collateral parameters");
+      this.assertKeyless(validated.config);
+      return await executeWithdrawCollateral(params, async () => fetchWithdrawCollateralQuote(this.#config, {
+        ...validated,
+        chain: from16.chain
+      }), async () => fetchWithdrawCollateral(this.#config, validated), resume);
+    }
+    /** {@inheritDoc BorrowingProvider.getWithdrawCollateralQuote} */
+    async getWithdrawCollateralQuote(params) {
+      const validated = parseOrThrow(params, withdrawCollateralQuoteServiceParamsSchema, "borrow withdraw collateral quote parameters");
+      this.assertKeyless(validated.config);
+      return await fetchWithdrawCollateralQuote(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.addCollateral} */
+    async addCollateral(params, resume) {
+      const { from: from16, ...requestParams } = params;
+      const validated = parseOrThrow(requestParams, addCollateralServiceParamsSchema, "borrow add collateral parameters");
+      this.assertKeyless(validated.config);
+      return await executeAddCollateral(params, async () => fetchAddCollateralQuote(this.#config, {
+        ...validated,
+        chain: from16.chain
+      }), async () => fetchAddCollateral(this.#config, validated), resume);
+    }
+    /** {@inheritDoc BorrowingProvider.getAddCollateralQuote} */
+    async getAddCollateralQuote(params) {
+      const validated = parseOrThrow(params, addCollateralQuoteServiceParamsSchema, "borrow add collateral quote parameters");
+      this.assertKeyless(validated.config);
+      return await fetchAddCollateralQuote(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getIntegratorConfig} */
+    async getIntegratorConfig(params = {}) {
+      const validated = parseOrThrow(params, getIntegratorConfigServiceParamsSchema, "integrator configuration parameters");
+      return await fetchIntegratorConfig(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.setIntegratorConfig} */
+    async setIntegratorConfig(params) {
+      const validated = parseOrThrow(params, setIntegratorConfigServiceParamsSchema, "integrator configuration parameters");
+      return await upsertIntegratorConfig(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getBorrowQuote} */
+    async getBorrowQuote(params) {
+      const validated = parseOrThrow(params, borrowQuoteServiceParamsSchema, "borrow quote parameters");
+      return await fetchBorrowQuote(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getRequiredCollateral} */
+    async getRequiredCollateral(params) {
+      const validated = parseOrThrow(params, requiredCollateralServiceParamsSchema, "required collateral parameters");
+      this.assertKeyless(validated.config);
+      return await fetchRequiredCollateral(this.#config, validated);
+    }
+    /** {@inheritDoc BorrowingProvider.getMaxBorrow} */
+    async getMaxBorrow(params) {
+      const validated = parseOrThrow(params, maxBorrowServiceParamsSchema, "max borrow parameters");
+      this.assertKeyless(validated.config);
+      return await fetchMaxBorrow(this.#config, validated);
+    }
+  };
+  var getDefaultProviders$1 = () => [
+    new BorrowServiceProvider()
+  ];
+  function createBorrowKitContext(config = {}) {
+    const configValue = config;
+    if (typeof configValue !== "object" || configValue === null || Array.isArray(configValue)) {
+      throw createValidationFailedError$12("config", describeType(configValue), "config must be a plain object when provided");
+    }
+    const validatedConfig = configValue;
+    if (validatedConfig.providers !== void 0 && !Array.isArray(validatedConfig.providers)) {
+      throw createValidationFailedError$12("config.providers", describeType(validatedConfig.providers), "providers must be an array of borrowing providers when provided");
+    }
+    if (validatedConfig.disableAnalytics !== void 0 && typeof validatedConfig.disableAnalytics !== "boolean") {
+      throw createValidationFailedError$12("config.disableAnalytics", validatedConfig.disableAnalytics, "disableAnalytics must be a boolean when provided");
+    }
+    if (validatedConfig.disableErrorReporting !== void 0 && typeof validatedConfig.disableErrorReporting !== "boolean") {
+      throw createValidationFailedError$12("config.disableErrorReporting", validatedConfig.disableErrorReporting, "disableErrorReporting must be a boolean when provided");
+    }
+    const customProviders = validatedConfig.providers ?? [];
+    return {
+      providers: [
+        ...customProviders,
+        ...getDefaultProviders$1()
+      ],
+      actionDispatcher: new Actionable()
+    };
+  }
+  function describeType(value) {
+    if (value === null) {
+      return "null";
+    }
+    return Array.isArray(value) ? "array" : typeof value;
+  }
+  var ASSERT_BORROW_PARAMS_SYMBOL = /* @__PURE__ */ Symbol("assertBorrowParams");
+  function assertBorrowParams(params, schema) {
+    validateWithStateTracking2(params, schema, "borrow parameters", ASSERT_BORROW_PARAMS_SYMBOL);
+  }
+  var borrowServiceConfigSchema = external_exports.object({
+    apiKey: external_exports.string().optional(),
+    baseUrl: external_exports.string().url("baseUrl must be a valid URL").optional()
+  }).strict();
+  var getLoansParamsSchema = external_exports.object({
+    walletAddress: evmAddressSchema$1,
+    chain: chainIdentifierSchema2,
+    pageSize: external_exports.number().int().positive().optional(),
+    pageAfter: external_exports.string().min(1).optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var getIntegratorConfigParamsSchema = external_exports.object({
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var getMarketParamsSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var setIntegratorConfigParamsSchema = external_exports.object({
+    integratorFeeBps: external_exports.number().int().min(0).max(1e4),
+    integratorFeeAddress: evmAddressSchema$1.nullable(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict().refine((params) => params.integratorFeeAddress !== null || params.integratorFeeBps === 0, {
+    message: "integratorFeeAddress can only be null when integratorFeeBps is 0",
+    path: [
+      "integratorFeeAddress"
+    ]
+  });
+  var HUMAN_READABLE_AMOUNT_REGEX = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
+  function createPositiveAmountSchema(field, maxDecimals = 6) {
+    const positive = external_exports.string().regex(HUMAN_READABLE_AMOUNT_REGEX, `${field} must be a human-readable decimal string`).refine((value) => /[1-9]/.test(value), `${field} must be greater than zero`);
+    if (maxDecimals === null) {
+      return positive;
+    }
+    return positive.refine((value) => (value.split(".")[1]?.length ?? 0) <= maxDecimals, `${field} must have at most ${maxDecimals.toString()} decimal places`);
+  }
+  var positiveAmountSchema = createPositiveAmountSchema("repayAmount");
+  var NIL_UUID = "00000000-0000-0000-0000-000000000000";
+  var idempotencyKeySchema = external_exports.string().uuid().refine((value) => value !== NIL_UUID, {
+    message: "idempotencyKey must not be the nil UUID; generate a fresh one per write"
+  });
+  var adapterContextSchema$4 = external_exports.object({
+    // prepareAction is declared in the shape (rather than checked only via
+    // .passthrough()) so its value is read off the input by property access:
+    // .passthrough() only copies an input's own enumerable keys into its
+    // output, which drops prototype methods like a class's prepareAction.
+    adapter: adapterSchema$1.extend({
+      prepareAction: external_exports.unknown()
+    }).passthrough().refine((adapter) => typeof adapter.prepareAction === "function", "adapter must expose prepareAction"),
+    chain: chainIdentifierSchema2,
+    address: evmAddressSchema$1.optional()
+  }).strict();
+  function refineAddressContext(from16, context) {
+    const addressContext = from16.adapter.capabilities?.addressContext;
+    if (addressContext === "developer-controlled" && from16.address === void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: "address is required for developer-controlled adapters",
+        path: [
+          "address"
+        ]
+      });
+    }
+    if (addressContext === "user-controlled" && from16.address !== void 0) {
+      context.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        message: "address must be resolved by user-controlled adapters",
+        path: [
+          "address"
+        ]
+      });
+    }
+  }
+  var borrowExecutionFromSchema = external_exports.object({
+    // prepareAction/validateChainSupport/capabilities are declared in the
+    // shape (rather than checked only via .passthrough()) so their values are
+    // read off the input by property access: .passthrough() only copies an
+    // input's own enumerable keys into its output, which drops a prototype
+    // method or getter like a class's prepareAction/validateChainSupport/
+    // capabilities. capabilities is read below and by refineAddressContext.
+    adapter: adapterSchema$1.extend({
+      prepareAction: external_exports.unknown(),
+      validateChainSupport: external_exports.unknown(),
+      capabilities: external_exports.unknown()
+    }).passthrough().refine((adapter) => typeof adapter.prepareAction === "function", "adapter must expose prepareAction").refine((adapter) => typeof adapter.validateChainSupport === "function", "adapter must expose validateChainSupport").refine((adapter) => adapter.capabilities?.addressContext === "user-controlled" || adapter.capabilities?.addressContext === "developer-controlled", "adapter must declare its addressContext capability"),
+    chain: chainIdentifierSchema2,
+    address: evmAddressSchema$1.optional()
+  }).strict().superRefine(refineAddressContext);
+  var repayQuoteParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    repayAmount: positiveAmountSchema,
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var repayParamsSchema = repayQuoteParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: idempotencyKeySchema.optional(),
+    from: borrowExecutionFromSchema
+  });
+  var closeLoanQuoteParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var closeLoanParamsSchema = closeLoanQuoteParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: idempotencyKeySchema.optional(),
+    from: borrowExecutionFromSchema
+  });
+  var getPositionParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var borrowAdapterContextSchema = external_exports.object({
+    // signTypedData/capabilities are declared in the shape (rather than
+    // checked only via .passthrough()) so their values are read off the input
+    // by property access: .passthrough() only copies an input's own
+    // enumerable keys into its output, which drops a prototype method or
+    // getter like a class's signTypedData/capabilities. capabilities is read
+    // by refineAddressContext below.
+    adapter: adapterSchema$1.extend({
+      signTypedData: external_exports.unknown(),
+      capabilities: external_exports.unknown()
+    }).passthrough().refine(
+      // supportsSignTypedData is optional on SignTypedDataAdapter (see
+      // @core/adapter-evm's hasSignTypedData/canSignTypedData): only
+      // signTypedData itself is required here.
+      (adapter) => typeof adapter.signTypedData === "function",
+      "adapter must support signTypedData"
+    ),
+    // BorrowAdapterContext accepts a wider chain field, but runtime
+    // validation must stay constrained to chains where loans exist. No cast
+    // needed here: inferring straight from borrowChainIdentifierSchema keeps
+    // this schema's exported type accurate (only the Borrow chain set),
+    // unlike the previous `as unknown as typeof chainIdentifierSchema` cast,
+    // which over-widened it to the full ChainIdentifier union.
+    chain: borrowChainIdentifierSchema,
+    address: external_exports.string().min(1, "address must not be empty").optional()
+  }).strict().superRefine(refineAddressContext);
+  var borrowParamsBaseSchema = external_exports.object({
+    from: adapterContextSchema$4,
+    borrowAmount: createPositiveAmountSchema("borrowAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    idempotencyKey: idempotencyKeySchema.optional(),
+    config: borrowServiceConfigSchema.optional()
+  });
+  var borrowParamsSchema = borrowParamsBaseSchema.extend({
+    marketId: external_exports.string().min(1).optional(),
+    loanId: external_exports.string().uuid().optional()
+  }).strict().refine((params) => params.marketId === void 0 !== (params.loanId === void 0), {
+    message: "Provide exactly one of marketId or loanId"
+  });
+  var claimRewardsAdapterContextSchema = external_exports.object({
+    adapter: adapterSchema$1,
+    chain: borrowChainIdentifierSchema,
+    address: evmAddressSchema$1.optional()
+  }).strict().superRefine(refineAddressContext);
+  var borrowPreviewParamsBaseSchema = external_exports.object({
+    chain: chainIdentifierSchema2,
+    marketId: external_exports.string().min(1),
+    config: borrowServiceConfigSchema.optional()
+  });
+  var openLoanQuoteParamsSchema = borrowPreviewParamsBaseSchema.extend({
+    walletAddress: evmAddressSchema$1,
+    borrowAmount: createPositiveAmountSchema("borrowAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional()
+  }).strict();
+  var borrowMoreQuoteParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    borrowAmount: createPositiveAmountSchema("borrowAmount"),
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var borrowQuoteParamsSchema = external_exports.union([
+    openLoanQuoteParamsSchema,
+    borrowMoreQuoteParamsSchema
+  ]);
+  var requiredCollateralParamsSchema = borrowPreviewParamsBaseSchema.extend({
+    borrowAmount: createPositiveAmountSchema("borrowAmount"),
+    targetHealthFactor: external_exports.number().positive().finite()
+  }).strict();
+  var collateralAmountSchema = createPositiveAmountSchema("collateralAmount", null);
+  var claimRewardsParamsSchema = external_exports.object({
+    from: claimRewardsAdapterContextSchema,
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var getClaimRewardsQuoteParamsSchema = external_exports.object({
+    from: claimRewardsAdapterContextSchema,
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var MAX_EXPLORE_PAGES = 1e3;
+  var marketSortBySchema = external_exports.enum([
+    "lltv",
+    "borrowApy"
+  ]);
+  function decimalFilterSchema(field) {
+    return external_exports.string().regex(/^\d+(\.\d+)?$/, `${field} must be a non-negative decimal string`);
+  }
+  var exploreMarketsParamsBase = external_exports.object({
+    chain: chainIdentifierSchema2,
+    minLltv: decimalFilterSchema("minLltv").optional(),
+    maxLltv: decimalFilterSchema("maxLltv").optional(),
+    minBorrow: decimalFilterSchema("minBorrow").optional(),
+    maxBorrow: decimalFilterSchema("maxBorrow").optional(),
+    sortBy: marketSortBySchema.optional(),
+    // Provisional bounds: the backend has not published a pageSize range, so
+    // reject only implausible values rather than plausible ones.
+    pageSize: external_exports.number().int("pageSize must be an integer").min(1, "pageSize must be at least 1").max(1e3, "pageSize must be at most 1000").optional(),
+    pageAfter: external_exports.string().min(1, "pageAfter must not be empty").optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var maxBorrowParamsSchema = borrowPreviewParamsBaseSchema.extend({
+    collateralAmount: collateralAmountSchema
+  }).strict();
+  var withdrawCollateralQuoteParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    collateralAmount: collateralAmountSchema,
+    slippageBps: external_exports.number().int().min(0).max(1e4).optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var MAX_DEADLINE_SKEW_SECONDS = 300;
+  function isHttpsUrl(value) {
+    try {
+      return new URL(value).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+  var registerWebhookParamsSchema = external_exports.object({
+    from: borrowAdapterContextSchema,
+    // loanId must be a UUID, consistent with every other loan-scoped schema
+    // in this package (repayQuoteParamsSchema, closeLoanQuoteParamsSchema,
+    // borrowParamsSchema) and with the provider-level
+    // registerWebhookInputSchema, which already enforces this.
+    loanId: external_exports.string().uuid(),
+    // Restricted to https: for the same reason as the provider-level
+    // registerWebhookInputSchema — this URL receives a cryptographically
+    // signed, owner-authorized registration, and http:// would let that
+    // signed intent point at a plaintext or link-local/loopback endpoint.
+    webhookUrl: external_exports.string().url("webhookUrl must be a valid URL").refine((value) => isHttpsUrl(value), "webhookUrl must use the https scheme").nullable().optional(),
+    deadline: external_exports.number().int("deadline must be an integer unix-seconds timestamp").refine((deadline) => deadline > Math.floor(Date.now() / 1e3), "deadline must be in the future \u2014 a past deadline would sign a message the Borrow Service always rejects").refine((deadline) => deadline <= Math.floor(Date.now() / 1e3) + MAX_DEADLINE_SKEW_SECONDS, `deadline must be at most ${String(MAX_DEADLINE_SKEW_SECONDS)} seconds from now`).optional(),
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  function refineFilterRanges(value, ctx) {
+    if (value.minLltv !== void 0 && value.maxLltv !== void 0 && Number(value.minLltv) > Number(value.maxLltv)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [
+          "maxLltv"
+        ],
+        message: "maxLltv must be greater than or equal to minLltv"
+      });
+    }
+    if (value.minBorrow !== void 0 && value.maxBorrow !== void 0 && Number(value.minBorrow) > Number(value.maxBorrow)) {
+      ctx.addIssue({
+        code: external_exports.ZodIssueCode.custom,
+        path: [
+          "maxBorrow"
+        ],
+        message: "maxBorrow must be greater than or equal to minBorrow"
+      });
+    }
+  }
+  var exploreMarketsParamsSchema = exploreMarketsParamsBase.superRefine(refineFilterRanges);
+  var exploreMarketsIteratorParamsSchema = exploreMarketsParamsBase.omit({
+    pageAfter: true
+  }).superRefine(refineFilterRanges);
+  var withdrawCollateralParamsSchema = withdrawCollateralQuoteParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: idempotencyKeySchema.optional(),
+    from: borrowExecutionFromSchema
+  });
+  var addCollateralQuoteParamsSchema = external_exports.object({
+    loanId: external_exports.string().uuid(),
+    chain: chainIdentifierSchema2,
+    collateralAmount: collateralAmountSchema,
+    config: borrowServiceConfigSchema.optional()
+  }).strict();
+  var addCollateralParamsSchema = addCollateralQuoteParamsSchema.omit({
+    chain: true
+  }).extend({
+    idempotencyKey: idempotencyKeySchema.optional(),
+    from: borrowExecutionFromSchema
+  });
+  function findProvider(context, chain, operation) {
+    if (context.providers.length === 0) {
+      throw createValidationFailedError$12("context.providers", [], "No Borrow providers configured");
+    }
+    if (operation !== void 0) {
+      return findProviderForOperation(context, chain, operation);
+    }
+    return findFallbackProvider(context, chain);
+  }
+  function findProviderForOperation(context, chain, operation) {
+    if (chain === void 0) {
+      throw createValidationFailedError$12("chain", chain, `chain is required to find a provider for "${operation}"`);
+    }
+    for (const provider of context.providers) {
+      if (providerSupportsOperationOnChain(provider, chain, operation)) {
+        return provider;
+      }
+    }
+    throw createUnsupportedBorrowRouteError(operation, chain.name);
+  }
+  function providerSupportsOperationOnChain(provider, chain, operation) {
+    return provider[operation] !== void 0 && provider.supportedChains.some((c) => c.chain === chain.chain);
+  }
+  function findFallbackProvider(context, chain) {
+    let fallback2;
+    for (const provider of context.providers) {
+      fallback2 ??= provider;
+      if (provider.supportedChains.length === 0) continue;
+      if (chain === void 0 || providerSupportsChain(provider, chain)) {
+        return provider;
+      }
+    }
+    if (chain !== void 0) {
+      throw new KitError2({
+        ...BorrowError.UNSUPPORTED_CHAIN,
+        recoverability: "FATAL",
+        message: `No Borrow Kit provider supports this chain: ${chain.chain}`,
+        cause: {
+          trace: {
+            chain: chain.chain
+          }
+        }
+      });
+    }
+    return fallback2;
+  }
+  function providerSupportsChain(provider, chain) {
+    return provider.supportedChains.some((supported) => supported.chain === chain.chain);
+  }
+  function formatAssetAmount(amount) {
+    return {
+      token: amount.token,
+      tokenAddress: amount.tokenAddress,
+      amount: amount.amount,
+      decimals: amount.decimals
+    };
+  }
+  function formatNullableAssetAmount(amount) {
+    return amount === null ? null : formatAssetAmount(amount);
+  }
+  function formatClaimRewardsQuoteInfo(quote) {
+    return {
+      rewards: quote.rewards.map(formatClaimedAmount)
+    };
+  }
+  function formatListLoansResult(result) {
+    return {
+      loans: result.loans.map((loan) => {
+        return {
+          loanId: loan.loanId,
+          chain: loan.chain,
+          marketId: loan.marketId,
+          walletAddress: loan.walletAddress,
+          dataStatus: loan.dataStatus,
+          collateral: formatNullableAssetAmount(loan.collateral),
+          borrowed: formatNullableAssetAmount(loan.borrowed),
+          principalBorrowed: formatNullableAssetAmount(loan.principalBorrowed),
+          accruedInterest: formatNullableAssetAmount(loan.accruedInterest),
+          borrowApy: loan.borrowApy,
+          ltv: loan.ltv,
+          healthFactor: loan.healthFactor,
+          healthFactorBand: loan.healthFactorBand,
+          liquidationPrice: formatNullableAssetAmount(loan.liquidationPrice),
+          status: loan.status
+        };
+      }),
+      pagination: result.pagination.pageAfter === void 0 ? {} : {
+        pageAfter: result.pagination.pageAfter
+      }
+    };
+  }
+  function formatQuoteFields(quote) {
+    return {
+      chain: quote.chain,
+      fees: quote.fees.map((fee) => ({
+        type: fee.type,
+        token: fee.token,
+        amount: formatAssetAmount(fee.amount)
+      })),
+      gasFees: quote.gasFees.map((gasFee) => ({
+        name: gasFee.name,
+        fees: {
+          gas: gasFee.fees.gas,
+          gasPrice: gasFee.fees.gasPrice,
+          fee: gasFee.fees.fee
+        }
+      })),
+      resultingHealthFactor: quote.resultingHealthFactor,
+      resultingLtv: quote.resultingLtv,
+      resultingBand: quote.resultingBand,
+      liquidationPrice: quote.liquidationPrice === null ? null : formatAssetAmount(quote.liquidationPrice)
+    };
+  }
+  function formatRepayQuote(quote) {
+    return {
+      ...formatQuoteFields(quote),
+      repayAmount: formatAssetAmount(quote.repayAmount)
+    };
+  }
+  function formatCloseLoanQuote(quote) {
+    return {
+      ...formatQuoteFields(quote),
+      bundledRepayment: formatAssetAmount(quote.bundledRepayment),
+      collateralAmount: formatAssetAmount(quote.collateralAmount)
+    };
+  }
+  function formatBorrowResult(result) {
+    if (result.status === "submitted") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        ...result.error !== void 0 && {
+          error: result.error
+        }
+      };
+    }
+    if (result.status === "confirmed-details-unavailable") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        txHash: result.txHash,
+        error: result.error
+      };
+    }
+    return {
+      status: result.status,
+      loanId: result.loanId,
+      batchId: result.batchId,
+      amountBorrowed: formatAssetAmount(result.amountBorrowed),
+      fees: result.fees.map((fee) => ({
+        type: fee.type,
+        token: fee.token,
+        amount: formatAssetAmount(fee.amount)
+      })),
+      txHash: result.txHash
+    };
+  }
+  function formatRepayResult(result) {
+    if (result.status === "confirmed") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        amountRepaid: formatAssetAmount(result.amountRepaid),
+        txHash: result.txHash
+      };
+    }
+    if (result.status === "confirmed-details-unavailable") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        txHash: result.txHash,
+        error: result.error
+      };
+    }
+    return {
+      status: result.status,
+      loanId: result.loanId,
+      batchId: result.batchId,
+      ...result.error !== void 0 && {
+        error: result.error
+      }
+    };
+  }
+  function formatCloseLoanResult(result) {
+    if (result.status === "submitted") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        ...result.error !== void 0 && {
+          error: result.error
+        }
+      };
+    }
+    if (result.status === "confirmed-details-unavailable") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        txHash: result.txHash,
+        closed: result.closed,
+        error: result.error
+      };
+    }
+    return {
+      status: result.status,
+      loanId: result.loanId,
+      batchId: result.batchId,
+      amountRepaid: formatAssetAmount(result.amountRepaid),
+      collateralWithdrawn: formatAssetAmount(result.collateralWithdrawn),
+      position: {
+        collateral: formatAssetAmount(result.position.collateral),
+        borrowed: formatAssetAmount(result.position.borrowed),
+        ltv: result.position.ltv,
+        healthFactor: result.position.healthFactor,
+        healthFactorBand: result.position.healthFactorBand,
+        liquidationPrice: result.position.liquidationPrice === null ? null : formatAssetAmount(result.position.liquidationPrice)
+      },
+      txHash: result.txHash,
+      closed: result.closed
+    };
+  }
+  function formatAddCollateralQuote(quote) {
+    return {
+      ...formatQuoteFields(quote),
+      collateralAmount: formatAssetAmount(quote.collateralAmount)
+    };
+  }
+  function formatAddCollateralResult(result) {
+    if (result.status === "submitted") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        ...result.error !== void 0 && {
+          error: result.error
+        }
+      };
+    }
+    if (result.status === "confirmed-details-unavailable") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        txHash: result.txHash,
+        error: result.error
+      };
+    }
+    return {
+      status: result.status,
+      loanId: result.loanId,
+      batchId: result.batchId,
+      collateralAdded: formatAssetAmount(result.collateralAdded),
+      txHash: result.txHash
+    };
+  }
+  function formatWithdrawCollateralQuote(quote) {
+    return {
+      ...formatQuoteFields(quote),
+      bundledRepayment: formatAssetAmount(quote.bundledRepayment),
+      collateralAmount: formatAssetAmount(quote.collateralAmount)
+    };
+  }
+  function formatWithdrawCollateralResult(result) {
+    if (result.status === "submitted") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        ...result.error !== void 0 && {
+          error: result.error
+        }
+      };
+    }
+    if (result.status === "confirmed-details-unavailable") {
+      return {
+        status: result.status,
+        loanId: result.loanId,
+        batchId: result.batchId,
+        txHash: result.txHash,
+        error: result.error
+      };
+    }
+    return {
+      status: result.status,
+      loanId: result.loanId,
+      batchId: result.batchId,
+      collateralWithdrawn: formatAssetAmount(result.collateralWithdrawn),
+      amountRepaid: formatAssetAmount(result.amountRepaid),
+      txHash: result.txHash
+    };
+  }
+  function isExecutionSubmittable(executionParams) {
+    try {
+      assertExecutionNotExpired(executionParams);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  var BORROW_WRITE_OPERATIONS = /* @__PURE__ */ new Set([
+    "borrow",
+    "repay",
+    "addCollateral",
+    "closeLoan",
+    "withdrawCollateral"
+  ]);
+  var SIGNATURE_HEX = /^[0-9a-fA-F]{64,}$/;
+  var retryConfigs = /* @__PURE__ */ new WeakMap();
+  function withBorrowTrace(error, context) {
+    const base3 = isKitError2(error) ? error : new KitError2({
+      ...ServiceError2.INTERNAL_ERROR,
+      recoverability: "RETRYABLE",
+      message: getErrorMessage2(error)
+    });
+    const existingTrace = typeof base3.cause?.trace === "object" && base3.cause.trace !== null ? base3.cause.trace : {};
+    const execution = context.execution ?? readCarriedExecution(existingTrace);
+    const resumable = execution !== void 0 && isExecutionSubmittable(execution.executionParams);
+    const recoverability = resumable && base3.recoverability === "RETRYABLE" ? "RESUMABLE" : base3.recoverability;
+    const scrub = createSignatureScrub(execution?.signature);
+    const trace = {
+      ...existingTrace,
+      operation: context.operation,
+      steps: context.steps.map((step) => redactStep(step, scrub))
+    };
+    const { config, ...params } = context.params;
+    hide(trace, "params", params);
+    if (execution !== void 0) {
+      hide(trace, "execution", execution);
+    }
+    const traced = new KitError2({
+      code: base3.code,
+      name: base3.name,
+      type: base3.type,
+      recoverability,
+      message: scrub(base3.message),
+      cause: {
+        trace
+      }
+    });
+    if (config !== void 0) {
+      retryConfigs.set(traced, config);
+    }
+    return traced;
+  }
+  function readRetryConfig(error) {
+    return retryConfigs.get(error);
+  }
+  function createSignatureScrub(signature) {
+    const body = signature?.startsWith("0x") ? signature.slice(2) : signature;
+    if (body === void 0 || !SIGNATURE_HEX.test(body)) {
+      return (text) => text;
+    }
+    return composeRedactor({
+      patterns: [
+        new RegExp(body, "gi")
+      ],
+      hostSuffixes: []
+    });
+  }
+  function redactStep(step, scrub) {
+    if (step.state !== "error") {
+      return step;
+    }
+    return {
+      ...step,
+      errorMessage: step.errorMessage === void 0 ? void 0 : scrub(step.errorMessage),
+      error: scrubStepError(step.error, scrub)
+    };
+  }
+  function scrubStepError(recorded, scrub) {
+    if (typeof recorded === "string") {
+      return scrub(recorded);
+    }
+    if (!isObject3(recorded) || typeof recorded["message"] !== "string") {
+      return recorded;
+    }
+    return {
+      ...recorded,
+      message: scrub(recorded["message"])
+    };
+  }
+  function readCarriedExecution(trace) {
+    const carried = trace["execution"];
+    return typeof carried === "object" && carried !== null && "executionParams" in carried ? carried : void 0;
+  }
+  function hide(target, property, value) {
+    Object.defineProperty(target, property, {
+      value,
+      enumerable: false,
+      writable: true,
+      configurable: true
+    });
+  }
+  function isBorrowErrorTrace(value) {
+    if (value === null || typeof value !== "object") {
+      return false;
+    }
+    const candidate = value;
+    if (!BORROW_WRITE_OPERATIONS.has(candidate["operation"])) {
+      return false;
+    }
+    if (!Array.isArray(candidate["steps"])) {
+      return false;
+    }
+    const params = candidate["params"];
+    if (params === null || typeof params !== "object") {
+      return false;
+    }
+    const from16 = params["from"];
+    return from16 !== null && typeof from16 === "object";
+  }
+  var BORROW_ACTION_BASE = {
+    protocol: "borrow",
+    service: "borrow-service"
+  };
+  function dispatchBorrowEvent(dispatcher, operation, step) {
+    const dispatch = bindDispatch(operation, step);
+    try {
+      dispatch(dispatcher);
+    } catch {
+    }
+  }
+  function bindDispatch(operation, step) {
+    switch (step.name) {
+      case "fetchParams": {
+        const payload = {
+          ...BORROW_ACTION_BASE,
+          operation,
+          method: "fetchParams",
+          values: step
+        };
+        return (dispatcher) => {
+          dispatcher.dispatch("fetchParams", payload);
+        };
+      }
+      case "approve": {
+        const payload = {
+          ...BORROW_ACTION_BASE,
+          operation,
+          method: "approve",
+          values: step
+        };
+        return (dispatcher) => {
+          dispatcher.dispatch("approve", payload);
+        };
+      }
+      case "setAuthorization": {
+        const payload = {
+          ...BORROW_ACTION_BASE,
+          operation,
+          method: "setAuthorization",
+          values: step
+        };
+        return (dispatcher) => {
+          dispatcher.dispatch("setAuthorization", payload);
+        };
+      }
+      case "execute": {
+        const payload = {
+          ...BORROW_ACTION_BASE,
+          operation,
+          method: "execute",
+          values: step
+        };
+        return (dispatcher) => {
+          dispatcher.dispatch("execute", payload);
+        };
+      }
+      default: {
+        return assertNever$2(step);
+      }
+    }
+  }
+  var BATCHED_PHASES = [
+    "approve",
+    "setAuthorization",
+    "execute"
+  ];
+  function createBorrowStepReporter(dispatcher, operation) {
+    const steps = /* @__PURE__ */ new Map();
+    const record = (step) => {
+      steps.set(step.name, step);
+      dispatchBorrowEvent(dispatcher, operation, step);
+    };
+    return {
+      get steps() {
+        return [
+          ...steps.values()
+        ];
+      },
+      begin(name4) {
+        record({
+          name: name4,
+          state: "pending"
+        });
+      },
+      succeed(name4) {
+        record({
+          name: name4,
+          state: "success"
+        });
+      },
+      fail(name4, error) {
+        record({
+          name: name4,
+          state: "error",
+          errorMessage: toErrorMessage(error),
+          error: redactRawError(error)
+        });
+      },
+      settle(outcome) {
+        for (const name4 of BATCHED_PHASES) {
+          if (steps.get(name4)?.state !== "pending") {
+            continue;
+          }
+          record(outcome.state === "success" ? {
+            name: name4,
+            state: "success",
+            txHash: outcome.txHash
+          } : {
+            name: name4,
+            state: "error",
+            errorMessage: toErrorMessage(outcome.error),
+            error: redactRawError(outcome.error)
+          });
+        }
+      }
+    };
+  }
+  function toErrorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  async function runTracedWrite(context, operation, params, signed, execute) {
+    const reporter = createBorrowStepReporter(context.actionDispatcher, operation);
+    let execution = signed;
+    try {
+      return await execute(reporter, (next) => {
+        execution = next;
+      });
+    } catch (error) {
+      reporter.settle({
+        state: "error",
+        error
+      });
+      throw withBorrowTrace(error, {
+        operation,
+        steps: reporter.steps,
+        params,
+        execution
+      });
+    }
+  }
+  async function addCollateral$1(context, params) {
+    return await runAddCollateral(context, params);
+  }
+  async function runAddCollateral(context, params, signed) {
+    assertBorrowParams(params, addCollateralParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const resolved = await resolveOperationContext2(params.from.adapter, {
+      chain,
+      ...params.from.address !== void 0 && {
+        address: params.from.address
+      }
+    });
+    const provider = findProvider(context, chain);
+    const idempotencyKey = params.idempotencyKey ?? createUuidV4();
+    return await runTracedWrite(context, "addCollateral", {
+      ...params,
+      idempotencyKey
+    }, signed, async (progress, onExecution) => {
+      const result = await provider.addCollateral({
+        from: {
+          adapter: params.from.adapter,
+          ...resolved
+        },
+        loanId: params.loanId,
+        collateralAmount: params.collateralAmount,
+        idempotencyKey,
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      }, {
+        signed,
+        progress,
+        onExecution
+      });
+      return formatAddCollateralResult(result);
+    });
+  }
+  async function resolveOwnerAddress(from16, chain) {
+    let resolved;
+    try {
+      resolved = await resolveOperationContext2(from16.adapter, {
+        chain,
+        address: from16.address
+      });
+    } catch (error) {
+      throw createValidationFailedError$12("from.address", from16.address, getErrorMessage2(error));
+    }
+    return requireEvmAddress("from.address", resolved.address);
+  }
+  async function borrow$1(context, params) {
+    return await runBorrow(context, params);
+  }
+  async function runBorrow(context, params, signed) {
+    const validationTarget = params;
+    assertBorrowParams(validationTarget, borrowParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const fromAddress = await resolveOwnerAddress(params.from, chain);
+    const provider = findProvider(context, chain);
+    const idempotencyKey = params.idempotencyKey ?? createUuidV4();
+    return await runTracedWrite(context, "borrow", {
+      ...params,
+      idempotencyKey
+    }, signed, async (progress, onExecution) => {
+      const result = await provider.borrow({
+        from: {
+          adapter: params.from.adapter,
+          chain,
+          address: fromAddress
+        },
+        // Exactly one shape: the open tuple, or the loan alone — the service
+        // reads an open-tuple field beside a loanId as naming the position
+        // twice.
+        ...params.loanId === void 0 ? {
+          walletAddress: fromAddress,
+          chain: params.from.chain,
+          marketId: params.marketId
+        } : {
+          loanId: params.loanId
+        },
+        loanAssetAmount: params.borrowAmount,
+        ...params.slippageBps !== void 0 && {
+          slippageBps: params.slippageBps
+        },
+        idempotencyKey,
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      }, {
+        signed,
+        progress,
+        onExecution
+      });
+      return formatBorrowResult(result);
+    });
+  }
+  async function closeLoan$1(context, params) {
+    return await runCloseLoan(context, params);
+  }
+  async function runCloseLoan(context, params, signed) {
+    assertBorrowParams(params, closeLoanParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const resolved = await resolveOperationContext2(params.from.adapter, {
+      chain,
+      ...params.from.address !== void 0 && {
+        address: params.from.address
+      }
+    });
+    const provider = findProvider(context, chain);
+    const idempotencyKey = params.idempotencyKey ?? createUuidV4();
+    const result = await runTracedWrite(context, "closeLoan", {
+      ...params,
+      idempotencyKey
+    }, signed, async (progress, onExecution) => {
+      const result2 = await provider.closeLoan({
+        from: {
+          adapter: params.from.adapter,
+          ...resolved
+        },
+        loanId: params.loanId,
+        ...params.slippageBps !== void 0 && {
+          slippageBps: params.slippageBps
+        },
+        idempotencyKey,
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      }, {
+        signed,
+        progress,
+        onExecution
+      });
+      return formatCloseLoanResult(result2);
+    });
+    return result;
+  }
+  async function exploreMarkets$1(context, params) {
+    assertBorrowParams(params, exploreMarketsParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const provider = findProvider(context, chain);
+    return provider.exploreMarkets({
+      chain,
+      ...params.minLltv === void 0 ? {} : {
+        minLltv: params.minLltv
+      },
+      ...params.maxLltv === void 0 ? {} : {
+        maxLltv: params.maxLltv
+      },
+      ...params.minBorrow === void 0 ? {} : {
+        minBorrow: params.minBorrow
+      },
+      ...params.maxBorrow === void 0 ? {} : {
+        maxBorrow: params.maxBorrow
+      },
+      ...params.sortBy === void 0 ? {} : {
+        sortBy: params.sortBy
+      },
+      ...params.pageSize === void 0 ? {} : {
+        pageSize: params.pageSize
+      },
+      ...params.pageAfter === void 0 ? {} : {
+        pageAfter: params.pageAfter
+      },
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+  }
+  function exploreMarketsIterator$1(context, params) {
+    assertBorrowParams(params, exploreMarketsIteratorParamsSchema);
+    return iterateMarkets(context, params);
+  }
+  async function* iterateMarkets(context, params) {
+    let pageAfter;
+    let pages = 0;
+    for (; ; ) {
+      const result = await exploreMarkets$1(context, {
+        ...params,
+        ...pageAfter === void 0 ? {} : {
+          pageAfter
+        }
+      });
+      yield* result.markets;
+      const next = result.pagination.pageAfter;
+      pages += 1;
+      if (next === void 0) {
+        return;
+      }
+      if (next === pageAfter) {
+        throw new KitError2({
+          ...BorrowError.INTERNAL_ERROR,
+          recoverability: "FATAL",
+          message: "exploreMarketsIterator received the same pagination cursor twice; the Borrow Service did not advance the page",
+          cause: {
+            trace: {
+              pages
+            }
+          }
+        });
+      }
+      pageAfter = next;
+      if (pages >= MAX_EXPLORE_PAGES) {
+        throw new KitError2({
+          ...BorrowError.INTERNAL_ERROR,
+          recoverability: "FATAL",
+          message: `exploreMarketsIterator stopped after ${MAX_EXPLORE_PAGES.toString()} pages without exhausting the cursor; the Borrow Service did not signal the last page`,
+          cause: {
+            trace: {
+              pages
+            }
+          }
+        });
+      }
+    }
+  }
+  async function getAddCollateralQuote$1(context, params) {
+    assertBorrowParams(params, addCollateralQuoteParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const quote = await findProvider(context, chain).getAddCollateralQuote({
+      chain,
+      loanId: params.loanId,
+      collateralAmount: params.collateralAmount,
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+    return formatAddCollateralQuote(quote);
+  }
+  function isBorrowMoreQuote(params) {
+    return params.loanId !== void 0;
+  }
+  async function getBorrowQuote$1(context, params) {
+    const requestParams = params;
+    assertBorrowParams(params, borrowQuoteParamsSchema);
+    if (isBorrowMoreQuote(requestParams)) {
+      return await findProvider(context).getBorrowQuote({
+        loanId: requestParams.loanId,
+        loanAssetAmount: requestParams.borrowAmount,
+        ...requestParams.slippageBps === void 0 ? {} : {
+          slippageBps: requestParams.slippageBps
+        },
+        ...requestParams.config === void 0 ? {} : {
+          config: requestParams.config
+        }
+      });
+    }
+    const chain = resolveChainIdentifier2(requestParams.chain);
+    return await findProvider(context, chain).getBorrowQuote({
+      walletAddress: requestParams.walletAddress,
+      chain,
+      marketId: requestParams.marketId,
+      loanAssetAmount: requestParams.borrowAmount,
+      ...requestParams.slippageBps === void 0 ? {} : {
+        slippageBps: requestParams.slippageBps
+      },
+      ...requestParams.config === void 0 ? {} : {
+        config: requestParams.config
+      }
+    });
+  }
+  async function getCloseLoanQuote$1(context, params) {
+    assertBorrowParams(params, closeLoanQuoteParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const quote = await findProvider(context, chain).getCloseLoanQuote({
+      chain,
+      loanId: params.loanId,
+      ...params.slippageBps !== void 0 && {
+        slippageBps: params.slippageBps
+      },
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+    return formatCloseLoanQuote(quote);
+  }
+  async function getIntegratorConfig$1(context, params = {}) {
+    assertBorrowParams(params, getIntegratorConfigParamsSchema);
+    const eligible = {
+      ...context,
+      providers: context.providers.filter((provider) => typeof provider.getIntegratorConfig === "function")
+    };
+    if (context.providers.length > 0 && eligible.providers.length === 0) {
+      throw createValidationFailedError$12("context.providers", context.providers.length, "No configured borrow provider supports getIntegratorConfig");
+    }
+    return await findProvider(eligible).getIntegratorConfig(params);
+  }
+  async function getLoans$1(context, params) {
+    assertBorrowParams(params, getLoansParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const provider = findProvider(context, chain);
+    const result = await provider.getLoans({
+      walletAddress: params.walletAddress,
+      chain,
+      ...params.pageSize === void 0 ? {} : {
+        pageSize: params.pageSize
+      },
+      ...params.pageAfter === void 0 ? {} : {
+        pageAfter: params.pageAfter
+      },
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+    return formatListLoansResult(result);
+  }
+  async function getMarket$1(context, params) {
+    assertBorrowParams(params, getMarketParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const provider = findProvider(context, chain);
+    return provider.getMarket({
+      chain,
+      marketId: params.marketId,
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+  }
+  async function getMaxBorrow$1(context, params) {
+    assertBorrowParams(params, maxBorrowParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    return await findProvider(context, chain).getMaxBorrow({
+      chain,
+      marketId: params.marketId,
+      collateralAmount: params.collateralAmount,
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+  }
+  async function getPosition$2(context, params) {
+    assertBorrowParams(params, getPositionParamsSchema);
+    const provider = findProvider(context);
+    return provider.getPosition({
+      loanId: params.loanId,
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+  }
+  async function getRepayQuote$1(context, params) {
+    assertBorrowParams(params, repayQuoteParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const quote = await findProvider(context, chain).getRepayQuote({
+      chain,
+      loanId: params.loanId,
+      repayAmount: params.repayAmount,
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+    return formatRepayQuote(quote);
+  }
+  async function getRequiredCollateral$1(context, params) {
+    assertBorrowParams(params, requiredCollateralParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    return await findProvider(context, chain).getRequiredCollateral({
+      chain,
+      marketId: params.marketId,
+      loanAssetAmount: params.borrowAmount,
+      targetHealthFactor: params.targetHealthFactor,
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+  }
+  function getSupportedChains$3(context) {
+    const borrowChains = new Set(Object.values(BorrowChain2));
+    const chainsById = /* @__PURE__ */ new Map();
+    for (const provider of context.providers) {
+      for (const chain of provider.supportedChains) {
+        if (borrowChains.has(chain.chain)) {
+          chainsById.set(chain.chain, chain);
+        }
+      }
+    }
+    return [
+      ...chainsById.values()
+    ];
+  }
+  var DEFAULT_DEADLINE_SECONDS = 4 * 60;
+  async function registerWebhook$1(context, params) {
+    assertBorrowParams(params, registerWebhookParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    if (!canSignTypedData2(params.from.adapter)) {
+      throw createValidationFailedError$12("from.adapter", params.from.adapter, "adapter must support signTypedData to register a Borrow webhook");
+    }
+    const adapter = params.from.adapter;
+    const rawAddress = await resolveAdapterAddress(params.from, chain);
+    const address = requireEvmAddress("from.address", rawAddress);
+    if (chain.type !== "evm") {
+      throw createValidationFailedError$12("from.chain", chain.chain, "registerWebhook is only supported on EVM chains");
+    }
+    const deadline = params.deadline ?? Math.floor(Date.now() / 1e3) + DEFAULT_DEADLINE_SECONDS;
+    const provider = findProvider(context, chain, "registerWebhook");
+    return provider.registerWebhook({
+      adapter,
+      chain,
+      address,
+      loanId: params.loanId,
+      webhookUrl: params.webhookUrl ?? null,
+      deadline,
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+  }
+  async function getWithdrawCollateralRepayIfNeededQuote$1(context, params) {
+    assertBorrowParams(params, withdrawCollateralQuoteParamsSchema);
+    const chain = resolveChainIdentifier2(params.chain);
+    const quote = await findProvider(context, chain).getWithdrawCollateralQuote({
+      chain,
+      loanId: params.loanId,
+      collateralAmount: params.collateralAmount,
+      ...params.slippageBps !== void 0 && {
+        slippageBps: params.slippageBps
+      },
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+    return formatWithdrawCollateralQuote(quote);
+  }
+  async function repay$1(context, params) {
+    return await runRepay(context, params);
+  }
+  async function runRepay(context, params, signed) {
+    assertBorrowParams(params, repayParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const resolved = await resolveOperationContext2(params.from.adapter, {
+      chain,
+      ...params.from.address !== void 0 && {
+        address: params.from.address
+      }
+    });
+    const provider = findProvider(context, chain);
+    const idempotencyKey = params.idempotencyKey ?? createUuidV4();
+    return await runTracedWrite(context, "repay", {
+      ...params,
+      idempotencyKey
+    }, signed, async (progress, onExecution) => {
+      const result = await provider.repay({
+        from: {
+          adapter: params.from.adapter,
+          ...resolved
+        },
+        loanId: params.loanId,
+        repayAmount: params.repayAmount,
+        idempotencyKey,
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      }, {
+        signed,
+        progress,
+        onExecution
+      });
+      return formatRepayResult(result);
+    });
+  }
+  async function claimRewards$2(context, params) {
+    assertBorrowParams(params, claimRewardsParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const provider = findProvider(context, chain, "claimRewards");
+    const address = await resolveAdapterAddress(params.from, chain);
+    const result = await provider.claimRewards({
+      from: {
+        ...params.from,
+        chain,
+        address
+      },
+      ...params.config === void 0 ? {} : {
+        config: params.config
+      }
+    });
+    return formatClaimRewardsResult(result);
+  }
+  async function getClaimRewardsQuote$2(context, params) {
+    assertBorrowParams(params, getClaimRewardsQuoteParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const provider = findProvider(context, chain, "getRewards");
+    const address = await resolveAdapterAddress(params.from, chain);
+    const result = await provider.getRewards({
+      from: {
+        ...params.from,
+        chain,
+        address
+      },
+      ...params.config !== void 0 && {
+        config: params.config
+      }
+    });
+    return formatClaimRewardsQuoteInfo(result);
+  }
+  async function withdrawCollateralRepayIfNeeded$1(context, params) {
+    return await runWithdrawCollateralRepayIfNeeded(context, params);
+  }
+  async function runWithdrawCollateralRepayIfNeeded(context, params, signed) {
+    assertBorrowParams(params, withdrawCollateralParamsSchema);
+    const chain = resolveChainIdentifier2(params.from.chain);
+    params.from.adapter.validateChainSupport(chain);
+    const resolved = await resolveOperationContext2(params.from.adapter, {
+      chain,
+      ...params.from.address !== void 0 && {
+        address: params.from.address
+      }
+    });
+    const provider = findProvider(context, chain);
+    const idempotencyKey = params.idempotencyKey ?? createUuidV4();
+    return await runTracedWrite(context, "withdrawCollateral", {
+      ...params,
+      idempotencyKey
+    }, signed, async (progress, onExecution) => {
+      const result = await provider.withdrawCollateral({
+        from: {
+          adapter: params.from.adapter,
+          ...resolved
+        },
+        loanId: params.loanId,
+        collateralAmount: params.collateralAmount,
+        ...params.slippageBps !== void 0 && {
+          slippageBps: params.slippageBps
+        },
+        idempotencyKey,
+        ...params.config !== void 0 && {
+          config: params.config
+        }
+      }, {
+        signed,
+        progress,
+        onExecution
+      });
+      return formatWithdrawCollateralResult(result);
+    });
+  }
+  var CONFIRMED_MESSAGES = {
+    borrow: "This borrow already confirmed on-chain, so retrying it would borrow a second time \u2014 read the loan with getLoans() to see where it stands",
+    repay: "This repay already confirmed on-chain. Retrying it would repay a second time. Read the loan with getPosition() to see where it stands",
+    addCollateral: "This collateral addition already confirmed on-chain. Retrying it would add collateral a second time. Read the loan with getPosition() to see where it stands",
+    closeLoan: "This loan close already confirmed on-chain. Retrying it would close the loan a second time. Read the loan with getPosition() to see where it stands",
+    withdrawCollateral: "This collateral withdrawal already confirmed on-chain. Retrying it would withdraw a second time. Read the loan with getPosition() to see where it stands"
+  };
+  async function retryBorrow(context, error) {
+    if (!isKitError2(error)) {
+      throw createValidationFailedError$12("error", error, "retry() takes an error thrown by a previous Borrow Kit operation");
+    }
+    if (!isRetryableError$1(error)) {
+      throw createValidationFailedError$12("error.recoverability", error.recoverability, `A ${error.name} failure cannot be retried \u2014 check isRetryableError(error) first`);
+    }
+    const trace = error.cause?.trace;
+    if (!isBorrowErrorTrace(trace)) {
+      throw createValidationFailedError$12("error.cause.trace", trace, "retry() takes an error carrying the trace a Borrow Kit write attaches when it fails");
+    }
+    const confirmed = trace.steps.some((step) => step.name !== "fetchParams" && step.state === "success" && step.txHash !== void 0);
+    if (confirmed) {
+      throw createValidationFailedError$12("error.cause.trace.steps", trace.steps.map(({ name: name4, state }) => `${name4}:${state}`), CONFIRMED_MESSAGES[trace.operation]);
+    }
+    const config = readRetryConfig(error);
+    switch (trace.operation) {
+      case "borrow":
+        return await resumeWrite(context, trace, config, runBorrow);
+      case "repay":
+        return await resumeWrite(context, trace, config, runRepay);
+      case "addCollateral":
+        return await resumeWrite(context, trace, config, runAddCollateral);
+      case "closeLoan":
+        return await resumeWrite(context, trace, config, runCloseLoan);
+      case "withdrawCollateral":
+        return await resumeWrite(context, trace, config, runWithdrawCollateralRepayIfNeeded);
+      default: {
+        return assertNever$2(trace);
+      }
+    }
+  }
+  async function resumeWrite(context, trace, config, run2) {
+    const { execution } = trace;
+    const params = config === void 0 ? trace.params : {
+      ...trace.params,
+      config
+    };
+    if (execution === void 0) {
+      return await run2(context, params);
+    }
+    if (isExecutionSubmittable(execution.executionParams)) {
+      return await run2(context, params, execution);
+    }
+    return await run2(context, {
+      ...params,
+      idempotencyKey: void 0
+    });
+  }
+  async function setIntegratorConfig$1(context, params) {
+    assertBorrowParams(params, setIntegratorConfigParamsSchema);
+    const eligible = {
+      ...context,
+      providers: context.providers.filter((provider) => typeof provider.setIntegratorConfig === "function")
+    };
+    if (context.providers.length > 0 && eligible.providers.length === 0) {
+      throw createValidationFailedError$12("context.providers", context.providers.length, "No configured borrow provider supports setIntegratorConfig");
+    }
+    return await findProvider(eligible).setIntegratorConfig(params);
+  }
+  var BORROW_EVENT_TYPES = {
+    REGISTER_WEBHOOK: "borrow_register_webhook",
+    GET_LOANS: "borrow_get_loans",
+    GET_POSITION: "borrow_get_position",
+    GET_MARKET: "borrow_get_market",
+    EXPLORE_MARKETS: "borrow_explore_markets",
+    BORROW: "borrow_borrow",
+    RETRY: "borrow_retry",
+    REPAY: "borrow_repay",
+    GET_REPAY_QUOTE: "borrow_get_repay_quote",
+    GET_BORROW_QUOTE: "borrow_get_borrow_quote",
+    GET_REQUIRED_COLLATERAL: "borrow_get_required_collateral",
+    GET_MAX_BORROW: "borrow_get_max_borrow",
+    GET_INTEGRATOR_CONFIG: "borrow_get_integrator_config",
+    SET_INTEGRATOR_CONFIG: "borrow_set_integrator_config",
+    CLAIM_REWARDS: "borrow_claim_rewards",
+    GET_REWARDS: "borrow_get_rewards",
+    CLOSE_LOAN: "borrow_close_loan",
+    WITHDRAW_COLLATERAL: "borrow_withdraw_collateral",
+    ADD_COLLATERAL: "borrow_add_collateral"
+  };
+  var SDK_NAME$1 = resolveKitSdkName2(pkg$1.name);
+  var BorrowKit = class {
+    context;
+    /** Per-kit identity and opt-out state for error telemetry. */
+    telemetryConfig;
+    /** Per-kit identity and opt-out state for success telemetry. */
+    analyticsTelemetryConfig;
+    /**
+    * Create a Borrow Kit instance.
+    *
+    * Accept an optional configuration object to customize the kit's
+    * behavior. If no configuration is provided, the kit is initialized
+    * with default settings using the built-in BorrowServiceProvider.
+    *
+    * @param config - Optional configuration for the BorrowKit instance,
+    *   including custom provider configuration and the error-telemetry
+    *   opt-out.
+    * @throws A `KitError` with name `INPUT_VALIDATION_FAILED` when `config` is
+    *   invalid.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * // Create with default configuration
+    * const borrowKit = new BorrowKit()
+    * ```
+    */
+    constructor(config = {}) {
+      this.context = createBorrowKitContext(config);
+      this.telemetryConfig = {
+        sdkName: SDK_NAME$1,
+        sdkVersion: pkg$1.version,
+        disabled: config.disableErrorReporting === true
+      };
+      this.analyticsTelemetryConfig = {
+        sdkName: SDK_NAME$1,
+        sdkVersion: pkg$1.version,
+        disabled: config.disableAnalytics === true
+      };
+    }
+    on(action, handler) {
+      if (action === "*") {
+        this.context.actionDispatcher.on("*", handler);
+      } else {
+        this.context.actionDispatcher.on(action, handler);
+      }
+    }
+    off(action, handler) {
+      if (action === "*") {
+        this.context.actionDispatcher.off("*", handler);
+      } else {
+        this.context.actionDispatcher.off(action, handler);
+      }
+    }
+    /**
+    * Return the chains supported by configured borrow providers.
+    *
+    * Only chains in `BorrowChain` are returned; other chains a provider declares are dropped.
+    * When several providers declare the same chain, the last provider's definition is kept, as in
+    * Bridge Kit, Swap Kit, and Earn Kit. Providers passed in `config.providers` come before the
+    * default provider, so the default provider's definition wins.
+    *
+    * @returns Deduplicated supported chain definitions.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const chains = borrowKit.getSupportedChains()
+    * ```
+    */
+    getSupportedChains() {
+      return getSupportedChains$3(this.context);
+    }
+    /**
+    * List loans owned by a wallet.
+    *
+    * @param params - Wallet, chain, and optional cursor pagination.
+    * @returns The wallet's loans and next-page cursor.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const result = await borrowKit.getLoans({
+    *   walletAddress: '0x1111111111111111111111111111111111111111',
+    *   chain: 'Arc_Testnet',
+    *   pageSize: 20,
+    * })
+    * ```
+    */
+    async getLoans(params) {
+      return await withErrorTelemetry2(async () => await getLoans$1(this.context, params), BORROW_EVENT_TYPES.GET_LOANS, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Fetch a single loan by ID.
+    *
+    * Query the configured borrow providers for the loan matching `loanId`,
+    * including health fields. A loan whose on-chain create has not been
+    * indexed yet comes back with `dataStatus: 'PENDING'` and null economics;
+    * a wound-down loan comes back `READY` with zeroed amounts and
+    * `status: 'closed'`; a loan that never landed on-chain throws
+    * `BorrowError.LOAN_NOT_FOUND`.
+    *
+    * @param params - Loan lookup parameters
+    * @returns A promise resolving to the loan, including health fields
+    * @throws {@link KitError} If validation fails, no provider is configured,
+    *   or the loan is not found
+    *
+    * @example
+    * ```typescript
+    * const kit = new BorrowKit()
+    * const loan = await kit.getPosition({ loanId: '11111111-1111-4111-8111-111111111111' })
+    * console.log(`Health factor: ${loan.healthFactor}`)
+    * ```
+    */
+    async getPosition(params) {
+      return await withErrorTelemetry2(async () => await getPosition$2(this.context, params), BORROW_EVENT_TYPES.GET_POSITION, this.telemetryConfig);
+    }
+    /**
+    * Atomically execute a borrow.
+    *
+    * @param params - Wallet context plus either a market to open a loan in or a
+    *   loan to borrow more against.
+    * @returns The confirmed borrow amount and transaction hash.
+    * @throws A `KitError` when parameters are invalid or the provider request
+    *   fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2/next'
+    *
+    * const borrowKit = new BorrowKit()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY as string,
+    * })
+    * const result = await borrowKit.borrow({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   marketId: '0x1111111111111111111111111111111111111111111111111111111111111111',
+    *   borrowAmount: '1000',
+    * })
+    * ```
+    */
+    async borrow(params) {
+      return await withErrorTelemetry2(async () => await borrow$1(this.context, params), BORROW_EVENT_TYPES.BORROW, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Retry a failed atomic loan write from where it stopped.
+    *
+    * Covers `borrow`, `repay`, `addCollateral`, `closeLoan`, and
+    * `withdrawCollateralRepayIfNeeded`. When the trace carries a live signed
+    * envelope, this submits it rather than asking for another one; otherwise
+    * the write runs again from the start. A write that already confirmed is
+    * refused, because running it again would apply the same on-chain change
+    * twice.
+    *
+    * Check `isRetryableError(error)` first: a fatal failure is refused here.
+    *
+    * @param error - The error a previous covered write threw.
+    * @returns The result of the write this attempt completed.
+    * @throws A `KitError` when `error` did not come from a covered write, cannot
+    *   be retried, or describes a write that already confirmed.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit, isRetryableError } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * try {
+    *   await borrowKit.repay(params)
+    * } catch (error) {
+    *   if (isRetryableError(error)) {
+    *     await borrowKit.retry(error)
+    *   }
+    * }
+    * ```
+    */
+    async retry(error) {
+      return await withErrorTelemetry2(async () => await retryBorrow(this.context, error), BORROW_EVENT_TYPES.RETRY, this.telemetryConfig);
+    }
+    /**
+    * Fetch a single borrow market.
+    *
+    * @param params - Chain and market identifier.
+    * @returns The market data.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, the market is not found, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const market = await borrowKit.getMarket({
+    *   chain: 'Arc_Testnet',
+    *   marketId: '0xabc...',
+    * })
+    * ```
+    */
+    async getMarket(params) {
+      return await withErrorTelemetry2(async () => await getMarket$1(this.context, params), BORROW_EVENT_TYPES.GET_MARKET, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Discover borrow markets available on a chain.
+    *
+    * @param params - Discovery parameters (chain plus optional filters).
+    * @returns One filtered, sorted page of markets with pagination metadata.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const { markets } = await borrowKit.exploreMarkets({
+    *   chain: 'Arc_Testnet',
+    *   sortBy: 'borrowApy',
+    * })
+    * ```
+    */
+    async exploreMarkets(params) {
+      return await withErrorTelemetry2(async () => await exploreMarkets$1(this.context, params), BORROW_EVENT_TYPES.EXPLORE_MARKETS, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Lazily iterate every borrow market available on a chain.
+    *
+    * @param params - Discovery parameters; the iterator manages the cursor.
+    * @returns An async generator yielding each matching market.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or a provider request fails. Parameter validation is eager, so an
+    *   invalid `params` throws synchronously at call time rather than rejecting.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * for await (const market of borrowKit.exploreMarketsIterator({
+    *   chain: 'Arc_Testnet',
+    * })) {
+    *   console.log(market.marketId)
+    * }
+    * ```
+    */
+    exploreMarketsIterator(params) {
+      return exploreMarketsIterator$1(this.context, params);
+    }
+    /**
+    * Atomically execute a repayment, in part or in full.
+    *
+    * @param params - Loan ID and repayment amount.
+    * @returns The confirmed repayment amount and transaction hash.
+    * @throws A `KitError` when parameters are invalid or the provider request
+    *   fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2/next'
+    *
+    * const borrowKit = new BorrowKit()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY as string,
+    * })
+    * const result = await borrowKit.repay({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   repayAmount: '1.0',
+    * })
+    * ```
+    */
+    async repay(params) {
+      return await withErrorTelemetry2(async () => await repay$1(this.context, params), BORROW_EVENT_TYPES.REPAY, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Preview a partial repayment.
+    *
+    * @param params - Loan ID and exact repayment amount.
+    * @returns The service-computed repayment quote.
+    * @throws A `KitError` when parameters are invalid or the provider request
+    *   fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getRepayQuote({
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   repayAmount: '1.0',
+    * })
+    * ```
+    */
+    async getRepayQuote(params) {
+      return await withErrorTelemetry2(async () => await getRepayQuote$1(this.context, params), BORROW_EVENT_TYPES.GET_REPAY_QUOTE, this.telemetryConfig);
+    }
+    /**
+    * Claim rewards for a wallet.
+    *
+    * Build the Circle-signed claim rewards execution via the unified
+    * `POST /v1/kits/claimRewards` endpoint, submit it on-chain through the
+    * reused `earn.claimRewards` Adapter action, and return the confirmed
+    * transaction hash. When no rewards are claimable, no transaction is
+    * submitted.
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type
+    * @param params - Claim parameters including adapter context (wallet and chain)
+    * @returns A promise resolving to the claim result with reward details
+    * @throws {@link KitError} If validation fails or no provider is configured
+    *
+    * @example
+    * ```typescript
+    * const kit = new BorrowKit()
+    * const result = await kit.claimRewards({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    * })
+    * if (result.status === 'claimed') {
+    *   console.log(`Claimed ${result.rewards.length} reward token(s), tx: ${result.txHash}`)
+    * }
+    * ```
+    */
+    async claimRewards(params) {
+      return await withErrorTelemetry2(async () => await claimRewards$2(this.context, params), BORROW_EVENT_TYPES.CLAIM_REWARDS, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Read claimable rewards for a wallet without executing.
+    *
+    * Query the unified `POST /v1/kits/claimRewards/quote` endpoint for
+    * reward tokens currently available to claim.
+    *
+    * @typeParam TFromAdapterCapabilities - The adapter capabilities type
+    * @param params - Claimable-rewards read parameters including adapter context
+    * @returns A promise resolving to the claimable reward details
+    * @throws {@link KitError} If validation fails or no provider is configured
+    *
+    * @example
+    * ```typescript
+    * const kit = new BorrowKit()
+    * const quote = await kit.getClaimRewardsQuote({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    * })
+    * console.log(`Claimable rewards: ${quote.rewards.length}`)
+    * ```
+    */
+    async getClaimRewardsQuote(params) {
+      return await withErrorTelemetry2(async () => await getClaimRewardsQuote$2(this.context, params), BORROW_EVENT_TYPES.GET_REWARDS, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Atomically repay all debt, withdraw all collateral, and revoke Morpho
+    * authorization.
+    *
+    * @param params - Wallet context, loan ID, and optional slippage bound.
+    * @returns A submitted or confirmed batch result. Confirmed results include
+    *   the transaction hash and, when receipt decoding succeeds, the actual
+    *   repayment and collateral amounts.
+    * @throws A `KitError` when parameters are invalid, atomic batching is not
+    *   supported, provider data is invalid, or the transaction fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2/next'
+    *
+    * const borrowKit = new BorrowKit()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY as string,
+    * })
+    * const result = await borrowKit.closeLoan({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   slippageBps: 50,
+    * })
+    * ```
+    */
+    async closeLoan(params) {
+      return await withErrorTelemetry2(async () => await closeLoan$1(this.context, params), BORROW_EVENT_TYPES.CLOSE_LOAN, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Preview a full loan close without submitting a transaction.
+    *
+    * @param params - Chain, loan ID, and optional slippage bound.
+    * @returns The non-binding repayment, returned collateral, fees, gas, and
+    *   resulting health estimate.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getCloseLoanQuote({
+    *   chain: 'Arc_Testnet',
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   slippageBps: 300,
+    * })
+    * ```
+    */
+    async getCloseLoanQuote(params) {
+      return await getCloseLoanQuote$1(this.context, params);
+    }
+    /**
+    * Atomically withdraw collateral from a loan.
+    *
+    * Releasing collateral usually requires repaying debt first, so the service
+    * sizes whatever repayment keeps the position healthy and bundles both into
+    * one signed envelope submitted as a single batch.
+    *
+    * @param params - Wallet context, loan ID, collateral to release, and
+    *   optional slippage bound.
+    * @returns A submitted or confirmed batch result. Confirmed results include
+    *   the transaction hash and, when receipt decoding succeeds, the actual
+    *   collateral and repayment amounts. A `confirmed-details-unavailable`
+    *   result means the withdrawal landed and must not be retried.
+    * @throws A `KitError` when parameters are invalid, the signed envelope does
+    *   not match the request, the provider request fails, or the batch reverts.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2/next'
+    *
+    * const borrowKit = new BorrowKit()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY as string,
+    * })
+    * const result = await borrowKit.withdrawCollateralRepayIfNeeded({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   collateralAmount: '0.5',
+    * })
+    * ```
+    */
+    async withdrawCollateralRepayIfNeeded(params) {
+      return await withErrorTelemetry2(async () => await withdrawCollateralRepayIfNeeded$1(this.context, params), BORROW_EVENT_TYPES.WITHDRAW_COLLATERAL, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Preview a collateral withdrawal without signing or submitting a
+    * transaction.
+    *
+    * @param params - Chain, loan ID, collateral to release, and optional
+    *   slippage bound.
+    * @returns The service-sized repayment and the resulting position health.
+    * @throws A `KitError` when parameters are invalid or the provider request
+    *   fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getWithdrawCollateralRepayIfNeededQuote({
+    *   chain: 'Arc_Testnet',
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   collateralAmount: '0.5',
+    * })
+    * ```
+    */
+    async getWithdrawCollateralRepayIfNeededQuote(params) {
+      return await getWithdrawCollateralRepayIfNeededQuote$1(this.context, params);
+    }
+    /**
+    * Atomically add collateral to a loan.
+    *
+    * Crediting a Morpho position is permissionless, so the batch is an optional
+    * collateral-token approval followed by the Circle-signed execution: no
+    * authorization pair and no repayment leg. A standing partial allowance is
+    * reset to zero before that approval, because the token comes from the market
+    * and may reject a non-zero to non-zero approve.
+    *
+    * @param params - Wallet context, loan ID, and the collateral to supply.
+    * @returns A submitted or confirmed batch result.
+    * @throws A `KitError` when parameters are invalid, the provider request
+    *   fails, or the batch reverts.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    * import { createViemAdapterFromPrivateKey } from '@circle-fin/adapter-viem-v2/next'
+    *
+    * const borrowKit = new BorrowKit()
+    * const adapter = createViemAdapterFromPrivateKey({
+    *   privateKey: process.env.PRIVATE_KEY as string,
+    * })
+    * const result = await borrowKit.addCollateral({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   collateralAmount: '0.25',
+    * })
+    * ```
+    */
+    async addCollateral(params) {
+      return await withErrorTelemetry2(async () => await addCollateral$1(this.context, params), BORROW_EVENT_TYPES.ADD_COLLATERAL, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+    }
+    /**
+    * Preview adding collateral to a loan.
+    *
+    * The quote signs nothing and moves no funds. Its gas figures can differ at
+    * execution time.
+    *
+    * @param params - Chain, loan ID, and the collateral to supply.
+    * @returns The service-computed collateral-addition quote.
+    * @throws A `KitError` when parameters are invalid or the provider request
+    *   fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getAddCollateralQuote({
+    *   chain: 'Arc_Testnet',
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   collateralAmount: '0.25',
+    * })
+    * ```
+    */
+    async getAddCollateralQuote(params) {
+      return await getAddCollateralQuote$1(this.context, params);
+    }
+    /**
+    * Read this integrator's fee configuration.
+    *
+    * Requires an API key and produces no wallet signature.
+    *
+    * @param params - Optional per-request configuration.
+    * @returns The configuration.
+    * @throws A `KitError` carrying `BorrowError.CONFIG_NOT_FOUND` when none has
+    *   been created yet, or when no API key is configured, parameters are
+    *   invalid, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import {
+    *   BorrowKit,
+    *   BorrowServiceProvider,
+    * } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit({
+    *   providers: [new BorrowServiceProvider({ apiKey: process.env.CIRCLE_API_KEY })],
+    * })
+    * const config = await borrowKit.getIntegratorConfig()
+    * ```
+    */
+    async getIntegratorConfig(params) {
+      return await withErrorTelemetry2(async () => await getIntegratorConfig$1(this.context, params), BORROW_EVENT_TYPES.GET_INTEGRATOR_CONFIG, this.telemetryConfig);
+    }
+    /**
+    * Create or update this integrator's fee configuration.
+    *
+    * Requires an API key and produces no wallet signature. The fee rate and
+    * its recipient must be supplied together.
+    *
+    * @param params - Fee rate, its recipient, and optional per-request
+    *   configuration.
+    * @returns The stored configuration after the upsert.
+    * @throws A `KitError` when no API key is configured, parameters are
+    *   invalid, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import {
+    *   BorrowKit,
+    *   BorrowServiceProvider,
+    * } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit({
+    *   providers: [new BorrowServiceProvider({ apiKey: process.env.CIRCLE_API_KEY })],
+    * })
+    * const config = await borrowKit.setIntegratorConfig({
+    *   integratorFeeBps: 25,
+    *   integratorFeeAddress: '0x1111111111111111111111111111111111111111',
+    * })
+    * ```
+    */
+    async setIntegratorConfig(params) {
+      return await withErrorTelemetry2(async () => await setIntegratorConfig$1(this.context, params), BORROW_EVENT_TYPES.SET_INTEGRATOR_CONFIG, this.telemetryConfig);
+    }
+    /**
+    * Preview a borrow.
+    *
+    * @param params - Open-loan tuple or loan ID, borrow amount, and optional
+    *   slippage.
+    * @returns The service-computed borrow quote.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getBorrowQuote({
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   borrowAmount: '1000',
+    * })
+    * ```
+    */
+    async getBorrowQuote(params) {
+      return await withErrorTelemetry2(async () => await getBorrowQuote$1(this.context, params), BORROW_EVENT_TYPES.GET_BORROW_QUOTE, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Size the collateral a borrow needs to reach a target health factor.
+    *
+    * @param params - Chain, market, borrow amount, and target health factor.
+    * @returns The collateral that produces the requested health factor.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getRequiredCollateral({
+    *   chain: 'Arc_Testnet',
+    *   marketId: '0x1111111111111111111111111111111111111111111111111111111111111111',
+    *   borrowAmount: '1000',
+    *   targetHealthFactor: 1.5,
+    * })
+    * ```
+    */
+    async getRequiredCollateral(params) {
+      return await withErrorTelemetry2(async () => await getRequiredCollateral$1(this.context, params), BORROW_EVENT_TYPES.GET_REQUIRED_COLLATERAL, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Preview the largest borrow a collateral amount supports.
+    *
+    * @param params - Chain, market, and collateral amount.
+    * @returns The largest borrow the collateral supports.
+    * @throws A `KitError` when parameters are invalid, no provider supports the
+    *   chain, or the provider request fails.
+    *
+    * @example
+    * ```typescript
+    * import { BorrowKit } from '@circle-fin/borrow-kit'
+    *
+    * const borrowKit = new BorrowKit()
+    * const quote = await borrowKit.getMaxBorrow({
+    *   chain: 'Arc_Testnet',
+    *   marketId: '0x1111111111111111111111111111111111111111111111111111111111111111',
+    *   collateralAmount: '0.05',
+    * })
+    * ```
+    */
+    async getMaxBorrow(params) {
+      return await withErrorTelemetry2(async () => await getMaxBorrow$1(this.context, params), BORROW_EVENT_TYPES.GET_MAX_BORROW, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.chain)
+      }));
+    }
+    /**
+    * Sign and submit a webhook callback registration (or unset) for a loan.
+    *
+    * The connected wallet must be the loan's owner. Omit `webhookUrl` to
+    * unset the loan's current webhook.
+    *
+    * @param params - Webhook registration parameters with adapter context
+    * @returns A promise resolving to the applied registration result
+    * @throws {@link KitError} If validation fails, the adapter cannot sign
+    *   typed data, or the API rejects the signature or loan id.
+    *
+    * @example
+    * ```typescript
+    * const result = await kit.registerWebhook({
+    *   from: { adapter, chain: 'Arc_Testnet' },
+    *   loanId: '11111111-1111-4111-8111-111111111111',
+    *   webhookUrl: 'https://example.com/webhook',
+    * })
+    * console.log(`Registered webhook: ${result.webhookUrl}`)
+    * ```
+    */
+    async registerWebhook(params) {
+      const result = await withErrorTelemetry2(async () => await registerWebhook$1(this.context, params), BORROW_EVENT_TYPES.REGISTER_WEBHOOK, this.telemetryConfig, () => ({
+        sourceChain: resolveChainName2(params?.from?.chain)
+      }));
+      try {
+        emitSuccessTelemetry2(BORROW_EVENT_TYPES.REGISTER_WEBHOOK, this.analyticsTelemetryConfig, {
+          sourceChain: resolveChainName2(params?.from?.chain)
+        });
+      } catch (telemetryErr) {
+        warnTelemetryDrop2(BORROW_EVENT_TYPES.REGISTER_WEBHOOK, telemetryErr);
+      }
+      return result;
+    }
+  };
+  registerKit2(`${pkg$1.name}/${pkg$1.version}`);
+  var createBorrowKit = (context) => {
+    const kit2 = new BorrowKit({
+      ...context.disableErrorReporting != null && {
+        disableErrorReporting: context.disableErrorReporting
+      },
+      ...context.disableAnalytics != null && {
+        disableAnalytics: context.disableAnalytics
+      }
+    });
+    registerActionHandlers(kit2, context.actions.borrow, "borrow");
     return kit2;
   };
   var DEFAULT_WIDGET_BASE_URL = "https://onramp.arc.io";
@@ -106996,13 +114803,6 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function composeWidgetUrl(widgetBaseUrl, sessionToken, widgetPath, params) {
     const url = new URL(widgetPath, widgetBaseUrl);
     url.searchParams.set("sessionToken", sessionToken);
-    if (params !== void 0) {
-      for (const [key, value] of Object.entries(params)) {
-        if (typeof value === "string" && value.length > 0) {
-          url.searchParams.set(key, value);
-        }
-      }
-    }
     return url.toString();
   }
   function assertLaunchableSession(options) {
@@ -107126,9 +114926,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       assertSafeWidgetUrl(session.widgetUrl, expectedOrigin);
       return session.widgetUrl;
     }
-    return composeWidgetUrl(widgetBaseUrl, session.sessionToken, ONRAMP_WIDGET_PATH, {
-      destinationWallet: typeof session.destinationWallet === "string" ? session.destinationWallet : void 0
-    });
+    return composeWidgetUrl(widgetBaseUrl, session.sessionToken, ONRAMP_WIDGET_PATH);
   }
   var ALLOWED_TRANSITIONS = {
     mounting: [
@@ -107516,7 +115314,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     currency: external_exports.string().min(1).optional(),
     email: external_exports.string().email().optional(),
     assets: onrampAssetSelectionSchema.optional(),
-    metadata: external_exports.record(external_exports.string(), external_exports.unknown()).optional()
+    metadata: external_exports.record(external_exports.string(), external_exports.string()).optional()
   });
   function parseOnrampSession(value) {
     const unwrapped = unwrapDataEnvelope(value);
@@ -107886,11 +115684,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   }
   var getSupportedChains$2 = (context, operationType, unifiedBalance, bridgeOptions) => {
     assertBridgeSupportedChainsOptions(bridgeOptions);
-    if (operationType !== void 0 && operationType !== "bridge" && operationType !== "swap" && operationType !== "earn" && operationType !== "unifiedBalance") {
+    if (operationType !== void 0 && operationType !== "bridge" && operationType !== "swap" && operationType !== "earn" && operationType !== "borrow" && operationType !== "unifiedBalance") {
       throw new KitError2({
         ...InputError2.VALIDATION_FAILED,
         recoverability: "FATAL",
-        message: `Invalid operationType: "${String(operationType)}". Expected 'bridge', 'swap', 'earn', or 'unifiedBalance'.`
+        message: `Invalid operationType: "${String(operationType)}". Expected 'bridge', 'swap', 'earn', 'borrow', or 'unifiedBalance'.`
       });
     }
     if (bridgeOptions !== void 0 && operationType !== "bridge") {
@@ -107908,20 +115706,26 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const earnKit2 = createEarnKit(context);
       return earnKit2.getSupportedChains();
     }
+    if (operationType === "borrow") {
+      return createBorrowKit(context).getSupportedChains();
+    }
     if (operationType === "unifiedBalance") {
       return unifiedBalance.getSupportedChains();
     }
     const bridgeKit = createBridgeKit(context);
     const swapKit = createSwapKit(context);
     const earnKit = createEarnKit(context);
+    const borrowKit = createBorrowKit(context);
     const bridgeChains = bridgeKit.getSupportedChains();
     const swapChains = swapKit.getSupportedChains();
     const earnChains = earnKit.getSupportedChains();
+    const borrowChains = borrowKit.getSupportedChains();
     const ubChains = unifiedBalance.getSupportedChains();
     const allChains = [
       ...bridgeChains,
       ...swapChains,
       ...earnChains,
+      ...borrowChains,
       ...ubChains
     ];
     return [
@@ -107937,7 +115741,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   async function withdraw(context, params) {
     return createEarnKit(context).withdraw(params);
   }
-  async function claimRewards(context, params) {
+  async function claimRewards$1(context, params) {
     return createEarnKit(context).claimRewards(params);
   }
   async function getVaults(context, params) {
@@ -107949,7 +115753,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function exploreVaultsIterator(context, params) {
     return createEarnKit(context).exploreVaultsIterator(params);
   }
-  async function getPosition(context, params) {
+  async function getPosition$1(context, params) {
     return createEarnKit(context).getPosition(params);
   }
   async function getCrossChainDepositStatus(context, params) {
@@ -107964,11 +115768,80 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   async function getWithdrawalQuote(context, params) {
     return createEarnKit(context).getWithdrawalQuote(params);
   }
-  async function getClaimRewardsQuote(context, params) {
+  async function getClaimRewardsQuote$1(context, params) {
     return createEarnKit(context).getClaimRewardsQuote(params);
   }
-  async function retry(context, error) {
+  async function retry$1(context, error) {
     return createEarnKit(context).retry(error);
+  }
+  async function getLoans(context, params) {
+    return createBorrowKit(context).getLoans(params);
+  }
+  async function getPosition(context, params) {
+    return createBorrowKit(context).getPosition(params);
+  }
+  async function borrow(context, params) {
+    return createBorrowKit(context).borrow(params);
+  }
+  async function retry(context, error) {
+    return createBorrowKit(context).retry(error);
+  }
+  async function getMarket(context, params) {
+    return createBorrowKit(context).getMarket(params);
+  }
+  async function exploreMarkets(context, params) {
+    return createBorrowKit(context).exploreMarkets(params);
+  }
+  function exploreMarketsIterator(context, params) {
+    return createBorrowKit(context).exploreMarketsIterator(params);
+  }
+  async function repay(context, params) {
+    return createBorrowKit(context).repay(params);
+  }
+  async function getRepayQuote(context, params) {
+    return createBorrowKit(context).getRepayQuote(params);
+  }
+  async function claimRewards(context, params) {
+    return createBorrowKit(context).claimRewards(params);
+  }
+  async function getClaimRewardsQuote(context, params) {
+    return createBorrowKit(context).getClaimRewardsQuote(params);
+  }
+  async function closeLoan(context, params) {
+    return createBorrowKit(context).closeLoan(params);
+  }
+  async function getCloseLoanQuote(context, params) {
+    return createBorrowKit(context).getCloseLoanQuote(params);
+  }
+  async function withdrawCollateralRepayIfNeeded(context, params) {
+    return createBorrowKit(context).withdrawCollateralRepayIfNeeded(params);
+  }
+  async function getWithdrawCollateralRepayIfNeededQuote(context, params) {
+    return createBorrowKit(context).getWithdrawCollateralRepayIfNeededQuote(params);
+  }
+  async function addCollateral(context, params) {
+    return createBorrowKit(context).addCollateral(params);
+  }
+  async function getAddCollateralQuote(context, params) {
+    return createBorrowKit(context).getAddCollateralQuote(params);
+  }
+  async function getIntegratorConfig(context, params) {
+    return createBorrowKit(context).getIntegratorConfig(params);
+  }
+  async function setIntegratorConfig(context, params) {
+    return createBorrowKit(context).setIntegratorConfig(params);
+  }
+  async function getBorrowQuote(context, params) {
+    return createBorrowKit(context).getBorrowQuote(params);
+  }
+  async function getRequiredCollateral(context, params) {
+    return createBorrowKit(context).getRequiredCollateral(params);
+  }
+  async function getMaxBorrow(context, params) {
+    return createBorrowKit(context).getMaxBorrow(params);
+  }
+  async function registerWebhook(context, params) {
+    return createBorrowKit(context).registerWebhook(params);
   }
   function mountIframe(context, options) {
     return createOnrampClientKit(context).mountIframe(options);
@@ -107980,7 +115853,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return fetchOnrampSession(options);
   }
   var name2 = "@circle-fin/unified-balance-kit";
-  var version15 = "1.7.0";
+  var version15 = "1.8.1";
   var pkg2 = {
     name: name2,
     version: version15
@@ -111086,12 +118959,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   function validateDepositTransferConfig(params) {
     const { from: from16, to, config, quote, allowanceStrategy } = params;
     const transferSpeed = config?.transferSpeed ?? "STANDARD";
-    if (to !== void 0 && allowanceStrategy !== void 0) {
-      throw createValidationFailedError$12("allowanceStrategy", allowanceStrategy, "cannot be set when to is provided; FAST deposits do not use an allowance strategy");
+    if (transferSpeed === "FAST" && allowanceStrategy !== void 0) {
+      throw createValidationFailedError$12("allowanceStrategy", allowanceStrategy, "cannot be set for FAST cross-chain deposits");
     }
     if (transferSpeed === "FAST") {
       if (to === void 0) {
-        throw createValidationFailedError$12("to", void 0, "required when transferSpeed is FAST");
+        throw createValidationFailedError$12("to", void 0, "required when transferSpeed is FAST and no default destination can be derived from from.chain");
       }
       const dstChain = resolveChainIdentifier2(to.chain);
       if (!isGatewayFastDepositDestination(dstChain)) {
@@ -111156,6 +119029,35 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const chainInfo = extractChainInfo2(validationChain);
       throw createInvalidAddressError2(data.depositAccount, String(chainInfo.name), chainInfo.expectedAddressFormat);
     }
+  }
+  var DEFAULT_FAST_DEPOSIT_DESTINATION = {
+    mainnet: Blockchain2.Arc,
+    testnet: Blockchain2.Arc_Testnet
+  };
+  function resolveFastDepositDestination(params) {
+    const { from: from16, to, config } = params;
+    if (to !== void 0 || config?.transferSpeed !== "FAST") {
+      return to;
+    }
+    const srcChain = resolveChainIdentifier2(from16.chain);
+    return {
+      chain: srcChain.isTestnet ? DEFAULT_FAST_DEPOSIT_DESTINATION.testnet : DEFAULT_FAST_DEPOSIT_DESTINATION.mainnet
+    };
+  }
+  function applyDefaultFastDepositDestination(params) {
+    let to;
+    try {
+      to = resolveFastDepositDestination(params);
+    } catch {
+      return params;
+    }
+    if (to === void 0 || to === params.to) {
+      return params;
+    }
+    return {
+      ...params,
+      to
+    };
   }
   async function resolveDepositParams(params) {
     const chain = resolveChainIdentifier2(params.from.chain);
@@ -111572,11 +119474,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return finalResult;
   }
   async function deposit(context, params) {
-    assertDepositParams(params);
-    if (params.to !== void 0) {
-      return depositFastCrossChain(context, params);
+    const normalizedParams = applyDefaultFastDepositDestination(params);
+    assertDepositParams(normalizedParams);
+    if (normalizedParams.to !== void 0) {
+      return depositFastCrossChain(context, normalizedParams);
     }
-    const resolvedParams = await resolveDepositParams(params);
+    const resolvedParams = await resolveDepositParams(normalizedParams);
     const chain = resolvedParams.from.chain;
     if (!isGatewayV1Supported(chain)) {
       throw createUnsupportedRouteError(chain.name, chain.name);
@@ -111585,11 +119488,12 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return provider.deposit(resolvedParams);
   }
   async function depositFor(context, params) {
-    assertDepositForParams(params);
-    if (params.to !== void 0) {
-      return depositFastCrossChain(context, params, params.depositAccount);
+    const normalizedParams = applyDefaultFastDepositDestination(params);
+    assertDepositForParams(normalizedParams);
+    if (normalizedParams.to !== void 0) {
+      return depositFastCrossChain(context, normalizedParams, normalizedParams.depositAccount);
     }
-    const resolvedParams = await resolveDepositParams(params);
+    const resolvedParams = await resolveDepositParams(normalizedParams);
     const chain = resolvedParams.from.chain;
     if (!isGatewayV1Supported(chain)) {
       throw createUnsupportedRouteError(chain.name, chain.name);
@@ -111772,8 +119676,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return estimateResult;
   }
   async function estimateDeposit(context, params) {
-    assertEstimateDepositParams(params);
-    return estimateDepositImpl(context, params);
+    const normalizedParams = applyDefaultFastDepositDestination(params);
+    assertEstimateDepositParams(normalizedParams);
+    return estimateDepositImpl(context, normalizedParams);
   }
   var allocationSchema = external_exports.object({
     amount: external_exports.string().min(1, "Allocation amount is required.").pipe(createDecimalStringValidator2({
@@ -112779,21 +120684,22 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * @see UnifiedBalanceKit.depositFor to deposit into another account.
     */
     async deposit(params) {
-      if (isFastDeposit(params)) {
-        return withErrorTelemetry2(async () => deposit(this.context, params), EVENT_TYPES.FAST_DEPOSIT, this.telemetryConfig, {
-          sourceChain: resolveChainName2(params.from?.chain),
-          destinationChain: resolveChainName2(params.to?.chain),
-          tokenIn: params.token ?? "USDC",
-          amountIn: Number.parseFloat(params.amount),
-          ...params.quote !== void 0 && {
-            correlationId: hashSignedQuote(params.quote)
+      const normalizedParams = applyDefaultFastDepositDestination(params);
+      if (isFastDeposit(normalizedParams)) {
+        return withErrorTelemetry2(async () => deposit(this.context, normalizedParams), EVENT_TYPES.FAST_DEPOSIT, this.telemetryConfig, {
+          sourceChain: resolveChainName2(normalizedParams.from?.chain),
+          destinationChain: resolveChainName2(normalizedParams.to?.chain),
+          tokenIn: normalizedParams.token ?? "USDC",
+          amountIn: Number.parseFloat(normalizedParams.amount),
+          ...normalizedParams.quote !== void 0 && {
+            correlationId: hashSignedQuote(normalizedParams.quote)
           }
         });
       }
-      return withErrorTelemetry2(async () => deposit(this.context, params), EVENT_TYPES.DEPOSIT, this.telemetryConfig, {
-        sourceChain: resolveChainName2(params.from?.chain),
-        tokenIn: params.token ?? "USDC",
-        amountIn: Number.parseFloat(params.amount)
+      return withErrorTelemetry2(async () => deposit(this.context, normalizedParams), EVENT_TYPES.DEPOSIT, this.telemetryConfig, {
+        sourceChain: resolveChainName2(normalizedParams.from?.chain),
+        tokenIn: normalizedParams.token ?? "USDC",
+        amountIn: Number.parseFloat(normalizedParams.amount)
       });
     }
     /**
@@ -112806,21 +120712,22 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * @see UnifiedBalanceKit.deposit to deposit into your own account.
     */
     async depositFor(params) {
-      if (isFastDeposit(params)) {
-        return withErrorTelemetry2(async () => depositFor(this.context, params), EVENT_TYPES.FAST_DEPOSIT, this.telemetryConfig, {
-          sourceChain: resolveChainName2(params.from?.chain),
-          destinationChain: resolveChainName2(params.to?.chain),
-          tokenIn: params.token ?? "USDC",
-          amountIn: Number.parseFloat(params.amount),
-          ...params.quote !== void 0 && {
-            correlationId: hashSignedQuote(params.quote)
+      const normalizedParams = applyDefaultFastDepositDestination(params);
+      if (isFastDeposit(normalizedParams)) {
+        return withErrorTelemetry2(async () => depositFor(this.context, normalizedParams), EVENT_TYPES.FAST_DEPOSIT, this.telemetryConfig, {
+          sourceChain: resolveChainName2(normalizedParams.from?.chain),
+          destinationChain: resolveChainName2(normalizedParams.to?.chain),
+          tokenIn: normalizedParams.token ?? "USDC",
+          amountIn: Number.parseFloat(normalizedParams.amount),
+          ...normalizedParams.quote !== void 0 && {
+            correlationId: hashSignedQuote(normalizedParams.quote)
           }
         });
       }
-      return withErrorTelemetry2(async () => depositFor(this.context, params), EVENT_TYPES.DEPOSIT_FOR, this.telemetryConfig, {
-        sourceChain: resolveChainName2(params.from?.chain),
-        tokenIn: params.token ?? "USDC",
-        amountIn: Number.parseFloat(params.amount)
+      return withErrorTelemetry2(async () => depositFor(this.context, normalizedParams), EVENT_TYPES.DEPOSIT_FOR, this.telemetryConfig, {
+        sourceChain: resolveChainName2(normalizedParams.from?.chain),
+        tokenIn: normalizedParams.token ?? "USDC",
+        amountIn: Number.parseFloat(normalizedParams.amount)
       });
     }
     /**
@@ -112835,24 +120742,26 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * ```
     *
     * @param params - The estimate parameters including source context, amount,
-    *   destination chain, optional transfer speed, and optional allowance strategy.
+    *   destination chain (defaults to Arc / Arc_Testnet for FAST), optional
+    *   transfer speed, and optional allowance strategy.
     * @returns Promise resolving to an itemised fee breakdown.
     *
     * @see UnifiedBalanceKit.deposit to execute after estimating.
     */
     async estimateDeposit(params) {
-      if (isFastDeposit(params)) {
-        return withErrorTelemetry2(async () => estimateDeposit(this.context, params), EVENT_TYPES.ESTIMATE_FAST_DEPOSIT, this.telemetryConfig, {
-          sourceChain: resolveChainName2(params.from?.chain),
-          destinationChain: resolveChainName2(params.to?.chain),
-          tokenIn: params.token ?? "USDC",
-          amountIn: Number.parseFloat(params.amount)
+      const normalizedParams = applyDefaultFastDepositDestination(params);
+      if (isFastDeposit(normalizedParams)) {
+        return withErrorTelemetry2(async () => estimateDeposit(this.context, normalizedParams), EVENT_TYPES.ESTIMATE_FAST_DEPOSIT, this.telemetryConfig, {
+          sourceChain: resolveChainName2(normalizedParams.from?.chain),
+          destinationChain: resolveChainName2(normalizedParams.to?.chain),
+          tokenIn: normalizedParams.token ?? "USDC",
+          amountIn: Number.parseFloat(normalizedParams.amount)
         });
       }
-      return withErrorTelemetry2(async () => estimateDeposit(this.context, params), EVENT_TYPES.ESTIMATE_DEPOSIT, this.telemetryConfig, {
-        sourceChain: resolveChainName2(params.from?.chain),
-        tokenIn: params.token ?? "USDC",
-        amountIn: Number.parseFloat(params.amount)
+      return withErrorTelemetry2(async () => estimateDeposit(this.context, normalizedParams), EVENT_TYPES.ESTIMATE_DEPOSIT, this.telemetryConfig, {
+        sourceChain: resolveChainName2(normalizedParams.from?.chain),
+        tokenIn: normalizedParams.token ?? "USDC",
+        amountIn: Number.parseFloat(normalizedParams.amount)
       });
     }
     /**
@@ -113203,7 +121112,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     * {@link AppKitUnifiedBalance.depositFor}.
     *
     * @param params - Estimate details including the depositor context, amount,
-    *   destination chain, and optional transfer speed.
+    *   destination chain (defaults to Arc / Arc_Testnet for FAST), and optional
+    *   transfer speed.
     * @returns Promise resolving to the itemised fee estimate.
     * @throws {KitError} If the estimate parameters are invalid or the route is
     *   unsupported.
@@ -113531,6 +121441,25 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     */
     earn;
     /**
+    * Borrow operations exposed under `kit.borrow`.
+    *
+    * @see {@link AppKitBorrowOperations}
+    *
+    * @example
+    * ```typescript
+    * import { AppKit, BorrowChain } from '@circle-fin/app-kit'
+    *
+    * const kit = new AppKit()
+    *
+    * const result = await kit.borrow.borrow({
+    *   from: { adapter, chain: BorrowChain.Arc_Testnet },
+    *   marketId: '0x...',
+    *   borrowAmount: '100.00',
+    * })
+    * ```
+    */
+    borrow;
+    /**
     * Onramp operations exposed under `kit.onramp`.
     *
     * @remarks
@@ -113633,17 +121562,42 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         // earnOperations.deposit overloads enforce the same narrowing.
         deposit: async (params) => deposit$2(this.context, params),
         withdraw: async (params) => withdraw(this.context, params),
-        claimRewards: async (params) => claimRewards(this.context, params),
+        claimRewards: async (params) => claimRewards$1(this.context, params),
         getVaults: async (params) => getVaults(this.context, params),
         exploreVaults: async (params) => exploreVaults(this.context, params),
         exploreVaultsIterator: (params) => exploreVaultsIterator(this.context, params),
-        getPosition: async (params) => getPosition(this.context, params),
+        getPosition: async (params) => getPosition$1(this.context, params),
         getCrossChainDepositStatus: async (params) => getCrossChainDepositStatus(this.context, params),
         waitForCrossChainDeposit: async (params) => waitForCrossChainDeposit(this.context, params),
         getDepositQuote: async (params) => getDepositQuote(this.context, params),
         getWithdrawalQuote: async (params) => getWithdrawalQuote(this.context, params),
+        getClaimRewardsQuote: async (params) => getClaimRewardsQuote$1(this.context, params),
+        retry: async (error) => retry$1(this.context, error)
+      };
+      this.borrow = {
+        borrow: async (params) => borrow(this.context, params),
+        repay: async (params) => repay(this.context, params),
+        closeLoan: async (params) => closeLoan(this.context, params),
+        addCollateral: async (params) => addCollateral(this.context, params),
+        withdrawCollateralRepayIfNeeded: async (params) => withdrawCollateralRepayIfNeeded(this.context, params),
+        claimRewards: async (params) => claimRewards(this.context, params),
+        retry: async (error) => retry(this.context, error),
+        getLoans: async (params) => getLoans(this.context, params),
+        getPosition: async (params) => getPosition(this.context, params),
+        getMarket: async (params) => getMarket(this.context, params),
+        exploreMarkets: async (params) => exploreMarkets(this.context, params),
+        exploreMarketsIterator: (params) => exploreMarketsIterator(this.context, params),
+        getBorrowQuote: async (params) => getBorrowQuote(this.context, params),
+        getRepayQuote: async (params) => getRepayQuote(this.context, params),
+        getCloseLoanQuote: async (params) => getCloseLoanQuote(this.context, params),
+        getAddCollateralQuote: async (params) => getAddCollateralQuote(this.context, params),
+        getWithdrawCollateralRepayIfNeededQuote: async (params) => getWithdrawCollateralRepayIfNeededQuote(this.context, params),
         getClaimRewardsQuote: async (params) => getClaimRewardsQuote(this.context, params),
-        retry: async (error) => retry(this.context, error)
+        getRequiredCollateral: async (params) => getRequiredCollateral(this.context, params),
+        getMaxBorrow: async (params) => getMaxBorrow(this.context, params),
+        getIntegratorConfig: async (params) => getIntegratorConfig(this.context, params),
+        setIntegratorConfig: async (params) => setIntegratorConfig(this.context, params),
+        registerWebhook: async (params) => registerWebhook(this.context, params)
       };
       this.onramp = {
         mountIframe: (options) => mountIframe(this.context, options),
@@ -114095,6 +122049,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
         this.context.actions.earn[action] ??= [];
         this.context.actions.earn[action].push(typedHandler);
       }
+      if (action === "*" || action.startsWith("borrow.")) {
+        this.context.actions.borrow[action] ??= [];
+        this.context.actions.borrow[action].push(typedHandler);
+      }
     }
     off(actionOrWildCard, handler) {
       const action = actionOrWildCard;
@@ -114109,13 +122067,16 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       if (action === "*" || action.startsWith("earn.")) {
         this.removeStoredActionHandler(this.context.actions.earn, action, typedHandler);
       }
+      if (action === "*" || action.startsWith("borrow.")) {
+        this.removeStoredActionHandler(this.context.actions.borrow, action, typedHandler);
+      }
     }
     /**
     * Remove one handler from a deferred AppKit action bucket.
     *
     * Deletes the action key when its handler list becomes empty.
     *
-    * @param handlers - Action bucket to update (`bridge` or `earn`)
+    * @param handlers - Action bucket to update (`bridge`, `earn`, or `borrow`)
     * @param action - Stored action key, including namespace or `*`
     * @param handler - Handler reference previously passed to {@link on}
     */
@@ -116320,6 +124281,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return redactErrorMessage2(String(error));
   }
+  function describeObjectValue3(value) {
+    try {
+      return JSON.stringify(value, (_key, entry) => typeof entry === "bigint" ? entry.toString() : entry);
+    } catch {
+      return "[unserializable object]";
+    }
+  }
   function createUnsupportedEarnRouteError2(operation, chain) {
     const errorDetails = {
       ...InputError3.UNSUPPORTED_ROUTE,
@@ -116381,7 +124349,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (typeof value === "string") {
       valueString = `'${value}'`;
     } else if (typeof value === "object" && value !== null) {
-      valueString = JSON.stringify(value);
+      valueString = describeObjectValue3(value);
     } else {
       valueString = String(value);
     }
@@ -116712,11 +124680,40 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     "0x9147d463": "Final balance is less than the initial balance",
     "0xf4b3b1bc": "Native token transfer to the beneficiary failed"
   };
-  function extractErrorSelector3(msg, error) {
-    if (error !== null && typeof error === "object" && "data" in error) {
-      if (typeof error.data === "string" && /^0x[0-9a-f]{8}$/i.test(error.data)) {
-        return error.data.toLowerCase();
+  var REVERT_DATA_PATTERN3 = /^0x[0-9a-f]{8}(?:[0-9a-f]{2})*$/i;
+  function getRevertData3(link) {
+    if ("raw" in link && typeof link.raw === "string" && REVERT_DATA_PATTERN3.test(link.raw)) {
+      return link.raw;
+    }
+    if (!("data" in link)) {
+      return void 0;
+    }
+    const { data } = link;
+    if (typeof data === "string") {
+      return data;
+    }
+    if (data !== null && typeof data === "object" && "data" in data && typeof data.data === "string") {
+      return data.data;
+    }
+    return void 0;
+  }
+  function findRevertData3(error, accept) {
+    const seen = /* @__PURE__ */ new Set();
+    let current = error;
+    while (current !== null && typeof current === "object" && !seen.has(current)) {
+      seen.add(current);
+      const data = getRevertData3(current);
+      if (data !== void 0 && accept(data)) {
+        return data;
       }
+      current = "cause" in current ? current.cause : void 0;
+    }
+    return void 0;
+  }
+  function extractErrorSelector3(msg, error) {
+    const data = findRevertData3(error, (value) => /^0x[0-9a-f]{8}$/i.test(value));
+    if (data !== void 0) {
+      return data.toLowerCase();
     }
     const match = /custom error (0x[0-9a-f]{8})\b/i.exec(msg);
     const selector = match?.[1];
@@ -116918,6 +124915,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     SwapChain4["HyperEVM"] = "HyperEVM";
     SwapChain4["Monad"] = "Monad";
     SwapChain4["Arc"] = "Arc";
+    SwapChain4["Cronos"] = "Cronos";
+    SwapChain4["Morph"] = "Morph";
     SwapChain4["Arc_Testnet"] = "Arc_Testnet";
   })(SwapChain3 || (SwapChain3 = {}));
   var BridgeChain3;
@@ -117021,6 +125020,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     "Arc",
     "Arc_Testnet"
   ];
+  var BorrowChain3;
+  (function(BorrowChain4) {
+    BorrowChain4["Arc"] = "Arc";
+    BorrowChain4["Arc_Testnet"] = "Arc_Testnet";
+  })(BorrowChain3 || (BorrowChain3 = {}));
   function defineChain4(chain) {
     return chain;
   }
@@ -117226,6 +125230,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   var BRIDGE_CONTRACT_EVM_MAINNET3 = "0xB3FA262d0fB521cc93bE83d87b322b8A23DAf3F0";
   var ADAPTER_CONTRACT_EVM_MAINNET3 = "0x7FB8c7260b63934d8da38aF902f87ae6e284a845";
   var ADAPTER_CONTRACT_EVM_TESTNET3 = "0xBBD70b01a1CAbc96d5b7b129Ae1AAabdf50dd40b";
+  var BATCHER_CONTRACT_ARC_TESTNET3 = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
+  var BATCHER_CONTRACT_ARC_MAINNET3 = "0x522fAf9A91c41c443c66765030741e4AaCe147D0";
   var GATEWAY_WALLET_EVM_MAINNET3 = "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE";
   var GATEWAY_MINTER_EVM_MAINNET3 = "0x2222222d7164433c4C09B0b0D809a9b52C04C205";
   var GATEWAY_WALLET_EVM_TESTNET3 = "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
@@ -117283,7 +125289,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_MAINNET3,
-      adapter: ADAPTER_CONTRACT_EVM_MAINNET3
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET3,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_MAINNET3
     },
     gateway: {
       domain: 26,
@@ -117345,7 +125354,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     },
     kitContracts: {
       bridge: BRIDGE_CONTRACT_EVM_TESTNET3,
-      adapter: ADAPTER_CONTRACT_EVM_TESTNET3
+      adapter: ADAPTER_CONTRACT_EVM_TESTNET3,
+      // Arc is the only chain with a sender-preserving batcher, because it
+      // takes a precompile rather than an ordinary contract to build one.
+      senderPreservingBatcher: BATCHER_CONTRACT_ARC_TESTNET3
     },
     gateway: {
       domain: 26,
@@ -117904,7 +125916,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET3
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET3,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET3
     }
   });
   var CronosTestnet3 = defineChain4({
@@ -118663,7 +126676,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     },
     kitContracts: {
-      bridge: BRIDGE_CONTRACT_EVM_MAINNET3
+      bridge: BRIDGE_CONTRACT_EVM_MAINNET3,
+      adapter: ADAPTER_CONTRACT_EVM_MAINNET3
     }
   });
   var MorphTestnet3 = defineChain4({
@@ -120315,7 +128329,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     Blockchain3.Linea_Sepolia,
     Blockchain3.World_Chain_Sepolia
   ]);
-  function hasCustomContractSupport2(chain, contractType) {
+  function hasCustomContractSupport3(chain, contractType) {
     const contractAddress = chain.kitContracts?.[contractType];
     return typeof contractAddress === "string" && contractAddress.trim().length > 0;
   }
@@ -120407,7 +128421,8 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     cctpx: external_exports.any().optional(),
     kitContracts: external_exports.object({
       bridge: external_exports.string().optional(),
-      adapter: external_exports.string().optional()
+      adapter: external_exports.string().optional(),
+      senderPreservingBatcher: external_exports.string().optional()
     }).optional(),
     gateway: gatewayConfigSchema3.optional()
   });
@@ -120468,6 +128483,15 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     external_exports.nativeEnum(EarnChain3),
     chainDefinitionSchema3.refine((chain) => chain.chain in EarnChain3, (chain) => ({
       message: `"${chain.chain}" is not a supported earn chain. Supported chains: ${Object.values(EarnChain3).join(", ")}`
+    }))
+  ]);
+  external_exports.union([
+    external_exports.string().refine((val) => val in BorrowChain3, (val) => ({
+      message: `"${val}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain3).join(", ")}`
+    })),
+    external_exports.nativeEnum(BorrowChain3),
+    chainDefinitionSchema3.refine((chain) => chain.chain in BorrowChain3, (chain) => ({
+      message: `"${chain.chain}" is not a supported borrow chain. Supported chains: ${Object.values(BorrowChain3).join(", ")}`
     }))
   ]);
   var EARN_BRIDGE_SOURCE_CHAIN_VALUES3 = EARN_BRIDGE_SOURCE_BLOCKCHAINS3;
@@ -120543,7 +128567,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return defaultEndpoint;
   }
   var resolveCCTPV2ContractAddress2 = (chain, contractType) => {
-    if (contractType === "tokenMessenger" && hasCustomContractSupport2(chain, "bridge") && chain.kitContracts?.bridge !== void 0) {
+    if (contractType === "tokenMessenger" && hasCustomContractSupport3(chain, "bridge") && chain.kitContracts?.bridge !== void 0) {
       return chain.kitContracts.bridge;
     }
     const cctpConfig = chain.cctp;
@@ -120841,7 +128865,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     return parseAllowanceResponse3(await executeAdapterReadAction3(adapter, "token.allowance", params, ctx));
   }
   function parseAllowanceResponse3(allowanceRaw) {
-    let value = allowanceRaw;
+    return parseTokenAmountResponse3("token.allowance", allowanceRaw);
+  }
+  function parseTokenAmountResponse3(action, amountRaw) {
+    let value = amountRaw;
     if (typeof value === "object" && value !== null && "amount" in value) {
       const amount = value.amount;
       if (typeof amount === "object" && amount !== null && "raw" in amount) {
@@ -120851,20 +128878,20 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (value === void 0 || value === null) {
       return 0n;
     }
-    let allowance2;
+    let parsed;
     if (typeof value === "bigint") {
-      allowance2 = value;
+      parsed = value;
     } else if (typeof value === "string") {
       try {
-        allowance2 = BigInt(value);
+        parsed = BigInt(value);
       } catch {
-        allowance2 = void 0;
+        parsed = void 0;
       }
     }
-    if (allowance2 === void 0 || allowance2 < 0n) {
-      throw createValidationFailedError3("token.allowance", value, "token.allowance response must be a non-negative bigint-compatible string or bigint");
+    if (parsed === void 0 || parsed < 0n) {
+      throw createValidationFailedError3(action, value, `${action} response must be a non-negative bigint-compatible string or bigint`);
     }
-    return allowance2;
+    return parsed;
   }
   var Adapter = class {
     /**
@@ -121084,7 +129111,24 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
   };
   function validate10(value, schema, context) {
-    const result = schema.safeParse(value);
+    let result;
+    try {
+      result = schema.safeParse(value);
+    } catch (error) {
+      throw new KitError3({
+        ...InputError3.VALIDATION_FAILED,
+        recoverability: "FATAL",
+        message: `Invalid ${context}: reading a property threw`,
+        cause: {
+          trace: {
+            validationErrors: [
+              "Reading a property of the value threw"
+            ],
+            originalError: error
+          }
+        }
+      });
+    }
     if (!result.success) {
       throw createValidationErrorFromZod3(result.error, context);
     }
@@ -121293,11 +129337,13 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain3.Arbitrum]: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
       [Blockchain3.Avalanche]: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
       [Blockchain3.Celo]: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e",
+      [Blockchain3.Cronos]: "0x66e428c3f67a68878562e79A0234c1F83c208770",
       [Blockchain3.Ethereum]: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
       [Blockchain3.HyperEVM]: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
       [Blockchain3.Ink]: "0x0200C29006150606B650577BBE7B6248F58470c1",
       [Blockchain3.Linea]: "0xA219439258ca9da29E9Cc4cE5596924745e12B93",
       [Blockchain3.Monad]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
+      [Blockchain3.Morph]: "0xe7cd86e13AC4309349F30B3435a9d337750fC82D",
       [Blockchain3.NEAR]: "usdt.tether-token.near",
       [Blockchain3.Optimism]: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
       [Blockchain3.Polkadot_Asset_Hub]: "1984",
@@ -121342,6 +129388,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain3.Arbitrum]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
       [Blockchain3.Avalanche]: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70",
       [Blockchain3.Base]: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+      [Blockchain3.Cronos]: "0xF2001B145b43032AAF5Ee2884e456CCd805F677D",
       [Blockchain3.Ethereum]: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
       [Blockchain3.Linea]: "0x4AF15ec2A0BD43Db75dd04E62FAA3B8EF36b00d5",
       [Blockchain3.Optimism]: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
@@ -121383,7 +129430,9 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       [Blockchain3.Arbitrum]: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
       [Blockchain3.Avalanche]: "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB",
       [Blockchain3.Base]: "0x4200000000000000000000000000000000000006",
+      [Blockchain3.Cronos]: "0xe44Fd7fCb2b1581822D0c862B68222998a0c299a",
       [Blockchain3.Ethereum]: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      [Blockchain3.Morph]: "0x5300000000000000000000000000000000000011",
       [Blockchain3.Optimism]: "0x4200000000000000000000000000000000000006",
       [Blockchain3.Polygon]: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
       [Blockchain3.Solana]: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"
@@ -121395,6 +129444,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     locators: {
       [Blockchain3.Ethereum]: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
       [Blockchain3.Arbitrum]: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+      [Blockchain3.Cronos]: "0x062E66477Faf219F25D27dCED647BF57C3107d52",
       [Blockchain3.Avalanche]: "0x50b7545627a5162F82A992c33b87aDc75187B218"
     }
   };
@@ -121518,6 +129568,11 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     PermitType4[PermitType4["NONE"] = 0] = "NONE";
     PermitType4[PermitType4["EIP2612"] = 1] = "EIP2612";
   })(PermitType3 || (PermitType3 = {}));
+  var BorrowPermitType$1;
+  (function(BorrowPermitType4) {
+    BorrowPermitType4[BorrowPermitType4["NONE"] = 0] = "NONE";
+    BorrowPermitType4[BorrowPermitType4["EIP2612"] = 1] = "EIP2612";
+  })(BorrowPermitType$1 || (BorrowPermitType$1 = {}));
   var createNoopChainRequest = async () => {
     return Promise.resolve({
       type: "noop",
@@ -121682,7 +129737,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       stateMutability: "payable"
     }
   ];
-  var erc20Abi2 = [
+  var erc20Abi3 = [
     {
       constant: true,
       inputs: [],
@@ -129081,7 +137136,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     })
   });
   var evmPreparedChainRequestParamsSchema = external_exports.object({
-    type: external_exports.literal("evm"),
+    type: external_exports.literal("evm").optional(),
     abi: abiSchema3,
     address: evmAddressSchema3,
     functionName: external_exports.string({
@@ -129314,7 +137369,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (params.fromChain.type !== "evm") {
       throw createInvalidChainError3(params.fromChain.name, `Expected EVM chain but received chain type: ${params.fromChain.type}`);
     }
-    if (!hasCustomContractSupport2(params.fromChain, "bridge")) {
+    if (!hasCustomContractSupport3(params.fromChain, "bridge")) {
       throw createInvalidChainError3(params.fromChain.name, "Chain does not support custom bridge contracts. Use 'cctp.v2.depositForBurn' instead.");
     }
   }
@@ -129504,7 +137559,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       }
     };
   };
-  var hexBytesSchema$12 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+  var hexBytesSchema$32 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
     message: "value must be a 0x-prefixed even-length hex string"
   }).transform((value) => value);
   var earnExecuteParamsSchema$1 = external_exports.object({
@@ -129516,10 +137571,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       amount: external_exports.bigint().refine((value) => value >= 0n, {
         message: "amount must be a non-negative bigint"
       }),
-      permitCalldata: hexBytesSchema$12
+      permitCalldata: hexBytesSchema$32
     }))
   }).passthrough();
-  function validateAdapterContractAddress(chainName, value) {
+  function validateAdapterContractAddress$1(chainName, value) {
     const result = evmAddressSchema3.safeParse(value);
     if (!result.success) {
       throw createValidationFailedError3("chain.kitContracts.adapter", value, `Adapter contract for chain ${chainName} must be a 0x-prefixed 20-byte hex address.`);
@@ -129547,7 +137602,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     if (adapterContractAddress === void 0) {
       throw createUnsupportedEarnRouteError2("execute", chain.name);
     }
-    const validatedAdapterAddress = validateAdapterContractAddress(chain.name, adapterContractAddress);
+    const validatedAdapterAddress = validateAdapterContractAddress$1(chain.name, adapterContractAddress);
     const validatedParams = validateEarnExecuteParams(params);
     return adapter.prepare({
       type: "evm",
@@ -129561,6 +137616,98 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       ]
     }, context);
   };
+  var hexBytesSchema$23 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, {
+    message: "value must be a 0x-prefixed even-length hex string"
+  }).transform((value) => value);
+  function isNonNegativeBigIntLike$13(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var uint256LikeSchema$13 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike$13, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var borrowExecutionParamsSchema$12 = external_exports.object({
+    instructions: external_exports.array(external_exports.object({
+      target: evmAddressSchema3,
+      data: hexBytesSchema$23,
+      value: uint256LikeSchema$13,
+      tokenIn: evmAddressSchema3,
+      amountToApprove: uint256LikeSchema$13,
+      tokenOut: evmAddressSchema3,
+      minTokenOut: uint256LikeSchema$13
+    }).passthrough()).min(1),
+    tokens: external_exports.array(external_exports.object({
+      token: evmAddressSchema3,
+      beneficiary: evmAddressSchema3
+    }).passthrough()),
+    execId: uint256LikeSchema$13,
+    deadline: uint256LikeSchema$13,
+    metadata: hexBytesSchema$23
+  }).passthrough();
+  var borrowExecuteParamsSchema = external_exports.object({
+    executeParams: borrowExecutionParamsSchema$12,
+    signature: evmSignatureSchema3,
+    tokenInputs: external_exports.array(external_exports.object({
+      permitType: external_exports.nativeEnum(BorrowPermitType$1),
+      token: evmAddressSchema3,
+      amount: external_exports.bigint().refine((value) => value >= 0n, {
+        message: "amount must be a non-negative bigint"
+      }),
+      permitCalldata: hexBytesSchema$23
+    }))
+  }).passthrough();
+  function validateAdapterContractAddress(chainName, value) {
+    const result = evmAddressSchema3.safeParse(value);
+    if (!result.success) {
+      throw createValidationFailedError3("chain.kitContracts.adapter", value, `Adapter contract for chain ${chainName} must be a 0x-prefixed 20-byte hex address.`);
+    }
+    return result.data;
+  }
+  function validateBorrowExecuteParams(params) {
+    const result = borrowExecuteParamsSchema.safeParse(params);
+    if (!result.success) {
+      throw createValidationErrorFromZod3(result.error, "borrow repay params");
+    }
+    return {
+      executeParams: result.data.executeParams,
+      signature: result.data.signature,
+      tokenInputs: result.data.tokenInputs,
+      __isActionParams: true
+    };
+  }
+  async function prepareBorrowExecute(params, adapter, context) {
+    const { chain } = context;
+    if (chain.type !== "evm") {
+      throw createInvalidChainError3(chain.name, `Expected EVM chain, but received chain type: ${String(chain.type)}`);
+    }
+    const adapterContractAddress = chain.kitContracts?.adapter;
+    if (adapterContractAddress === void 0) {
+      throw new KitError3({
+        ...InputError3.UNSUPPORTED_ROUTE,
+        recoverability: "FATAL",
+        message: `Chain "${chain.name}" does not have an Adapter Contract configured. Borrow repayment requires kitContracts.adapter to be set.`
+      });
+    }
+    const validatedAdapterAddress = validateAdapterContractAddress(chain.name, adapterContractAddress);
+    const validatedParams = validateBorrowExecuteParams(params);
+    return await adapter.prepare({
+      type: "evm",
+      abi: adapterContractAbi2,
+      address: validatedAdapterAddress,
+      functionName: "execute",
+      args: [
+        validatedParams.executeParams,
+        validatedParams.tokenInputs,
+        validatedParams.signature
+      ]
+    }, context);
+  }
   var isEVMSwapParams = (params) => {
     return "executeParams" in params && params.executeParams !== void 0 && "tokenInputs" in params && params.tokenInputs !== void 0 && "inputAmount" in params && params.inputAmount !== void 0 && "tokenInAddress" in params && params.tokenInAddress !== void 0;
   };
@@ -129631,7 +137778,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       return await adapter.prepare({
         type: "evm",
         address: tokenAddress,
-        abi: erc20Abi2,
+        abi: erc20Abi3,
         functionName: "balanceOf",
         args: [
           walletAddress
@@ -129656,7 +137803,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       return await adapter.prepare({
         type: "evm",
         address: tokenAddress,
-        abi: erc20Abi2,
+        abi: erc20Abi3,
         functionName: "allowance",
         args: [
           walletAddress,
@@ -129681,7 +137828,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return adapter.prepare({
       type: "evm",
-      abi: erc20Abi2,
+      abi: erc20Abi3,
       address: tokenAddress,
       functionName: "approve",
       args: [
@@ -129700,7 +137847,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     }
     return adapter.prepare({
       type: "evm",
-      abi: erc20Abi2,
+      abi: erc20Abi3,
       address: params.tokenAddress,
       functionName: "transfer",
       args: [
@@ -130012,6 +138159,28 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       */
       "earn.claimRewards": async (params, context) => {
         return prepareEarnExecute(params, adapter, context);
+      },
+      /** Prepare a Circle-signed partial loan repayment. */
+      "borrow.repay": async (params, context) => {
+        if (!hasCustomContractSupport3(context.chain, "adapter")) {
+          throw new KitError3({
+            ...InputError3.UNSUPPORTED_ROUTE,
+            recoverability: "FATAL",
+            message: `Chain "${context.chain.name}" does not have an Adapter Contract configured. Borrow repayment requires kitContracts.adapter to be set.`
+          });
+        }
+        return prepareBorrowExecute(params, adapter, context);
+      },
+      /** Prepare a Circle-signed borrow. */
+      "borrow.execute": async (params, context) => {
+        if (!hasCustomContractSupport3(context.chain, "adapter")) {
+          throw new KitError3({
+            ...InputError3.UNSUPPORTED_ROUTE,
+            recoverability: "FATAL",
+            message: `Chain "${context.chain.name}" does not have an Adapter Contract configured. Borrowing requires kitContracts.adapter to be set.`
+          });
+        }
+        return prepareBorrowExecute(params, adapter, context);
       },
       /**
       * Handler for CCTP v2 custom burn with hook operations on EVM chains.
@@ -132314,21 +140483,21 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     EarnPermitType2[EarnPermitType2["NONE"] = 0] = "NONE";
     EarnPermitType2[EarnPermitType2["EIP2612"] = 1] = "EIP2612";
   })(EarnPermitType || (EarnPermitType = {}));
-  var eip712SignatureSchema$1 = external_exports.string().regex(/^0x[0-9a-fA-F]{130}$/, "Expected a 0x-prefixed 65-byte EIP-712 signature (130 hex chars)");
-  var hexAddressSchema$2 = external_exports.string().regex(/^0x[0-9a-fA-F]{40}$/, "Expected a 0x-prefixed 20-byte EVM address (40 hex chars)");
-  var hexBytesSchema3 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, "Expected a 0x-prefixed even-length hex string");
+  var eip712SignatureSchema$2 = external_exports.string().regex(/^0x[0-9a-fA-F]{130}$/, "Expected a 0x-prefixed 65-byte EIP-712 signature (130 hex chars)");
+  var hexAddressSchema$3 = external_exports.string().regex(/^0x[0-9a-fA-F]{40}$/, "Expected a 0x-prefixed 20-byte EVM address (40 hex chars)");
+  var hexBytesSchema$13 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, "Expected a 0x-prefixed even-length hex string");
   var uint256Schema$1 = external_exports.bigint().nonnegative();
   var earnTokenInputSchema = external_exports.object({
     permitType: external_exports.nativeEnum(EarnPermitType),
-    token: hexAddressSchema$2,
+    token: hexAddressSchema$3,
     amount: uint256Schema$1,
-    permitCalldata: hexBytesSchema3
+    permitCalldata: hexBytesSchema$13
   }).strict();
   var earnExecuteParamsSchema = external_exports.object({}).passthrough();
   var earnExecuteInputSchema = external_exports.object({
     executeParams: earnExecuteParamsSchema,
     tokenInputs: external_exports.array(earnTokenInputSchema),
-    signature: eip712SignatureSchema$1
+    signature: eip712SignatureSchema$2
   }).strict();
   defineAction({
     name: "earn.deposit",
@@ -132344,6 +140513,67 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     name: "earn.claimRewards",
     description: "Claim accrued rewards from an earn vault",
     inputSchema: earnExecuteInputSchema
+  });
+  var BorrowPermitType3;
+  (function(BorrowPermitType4) {
+    BorrowPermitType4[BorrowPermitType4["NONE"] = 0] = "NONE";
+    BorrowPermitType4[BorrowPermitType4["EIP2612"] = 1] = "EIP2612";
+  })(BorrowPermitType3 || (BorrowPermitType3 = {}));
+  var eip712SignatureSchema$1 = external_exports.string().regex(/^0x[0-9a-fA-F]{130}$/, "Expected a 0x-prefixed 65-byte EIP-712 signature (130 hex chars)");
+  var hexAddressSchema$2 = external_exports.string().regex(/^0x[0-9a-fA-F]{40}$/, "Expected a 0x-prefixed 20-byte EVM address (40 hex chars)");
+  var hexBytesSchema3 = external_exports.string().regex(/^0x([0-9a-fA-F]{2})*$/, "Expected a 0x-prefixed even-length hex string");
+  var borrowTokenInputSchema = external_exports.object({
+    permitType: external_exports.nativeEnum(BorrowPermitType3),
+    token: hexAddressSchema$2,
+    amount: external_exports.bigint().nonnegative(),
+    permitCalldata: hexBytesSchema3
+  }).strict();
+  function isNonNegativeBigIntLike3(value) {
+    try {
+      return BigInt(value) >= 0n;
+    } catch {
+      return false;
+    }
+  }
+  var uint256LikeSchema3 = external_exports.union([
+    external_exports.string(),
+    external_exports.bigint()
+  ]).refine(isNonNegativeBigIntLike3, {
+    message: "value must be a non-negative bigint-compatible string or bigint"
+  });
+  var borrowExecutionParamsSchema3 = external_exports.object({
+    instructions: external_exports.array(external_exports.object({
+      target: hexAddressSchema$2,
+      data: hexBytesSchema3,
+      value: uint256LikeSchema3,
+      tokenIn: hexAddressSchema$2,
+      amountToApprove: uint256LikeSchema3,
+      tokenOut: hexAddressSchema$2,
+      minTokenOut: uint256LikeSchema3
+    }).passthrough()).min(1),
+    tokens: external_exports.array(external_exports.object({
+      token: hexAddressSchema$2,
+      beneficiary: hexAddressSchema$2
+    }).passthrough()),
+    execId: uint256LikeSchema3,
+    deadline: uint256LikeSchema3,
+    metadata: hexBytesSchema3
+  }).passthrough();
+  var borrowRepayInputSchema = external_exports.object({
+    executeParams: borrowExecutionParamsSchema3,
+    tokenInputs: external_exports.array(borrowTokenInputSchema),
+    signature: eip712SignatureSchema$1
+  }).strict();
+  defineAction({
+    name: "borrow.repay",
+    description: "Repay part of a Borrow Kit loan",
+    inputSchema: borrowRepayInputSchema
+  });
+  var borrowExecuteInputSchema = borrowRepayInputSchema;
+  defineAction({
+    name: "borrow.execute",
+    description: "Borrow against a Borrow Kit market",
+    inputSchema: borrowExecuteInputSchema
   });
   var SwapPermitType;
   (function(SwapPermitType2) {
@@ -132513,7 +140743,7 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
     try {
       rawDecimals = await readContract2({
         address,
-        abi: erc20Abi2,
+        abi: erc20Abi3,
         functionName: "decimals",
         args: []
       });
@@ -132606,6 +140836,10 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
   external_exports.preprocess((input) => {
     if (typeof input === "object" && input !== null && !Array.isArray(input)) {
       const obj = input;
+      if (obj["type"] === "evm") return {
+        ...obj,
+        type: "contract"
+      };
       if ("type" in obj) return input;
       if (Array.isArray(obj["abi"]) && obj["abi"].length === 0 && obj["functionName"] === "") {
         return {
@@ -133359,12 +141593,19 @@ Action: Add at least ${actionAmount} to your wallet to complete this swap.`;
       const currentWalletClient = await this.initializeWalletClient(targetChain);
       const effectiveAccount = this.resolveEffectiveAccount(currentWalletClient, resolvedAddress);
       try {
+        const gas = overrides?.gasLimit === void 0 && effectiveAccount.type === "local" ? await (await this.getPublicClient(targetChain)).estimateGas({
+          ...params,
+          account: effectiveAccount.address
+        }) : void 0;
         return await currentWalletClient.sendTransaction({
           ...params,
           account: effectiveAccount,
           chain: await this.getViemChain(targetChain),
           // Explicitly provide kzg to satisfy viem's SendTransactionParameters typing
           kzg: void 0,
+          ...gas !== void 0 && {
+            gas
+          },
           ...this.transformOverridesForViem(overrides)
         });
       } catch (error) {
