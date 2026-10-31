@@ -1204,6 +1204,92 @@ app.get("/api/explorer/tokens", async (req, res) => {
   return res.status(502).json({ error: "token_list_unavailable", address: addr });
 });
 
+// ========================
+// API: /api/indexed?address=0x...
+// Public read — checks whether an address has at least one indexed row
+// in the whale feed (100k+ USDC/EURC only, same unique-txHash logic).
+// Rate limit: 30 req/min per IP. Cache: 60 s per address.
+// CORS: GET from any origin, no credentials.
+// ========================
+const indexedCache  = new Map();  // address → { ts, data }
+const indexedRlHits = new Map();  // ip → [timestamp, ...]
+const INDEXED_CACHE_TTL = 60_000; // 60 s
+const INDEXED_RL_WINDOW = 60_000; // 1 min
+const INDEXED_RL_LIMIT  = 30;
+
+function indexedRlOk(ip) {
+  const now  = Date.now();
+  const prev = (indexedRlHits.get(ip) || []).filter(t => t > now - INDEXED_RL_WINDOW);
+  if (prev.length >= INDEXED_RL_LIMIT) return false;
+  prev.push(now);
+  indexedRlHits.set(ip, prev);
+  return true;
+}
+
+app.get("/api/indexed", (req, res) => {
+  // CORS — GET from any origin, no credentials
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET");
+  res.setHeader("Vary", "Origin");
+
+  const addr = String(req.query.address || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) {
+    return res.status(400).json({ error: "Invalid address" });
+  }
+
+  const ip = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown");
+  if (!indexedRlOk(ip)) {
+    return res.status(429).json({ error: "rate_limited", retryAfterSec: 60 });
+  }
+
+  // Cache hit
+  const hit = indexedCache.get(addr);
+  if (hit && Date.now() - hit.ts < INDEXED_CACHE_TTL) {
+    return res.json(hit.data);
+  }
+
+  // One row per txHash: pick MAX(amount) to avoid counting IN+OUT twice
+  db.get(
+    `SELECT w.txHash, w.token, w.amount, w.timestamp
+     FROM whales w
+     INNER JOIN (
+       SELECT txHash, MAX(amount) AS max_amount
+       FROM whales
+       WHERE lower(wallet) = ?
+       GROUP BY txHash
+     ) best ON w.txHash = best.txHash AND w.amount = best.max_amount
+     WHERE lower(w.wallet) = ?
+     GROUP BY w.txHash
+     ORDER BY w.timestamp DESC
+     LIMIT 1`,
+    [addr, addr],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+
+      let data;
+      if (row) {
+        const amt = Number(row.amount || 0);
+        const human = amt >= 1e9  ? (amt / 1e9).toFixed(2).replace(/\.?0+$/, "") + "B"
+                    : amt >= 1e6  ? (amt / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M"
+                    : amt >= 1e3  ? (amt / 1e3).toFixed(1).replace(/\.?0+$/, "") + "K"
+                    : String(Math.round(amt));
+        const token = String(row.token || "").toUpperCase();
+        data = {
+          indexed:    true,
+          lastAmount: human,
+          token:      token === "EURC" ? "EURC" : "USDC",
+          lastTs:     row.timestamp ? new Date(row.timestamp).toISOString() : null
+        };
+      } else {
+        data = { indexed: false };
+      }
+
+      indexedCache.set(addr, { ts: Date.now(), data });
+      res.json(data);
+    }
+  );
+});
+
 app.listen(PORT, () => {
   console.log(`🌐 Dashboard: http://localhost:${PORT}`);
 });
