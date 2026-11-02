@@ -22,6 +22,23 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) console.log("DB bağlantı hatası:", err.message);
 });
 
+// Pageviews table (unique IP per day per path, no user-agent stored)
+db.run(`CREATE TABLE IF NOT EXISTS pageviews (
+  day  TEXT NOT NULL,
+  ip   TEXT NOT NULL,
+  path TEXT NOT NULL,
+  PRIMARY KEY (day, ip, path)
+)`);
+
+// Helper: record a page view (INSERT OR IGNORE)
+function trackView(req) {
+  const day  = new Date().toISOString().slice(0, 10); // UTC YYYY-MM-DD
+  const raw  = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "");
+  const ip   = raw.split(",")[0].trim().slice(0, 45);  // first hop only, max 45 chars
+  const p    = String(req.path || "/").slice(0, 100);
+  db.run("INSERT OR IGNORE INTO pageviews (day, ip, path) VALUES (?, ?, ?)", [day, ip, p]);
+}
+
 // ========================
 // SECURITY HEADERS
 // ========================
@@ -633,6 +650,7 @@ app.get("/api/daily", (req, res) => {
 // PAGE: Daily Report
 // ========================
 app.get("/daily", (req, res) => {
+  trackView(req);
   res.sendFile(path.join(__dirname, "../../public/daily.html"));
 });
 
@@ -645,6 +663,7 @@ app.get("/daily/:date", (req, res) => {
 
 // Ana sayfa
 app.get("/", (req, res) => {
+  trackView(req);
   res.sendFile(path.join(__dirname, "../../public/index.html"));
 });
 
@@ -764,10 +783,12 @@ app.get("/stablecoins", (req, res) => {
 // SAYFA ROUTE'LARI
 // ========================
 app.get("/whales", (req, res) => {
+  trackView(req);
   res.sendFile(path.join(__dirname, "../../public/whales.html"));
 });
 
 app.get("/wallets", (req, res) => {
+  trackView(req);
   res.sendFile(path.join(__dirname, "../../public/wallets.html"));
 });
 
@@ -785,6 +806,7 @@ app.get("/bridge", (req, res) => {
 });
 
 app.get("/wallets/:address", (req, res) => {
+  trackView(req);
   res.sendFile(path.join(__dirname, "../../public/wallet.html"));
 });
 
@@ -1202,6 +1224,42 @@ app.get("/api/explorer/tokens", async (req, res) => {
   } catch (_) {}
 
   return res.status(502).json({ error: "token_list_unavailable", address: addr });
+});
+
+// ========================
+// API: /api/stats/visitors
+// Unique IP counts from pageviews table. Does not expose IP list.
+// ========================
+app.get("/api/stats/visitors", (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+  const queries = [
+    new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(DISTINCT ip) AS n FROM pageviews WHERE day = ?`,
+        [today],
+        (err, row) => err ? reject(err) : resolve(row ? row.n : 0)
+      );
+    }),
+    new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(DISTINCT ip) AS n FROM pageviews
+         WHERE day >= date('now', '-6 days')`,
+        [],
+        (err, row) => err ? reject(err) : resolve(row ? row.n : 0)
+      );
+    }),
+    new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COUNT(DISTINCT ip) AS n FROM pageviews
+         WHERE day >= date('now', '-29 days')`,
+        [],
+        (err, row) => err ? reject(err) : resolve(row ? row.n : 0)
+      );
+    })
+  ];
+  Promise.all(queries)
+    .then(([daily, weekly, monthly]) => res.json({ daily, weekly, monthly }))
+    .catch(err => res.status(500).json({ error: err.message }));
 });
 
 // ========================

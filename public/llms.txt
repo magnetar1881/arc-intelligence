@@ -1,0 +1,6 @@
+Lensora is an Arc mainnet (chain ID 5042) radar.
+It indexes USDC and EURC transfers of 100,000 or more human units.
+It does not hold funds or execute swaps or bridges.
+Official bridge is portal.arc.io.
+Live: https://lensora.xyz
+Repo: https://github.com/magnetar1881/arc-intelligence
