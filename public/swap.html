@@ -61,6 +61,31 @@ header{position:sticky;top:0;z-index:100;padding:12px 28px;display:flex;align-it
 .tg-btn svg{width:20px;height:20px;fill:white}
 body{overflow-x:hidden}
 @media(max-width:768px){header{padding:10px 12px}.h-right{gap:6px}}
+.qc{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:14px;margin-bottom:16px}
+.qc-title{font-size:12px;font-weight:700;color:var(--text2)}
+.qc-sub{font-size:10px;color:var(--dim);margin:2px 0 10px}
+.qc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.qc-card{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;cursor:pointer;min-width:0;outline:none}
+.qc-card:focus-visible{border-color:var(--blue3)}
+.qc-card.selected{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue) inset}
+.qc-card.disabled{cursor:not-allowed;opacity:.75}
+.qc-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.qc-name{font-size:12px;font-weight:700;color:var(--text)}
+.qc-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
+.qc-card.selected .qc-tag{color:var(--blue3)}
+.qc-row{display:flex;justify-content:space-between;gap:8px;font-size:11px;margin-bottom:4px}
+.qc-row.qc-stack{flex-direction:column;gap:2px}
+.qc-k{color:var(--muted)}
+.qc-v{color:var(--text2);font-family:var(--mono);font-weight:600;text-align:right;overflow-wrap:anywhere}
+.qc-stack .qc-v{text-align:left;font-size:10px}
+.qc-note{font-size:10px;color:var(--dim);margin-top:6px;line-height:1.5}
+.qc-note.err{color:var(--red)}
+.qc-link{margin-top:8px;background:transparent;border:1px solid var(--border3);color:var(--blue3);border-radius:6px;font-size:11px;font-weight:600;font-family:var(--sans);padding:4px 8px;cursor:pointer}
+.qc-approval{margin-top:12px;background:var(--bg3);border:1px solid var(--amber);border-radius:8px;padding:12px}
+.qc-approval-title{font-size:12px;font-weight:700;color:var(--amber);margin-bottom:8px}
+.qc-approval .swap-btn{margin-top:10px;padding:10px;font-size:13px}
+.qc-fine{font-size:10px;color:var(--dim);line-height:1.6;margin-top:10px}
+@media(max-width:520px){.qc-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -124,6 +149,36 @@ body{overflow-x:hidden}
         </div>
       </div>
 
+      <div class="qc" id="quote-compare" style="display:none">
+        <div class="qc-title">Compare quotes</div>
+        <div class="qc-sub">Choose one. Only the quote you choose is sent to your wallet.</div>
+        <div class="qc-grid">
+          <div class="qc-card selected" id="qc-circle" role="radio" aria-checked="true" tabindex="0" onclick="selectQuote('circle')" onkeydown="qcKey(event,'circle')">
+            <div class="qc-head"><span class="qc-name">Circle</span><span class="qc-tag" id="qc-circle-tag">Selected</span></div>
+            <div class="qc-row"><span class="qc-k">Expected out</span><span class="qc-v" id="qc-circle-out">-</span></div>
+            <div class="qc-note">Circle Swap Kit estimate</div>
+          </div>
+          <div class="qc-card disabled" id="qc-peach" role="radio" aria-checked="false" tabindex="0" onclick="selectQuote('peach')" onkeydown="qcKey(event,'peach')">
+            <div class="qc-head"><span class="qc-name">Peach</span><span class="qc-tag" id="qc-peach-tag"></span></div>
+            <div class="qc-row"><span class="qc-k">Expected out</span><span class="qc-v" id="qc-peach-out">-</span></div>
+            <div class="qc-row"><span class="qc-k">Minimum out</span><span class="qc-v" id="qc-peach-min">-</span></div>
+            <div class="qc-row"><span class="qc-k">Deadline</span><span class="qc-v" id="qc-peach-deadline">-</span></div>
+            <div class="qc-row"><span class="qc-k">Recipient</span><span class="qc-v" id="qc-peach-recipient">-</span></div>
+            <div class="qc-row qc-stack"><span class="qc-k">Approval spender (Peach Execution Router)</span><span class="qc-v" id="qc-peach-spender">-</span></div>
+            <div class="qc-note" id="qc-peach-note"></div>
+            <button type="button" class="qc-link" id="qc-peach-refresh" style="display:none" onclick="event.stopPropagation();refreshPeachQuote()">Request new quote</button>
+          </div>
+        </div>
+        <div class="qc-approval" id="peach-approval" style="display:none">
+          <div class="qc-approval-title">Approval needed for Peach</div>
+          <div class="qc-row qc-stack"><span class="qc-k">Spender (Peach Execution Router)</span><span class="qc-v" id="pa-spender">-</span></div>
+          <div class="qc-row"><span class="qc-k">Token</span><span class="qc-v" id="pa-token">-</span></div>
+          <div class="qc-row"><span class="qc-k">Amount (exact, not unlimited)</span><span class="qc-v" id="pa-amount">-</span></div>
+          <button type="button" class="swap-btn" id="pa-btn" onclick="peachApprove()">Approve in wallet</button>
+        </div>
+        <div class="qc-fine">Both numbers are shown as each source returned them. This is not a price or liquidity comparison. Peach is a third-party aggregator. Its slippage is fixed at 0.50% and is never widened automatically.</div>
+      </div>
+
       <div class="fee-note">Platform fee: 0.20% • Powered by Circle App Kit</div>
 
       <div id="wallet-required" class="connect-prompt">
@@ -131,7 +186,7 @@ body{overflow-x:hidden}
         <button class="connect-btn-large" onclick="connectWallet()">Connect Wallet</button>
       </div>
 
-      <button class="swap-btn" id="swap-btn" style="display:none" onclick="executeSwap()">
+      <button class="swap-btn" id="swap-btn" style="display:none" onclick="onSwapClick()">
         Swap
       </button>
 
@@ -152,6 +207,7 @@ body{overflow-x:hidden}
 <script src="/wallet.js"></script>
 
 <script src="/swap-bundle.js"></script>
+<script src="/peach-bundle.js"></script>
 <script>
 let estimateTimer = null;
 
@@ -219,9 +275,14 @@ function onInputChange() {
   if (!amount || Number(amount) <= 0) {
     document.getElementById('estimate-box').style.display = 'none';
     document.getElementById('amount-out').value = '';
+    resetQuotes();
     return;
   }
-  estimateTimer = setTimeout(getEstimate, 600);
+  estimateTimer = setTimeout(function () {
+    setCircleLoading();
+    getEstimate();
+    refreshPeachQuote();
+  }, 600);
 }
 
 async function getEstimate() { 
@@ -264,9 +325,12 @@ async function getEstimate() {
     document.getElementById('est-output').textContent =
       Number(outAmt).toFixed(4) + ' ' + tokenOut;
 
+    renderCircleQuote(Number(outAmt), tokenOut);
+
   } catch (e) {
     console.error('ESTIMATE ERR', e);
     document.getElementById('amount-out').value = '';
+    renderCircleQuote(null, tokenOut);
   }
 }
 
@@ -331,11 +395,297 @@ function updateSwapUI() {
   swapBtn.style.display = ok ? "block" : "none";
 }
 
+// ===== Quote comparison: Circle vs Peach =====
+// Both numbers are shown as returned. Only the chosen source's transaction is
+// ever sent to the wallet. Peach: one quote per request, no automatic retry,
+// fixed slippage, user clicks every approval and every swap.
+var selectedQuote = 'circle';
+var circle = { status: 'idle', out: 0, token: '' };
+var peach = { status: 'idle', view: null, prepared: null, error: null, req: undefined, approved: false };
+var peachSeq = 0;
+var peachAbort = null;
+var peachOwner = null;
+var peachBusy = false;
+var compareOn = false;
+
+function qEl(id) { return document.getElementById(id); }
+function qText(id, t) { var el = qEl(id); if (el) el.textContent = t; }
+function qShort(a) { return a ? a.slice(0, 6) + '...' + a.slice(-4) : '-'; }
+function qFmt(n) { return Number(n).toFixed(6); }
+function qUnits6(big) {
+  var s = BigInt(big).toString().padStart(7, '0');
+  var i = s.slice(0, -6), f = s.slice(-6).replace(/0+$/, '');
+  return f ? i + '.' + f : i;
+}
+
+function showCompare(on) {
+  compareOn = on;
+  qEl('quote-compare').style.display = on ? 'block' : 'none';
+  updateSwapButton();
+}
+
+function setCircleLoading() {
+  circle = { status: 'loading', out: 0, token: '' };
+  renderCircle();
+}
+
+function renderCircleQuote(out, token) {
+  if (out !== null && isFinite(out) && out > 0) {
+    circle = { status: 'ready', out: out, token: token };
+  } else {
+    circle = { status: 'error', out: 0, token: token };
+  }
+  showCompare(true);
+  renderCircle();
+  syncAmountOut();
+}
+
+function renderCircle() {
+  var t = '-';
+  if (circle.status === 'loading') t = 'Loading...';
+  else if (circle.status === 'ready') t = qFmt(circle.out) + ' ' + circle.token;
+  else if (circle.status === 'error') t = 'Unavailable';
+  qText('qc-circle-out', t);
+}
+
+function resetQuotes() {
+  peachSeq++;
+  if (peachAbort) { peachAbort.abort(); peachAbort = null; }
+  circle = { status: 'idle', out: 0, token: '' };
+  peach = { status: 'idle', view: null, prepared: null, error: null, req: undefined, approved: false };
+  hidePeachApproval();
+  renderCircle();
+  renderPeach();
+  showCompare(false);
+}
+
+function renderPeach() {
+  var st = peach.status, v = peach.view;
+  var has = (st === 'ready' || st === 'expired' || st === 'done') && v;
+  var outTok = has ? ' ' + v.symbolOut : '';
+  qText('qc-peach-out', has ? qFmt(v.expectedOut) + outTok : (st === 'loading' ? 'Loading...' : '-'));
+  qText('qc-peach-min', has ? qFmt(v.amountOutMin) + outTok + ' (slippage ' + (v.slippageBps / 100).toFixed(2) + '%)' : '-');
+  qText('qc-peach-recipient', has ? qShort(v.recipient) : '-');
+  qText('qc-peach-spender', has ? v.spender : (window.PeachSwap ? window.PeachSwap.router : '-'));
+  renderPeachDeadline();
+
+  var note = '';
+  var isErr = false;
+  if (st === 'loading') note = 'Requesting Peach quote...';
+  else if (st === 'nowallet') note = 'Connect your wallet to request a Peach quote.';
+  else if (st === 'unsupported') note = 'Peach quote is not available for this pair.';
+  else if (st === 'error') { note = 'Peach quote failed: ' + (peach.error || 'unknown error'); isErr = true; }
+  else if (st === 'ready') note = 'Valid until the deadline. Nothing is approved or sent until you click.';
+  else if (st === 'expired') { note = 'Quote expired. Request a new quote.'; isErr = true; }
+  else if (st === 'done') note = 'Quote used. Change the amount or request a new quote.';
+  var noteEl = qEl('qc-peach-note');
+  noteEl.textContent = note;
+  noteEl.className = 'qc-note' + (isErr ? ' err' : '');
+
+  qEl('qc-peach-refresh').style.display = (st === 'error' || st === 'expired' || st === 'done' || st === 'ready') ? 'inline-block' : 'none';
+
+  var card = qEl('qc-peach');
+  var selectable = (st === 'ready');
+  card.className = 'qc-card' + (selectedQuote === 'peach' ? ' selected' : '') + (selectable ? '' : ' disabled');
+  card.setAttribute('aria-checked', selectedQuote === 'peach' ? 'true' : 'false');
+  qText('qc-peach-tag', selectedQuote === 'peach' ? 'Selected' : (selectable ? 'Select' : ''));
+  var c = qEl('qc-circle');
+  c.className = 'qc-card' + (selectedQuote === 'circle' ? ' selected' : '');
+  c.setAttribute('aria-checked', selectedQuote === 'circle' ? 'true' : 'false');
+  qText('qc-circle-tag', selectedQuote === 'circle' ? 'Selected' : 'Select');
+}
+
+function renderPeachDeadline() {
+  var v = peach.view;
+  if (!v || (peach.status !== 'ready' && peach.status !== 'expired' && peach.status !== 'done')) {
+    qText('qc-peach-deadline', '-');
+    return;
+  }
+  var left = v.deadline - Math.floor(Date.now() / 1000);
+  var when = new Date(v.deadline * 1000).toLocaleTimeString();
+  qText('qc-peach-deadline', when + (left > 0 ? ' (' + left + 's left)' : ' (expired)'));
+}
+
+function qcKey(ev, src) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); selectQuote(src); }
+}
+
+function selectQuote(src) {
+  if (peachBusy) return;
+  if (src === 'peach' && peach.status !== 'ready') return;
+  if (src !== selectedQuote) hidePeachApproval();
+  selectedQuote = src;
+  renderPeach();
+  syncAmountOut();
+  updateSwapButton();
+}
+
+function syncAmountOut() {
+  var el = qEl('amount-out');
+  if (selectedQuote === 'peach' && peach.status === 'ready' && peach.view) {
+    el.value = Number(peach.view.expectedOut).toFixed(4);
+  } else if (circle.status === 'ready') {
+    el.value = circle.out.toFixed(4);
+  }
+}
+
+function updateSwapButton() {
+  var btn = qEl('swap-btn');
+  if (!btn) return;
+  if (selectedQuote === 'peach') {
+    if (peach.status === 'ready') { btn.textContent = 'Swap with Peach'; btn.disabled = peachBusy; }
+    else { btn.textContent = peach.status === 'expired' ? 'Peach quote expired' : 'Peach quote unavailable'; btn.disabled = true; }
+  } else {
+    btn.textContent = compareOn ? 'Swap with Circle' : 'Swap';
+    btn.disabled = false;
+  }
+}
+
+function setPeachBusy(b) {
+  peachBusy = b;
+  var pa = qEl('pa-btn');
+  if (pa) pa.disabled = b;
+  updateSwapButton();
+}
+
+function showPeachApproval(req) {
+  qText('pa-spender', req.spender);
+  qText('pa-token', peach.view ? peach.view.symbolIn : '-');
+  qText('pa-amount', qUnits6(req.approveAmount) + (peach.view ? ' ' + peach.view.symbolIn : ''));
+  qEl('peach-approval').style.display = 'block';
+}
+
+function hidePeachApproval() {
+  var el = qEl('peach-approval');
+  if (el) el.style.display = 'none';
+}
+
+async function refreshPeachQuote() {
+  var tokenIn = qEl('token-in').value;
+  var tokenOut = qEl('token-out').value;
+  var amountIn = qEl('amount-in').value;
+
+  if (!amountIn || Number(amountIn) <= 0 || tokenIn === tokenOut) { resetQuotes(); return; }
+
+  var seq = ++peachSeq;
+  if (peachAbort) peachAbort.abort();
+  peachAbort = new AbortController();
+  peach = { status: 'loading', view: null, prepared: null, error: null, req: undefined, approved: false };
+  hidePeachApproval();
+  if (selectedQuote === 'peach') selectedQuote = 'circle';
+  showCompare(true);
+  renderPeach();
+
+  if (!window.PeachSwap) {
+    peach.status = 'error'; peach.error = 'Peach module not loaded.';
+    renderPeach(); updateSwapButton(); return;
+  }
+  if (!window.PeachSwap.supports(tokenIn) || !window.PeachSwap.supports(tokenOut)) {
+    peach.status = 'unsupported'; renderPeach(); updateSwapButton(); return;
+  }
+  var owner = window.connectedWallet;
+  if (!owner) { peach.status = 'nowallet'; renderPeach(); updateSwapButton(); return; }
+
+  try {
+    var r = await window.PeachSwap.quote({
+      symbolIn: tokenIn, symbolOut: tokenOut, amountIn: amountIn,
+      executor: owner, signal: peachAbort.signal
+    });
+    if (seq !== peachSeq) return;
+    peach = { status: 'ready', view: r.view, prepared: r.prepared, error: null, req: undefined, approved: false };
+  } catch (e) {
+    if (seq !== peachSeq) return;
+    peach = { status: 'error', view: null, prepared: null, error: window.PeachSwap.errorText(e), req: undefined, approved: false };
+  }
+  renderPeach();
+  syncAmountOut();
+  updateSwapButton();
+}
+
+function onSwapClick() {
+  if (selectedQuote === 'peach') return peachSwap();
+  return executeSwap();
+}
+
+async function peachSwap() {
+  var owner = window.connectedWallet;
+  if (!owner) { showStatus('Connect MetaMask first.', 'error'); return; }
+  if (peach.status !== 'ready' || !peach.prepared) {
+    showStatus('No valid Peach quote. Request a new quote.', 'error');
+    return;
+  }
+  setPeachBusy(true);
+  try {
+    if (peach.req === undefined) {
+      showStatus('Checking allowance...', 'loading');
+      peach.req = await window.PeachSwap.describeApproval(peach.prepared, owner);
+      peach.approved = false;
+    }
+    if (peach.req && !peach.approved) {
+      showPeachApproval(peach.req);
+      showStatus('Approval needed first. Check the spender below, then approve.', 'loading');
+      return;
+    }
+    showStatus('Confirm the swap in your wallet...', 'loading');
+    var hash = await window.PeachSwap.sendSwap(peach.prepared, owner);
+    showStatus('Peach swap confirmed: ' + hash, 'success');
+    peach.status = 'done';
+    selectedQuote = 'circle';
+    renderPeach();
+    refreshBal();
+  } catch (e) {
+    showStatus(window.PeachSwap.errorText(e), 'error');
+  } finally {
+    setPeachBusy(false);
+  }
+}
+
+async function peachApprove() {
+  var owner = window.connectedWallet;
+  if (!owner || !peach.req) return;
+  if (peach.status !== 'ready') {
+    showStatus('Peach quote expired. Request a new quote.', 'error');
+    hidePeachApproval();
+    return;
+  }
+  setPeachBusy(true);
+  try {
+    showStatus('Confirm the approval in your wallet...', 'loading');
+    await window.PeachSwap.sendApproval(peach.req, owner);
+    peach.approved = true;
+    hidePeachApproval();
+    showStatus('Approval confirmed. Click "Swap with Peach" to continue.', 'success');
+  } catch (e) {
+    showStatus(window.PeachSwap.errorText(e), 'error');
+  } finally {
+    setPeachBusy(false);
+  }
+}
+
+function onPeachWalletChange(address) {
+  var a = (address || '').toLowerCase();
+  if (a === peachOwner) return;
+  peachOwner = a;
+  if (qEl('amount-in').value && Number(qEl('amount-in').value) > 0) refreshPeachQuote();
+}
+
+setInterval(function () {
+  if (peach.status === 'ready' && peach.view && peach.view.deadline <= Math.floor(Date.now() / 1000)) {
+    peach.status = 'expired';
+    hidePeachApproval();
+    renderPeach();
+    updateSwapButton();
+    return;
+  }
+  renderPeachDeadline();
+}, 1000);
+
 // wallet.js'deki updateWalletUI'yi override et
 const _originalUpdateWalletUI = window.updateWalletUI;
 window.updateWalletUI = function(address) {
   if (_originalUpdateWalletUI) _originalUpdateWalletUI(address);
   updateSwapUI();
+  onPeachWalletChange(address);
 };
 
 document.addEventListener("DOMContentLoaded", updateSwapUI);
