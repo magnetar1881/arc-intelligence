@@ -25,13 +25,14 @@
     "@circle-fin/adapter-viem-v2": "1.19.1",
     "@circle-fin/app-kit": "1.17.0",
     "@circle-fin/swap-kit": "1.8.0",
-
+    "@masterpeach/arc-aggregator-sdk": "1.3.0",
     "dotenv": "^17.4.2",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
     "groq-sdk": "^1.3.0",
     "node-telegram-bot-api": "^0.67.0",
-    "sqlite3": "^6.0.1"
+    "sqlite3": "^6.0.1",
+    "viem": "2.56.5"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
